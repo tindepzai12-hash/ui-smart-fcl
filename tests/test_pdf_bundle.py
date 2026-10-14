@@ -135,6 +135,21 @@ def test_six_page_packets_are_real_text_and_real_scan():
         assert any(r['key']=='invoice_number' and 'INV-000287-26' in str(r['value']) for r in records)
 
 
+@pytest.mark.parametrize('sample',['fcl-text.pdf','fcl-scan.pdf'])
+def test_packing_list_with_misleading_bill_of_lading_filename(sample):
+    source = PdfReader(db.ROOT/'samples'/sample)
+    writer = PdfWriter(); writer.add_page(source.pages[1])
+    data = io.BytesIO(); writer.write(data)
+    case = new()
+    upload(case, [('Bill of Lading.pdf',data.getvalue())])
+    result, job = process(case)
+    assert not job['errors'] and not job['warnings']
+    doc = result['documents'][0]
+    assert doc['type'] == 'Packing List' and not doc['type_verified']
+    assert 'packing list' in doc['classification_evidence'].lower()
+    assert len([r for r in result['records'] if r['kind']=='item']) == 2
+
+
 @pytest.mark.parametrize('name',['fcl-text.pdf','fcl-scan.pdf'])
 def test_complete_six_document_workflow(name):
     case = new()
