@@ -43,7 +43,7 @@ test('cloud auth protects files and APIs, validates origin, expires sessions and
 });
 
 test('weak configuration fails closed and login brute force is bounded', async t => {
-  assert.throws(() => createGateway({ password: '', secret: '', backendPort: 1 }), /strong/);
+  assert.throws(() => createGateway({ password: '', secret: '', backendPort: 1 }), /UI_SMART_PASSWORD/);
   const gateway = createGateway({ password: 'test-password-123456', secret: 's'.repeat(64), backendPort: 1, secure: false });
   await new Promise(r => gateway.listen(0, '127.0.0.1', r));
   t.after(() => { gateway.closeAllConnections(); gateway.close(); });
@@ -53,4 +53,32 @@ test('weak configuration fails closed and login brute force is bounded', async t
     assert.equal(r.status, i < 10 ? 401 : 429);
   }
   assert.equal((await fetch(url + '/healthz')).status, 503);
+});
+
+test('six-character password supports login without bypassing authentication', async t => {
+  const gateway = createGateway({ password: '123456', secret: 's'.repeat(64), backendPort: 1, secure: false });
+  await new Promise(r => gateway.listen(0, '127.0.0.1', r));
+  t.after(() => { gateway.closeAllConnections(); gateway.close(); });
+  const url = `http://127.0.0.1:${gateway.address().port}`;
+  const login = password => fetch(url + '/__cloud/login', {
+    method: 'POST', redirect: 'manual',
+    headers: { Origin: url, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ password }),
+  });
+  assert.equal((await fetch(url + '/api/cases')).status, 401);
+  assert.equal((await login('123457')).status, 401);
+  const result = await login('123456');
+  assert.equal(result.status, 303);
+  assert.equal(result.headers.get('location'), '/');
+  assert.match(result.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
+});
+
+test('configuration errors identify the invalid variable without exposing its value', () => {
+  const config = { password: '123456', secret: 's'.repeat(32), backendPort: 1 };
+  for (const password of [undefined, '', '12345', ' '.repeat(6), 'x'.repeat(257), 123456]) {
+    assert.throws(() => createGateway({ ...config, password }), /UI_SMART_PASSWORD/);
+  }
+  for (const secret of [undefined, '', 's'.repeat(31), 123456]) {
+    assert.throws(() => createGateway({ ...config, secret }), /UI_SMART_SESSION_SECRET/);
+  }
 });

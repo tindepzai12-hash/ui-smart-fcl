@@ -19,8 +19,11 @@ const loginScript = `document.querySelector('form').addEventListener('submit',as
 });`;
 
 export function createGateway({ password, secret, backendPort, secure = true, now = Date.now }) {
-  if (!password || password.length < 16 || !secret || secret.length < 32) {
-    throw new Error('Set a strong UI_SMART_PASSWORD (16+ characters) and UI_SMART_SESSION_SECRET (32+ characters).');
+  if (typeof password !== 'string' || password.length < 6 || password.length > 256 || !password.trim()) {
+    throw new Error('Set UI_SMART_PASSWORD to a non-blank password of 6–256 characters.');
+  }
+  if (typeof secret !== 'string' || secret.length < 32) {
+    throw new Error('Set UI_SMART_SESSION_SECRET to at least 32 random characters.');
   }
   const cookieName = secure ? COOKIE : 'ui-smart-dev';
   const failures = new Map();
