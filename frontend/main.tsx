@@ -1135,7 +1135,10 @@ function App() {
                 : view === 'guide' ? 'Hướng dẫn' : 'Tổng quan'}
             </strong>
           </div>
-          <div className="row">
+          <div className="row topbar-actions">
+            <button className="btn help-button" onClick={() => go(view === 'guide' && current ? 'case' : 'guide')}>
+              <BookOpen size={16}/>{view === 'guide' && current ? 'Quay lại hồ sơ' : 'Hướng dẫn sử dụng'}
+            </button>
             <span className="badge neutral">
               <HardDrive size={13} />
               {health?.deployment?.cloud ? 'Cloud · Không gian dùng chung' : 'Local workspace · Nhân viên local'}
