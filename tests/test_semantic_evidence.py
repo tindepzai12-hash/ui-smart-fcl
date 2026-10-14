@@ -55,6 +55,35 @@ def test_unit_cell_must_be_on_same_page():
     with pytest.raises(ValueError,match='Đơn vị'):ai.validate_result(data,pages)
 
 
+def test_issue_date_cannot_be_an_eta_even_with_literal_evidence():
+    data=document('B/L','BILL OF LADING')
+    data.fields=[ai.FieldResult(field_id='eta',raw_value='JAN 26 2025',source_page=1,evidence_text='Est. Issued Date: JAN 26 2025')]
+    pages=[{'number':1,'text':'BILL OF LADING\nEst. Issued Date: JAN 26 2025'}]
+    with pytest.raises(ValueError,match='Ngày đến'):ai.validate_result(data,pages)
+    data.fields[0].raw_value='MAR 05 2025';data.fields[0].evidence_text='ETA: MAR 05 2025'
+    pages[0]['text']+='\nETA: MAR 05 2025'
+    assert ai.validate_result(data,pages)[0]['value']['text']=='2025-03-05'
+
+
+def test_schema_prevents_guessed_field_ids():
+    with pytest.raises(ValueError):
+        ai.FieldResult(field_id='total_amount',raw_value='100.00',source_page=1,evidence_text='100.00')
+
+
+def test_party_company_names_must_not_be_combined_across_columns():
+    data=document('Delivery Order','DELIVERY ORDER')
+    data.fields=[ai.FieldResult(field_id='notify_party',raw_value='ACME COMPANY LIMITED OTHER COMPANY LIMITED',source_page=1,evidence_text='ACME COMPANY LIMITED OTHER COMPANY LIMITED')]
+    pages=[{'number':1,'text':'DELIVERY ORDER\nACME COMPANY LIMITED OTHER COMPANY LIMITED'}]
+    with pytest.raises(ValueError,match='hai công ty'):ai.validate_result(data,pages)
+
+
+def test_port_discharge_cannot_use_place_of_issue():
+    data=document('B/L','BILL OF LADING')
+    data.fields=[ai.FieldResult(field_id='port_discharge',raw_value='NAGOYA, JAPAN',source_page=1,evidence_text='Place of issue: NAGOYA, JAPAN')]
+    with pytest.raises(ValueError,match='Cảng dỡ'):
+        ai.validate_result(data,[{'number':1,'text':'BILL OF LADING\nPlace of issue: NAGOYA, JAPAN'}])
+
+
 def test_combined_page_satisfies_both_checklist_entries_without_duplicate_source():
     case={'mode':'FCL','requirements':{'Invoice':{'required':True,'note':'Required'},'Packing List':{'required':True,'note':'Required'}}}
     docs=[{'id':'1','name':'combined.pdf','type':'Invoice & Packing List','status':'read','type_verified':False}]
