@@ -101,3 +101,18 @@ def test_hybrid_preserves_original_identifiers_when_ocr_disagrees(monkeypatch):
     assert method=='PDF text + OCR' and quality
     assert decimal_text('20.000') is None
     assert normalize('MAR 05 2025','date')['text']=='2025-03-05'
+
+
+def test_sparse_ocr_keeps_both_readings_without_correcting_source(monkeypatch):
+    readings={3:'BILL OF LADING\nGross weight: 5.580.000',11:'BILL OF LADING\n5,580.000\nKGM\n28.00 CBM'}
+    monkeypatch.setattr(reader,'ocr',lambda image,include_tables=False,psm=3:(readings[psm],'OCR needs review',[]))
+    text,method,quality,tables=reader.read_pdf_image(Image.new('RGB',(100,100),'gray'))
+    assert '5.580.000' in text and '5,580.000' in text and '28.00 CBM' in text
+    assert method=='OCR' and 'OCR bổ sung' in quality
+
+
+def test_amount_currency_unit_has_its_own_evidence_and_raw_is_preserved():
+    data=document('Invoice','INVOICE')
+    data.fields=[ai.FieldResult(field_id='invoice_total',raw_value='46,000.00',unit='USD',unit_evidence='AMOUNT (USD)',source_page=1,evidence_text='TOTAL: 46,000.00')]
+    records=ai.validate_result(data,[{'number':1,'text':'INVOICE\nAMOUNT (USD)\nTOTAL: 46,000.00'}])
+    assert records[0]['raw']=='46,000.00' and records[0]['value']['unit']=='USD'

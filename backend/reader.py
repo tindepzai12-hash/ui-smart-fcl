@@ -104,7 +104,7 @@ def ocr_tables(data):
                 tables.append(table)
     return tables
 
-def ocr(image, include_tables=False):
+def ocr(image, include_tables=False, psm=3):
     status = ocr_status()
     if not status['ready']:
         raise ValueError('OCR local chưa sẵn sàng. Cài Tesseract và thử lại; PDF text vẫn đọc được.')
@@ -116,7 +116,7 @@ def ocr(image, include_tables=False):
     gray = ImageOps.autocontrast(ImageOps.grayscale(image))
     # Automatic page segmentation preserves large headings and multiple text/table blocks.
     try:
-        data = pytesseract.image_to_data(gray, lang=lang, config='--psm 3', output_type=pytesseract.Output.DICT, timeout=60)
+        data = pytesseract.image_to_data(gray, lang=lang, config='--psm '+str(psm), output_type=pytesseract.Output.DICT, timeout=60)
     except RuntimeError as exc:
         if 'timeout' in str(exc).lower():
             raise ValueError('OCR vượt 60 giây cho một trang. Hãy dùng bản scan rõ hơn hoặc chia nhỏ chứng từ.') from None
@@ -160,6 +160,17 @@ def read_pdf_image(image):
     if sum(hist[:220]) / pixels < .00001 and ImageStat.Stat(gray).stddev[0] < 1:
         return '', 'Blank page', 'Trang trắng được giữ nguyên; kiểm tra bản gốc.', []
     text, quality, tables = ocr(image, include_tables=True)
+    # Forms with disconnected cells can lose values under automatic block segmentation.
+    # Add a sparse pass only for form/table pages without recovered tables; keep both verbatim.
+    if not tables and re.search(r'(?i)\b(?:quantity|qty|container|bill\s+of\s+lading|packing\s+list)\b',text):
+        try:
+            sparse, sparse_quality, sparse_tables = ocr(image, include_tables=True, psm=11)
+            if sparse.strip() != text.strip():
+                text += '\n\n[OCR sparse layer — giữ nguyên hai lượt đọc, đối chiếu ảnh nếu khác nhau]\n'+sparse
+                quality += ' Có lượt OCR bổ sung cho các ô rời; đối chiếu ảnh gốc nếu hai lượt khác nhau.'
+                tables = tables or sparse_tables
+        except ValueError as exc:
+            quality += ' OCR bổ sung chưa hoàn tất: '+str(exc)
     return text, 'OCR', quality, tables
 
 

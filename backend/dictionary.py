@@ -32,6 +32,7 @@ SPECS=[
 ('flight','Chuyến bay',['flight','flight details'],'text',['AWB'],'A'),
 ('chargeable_weight','Trọng lượng tính cước',['chargeable weight'],'weight',['AWB'],'A'),
 ('eta','Ngày đến dự kiến',['eta','estimated time of arrival'],'date',['Arrival Notice','B/L','Sea Waybill'],'A'),
+('arrival_date','Ngày hàng đến ghi trên thông báo/lệnh',['arrival date','ngày hàng đến'],'date',['Arrival Notice','Delivery Order'],'A'),
 ('packages','Số kiện và loại bao bì',['number of packages','total packages','package count','packages','số kiện'],'quantity',['Packing List','B/L','Sea Waybill','AWB'],'A'),
 ('goods_quantity','Tổng số lượng hàng',['total quantity','goods quantity','quantity','qty','số lượng hàng'],'quantity',['Invoice','Packing List'],'A'),
 ('gross_weight','Trọng lượng cả bì',['gross weight','gross wt','g.w.','gross mass','trọng lượng cả bì'],'weight',['Packing List','B/L','Sea Waybill','AWB'],'A'),
@@ -71,6 +72,16 @@ SPECS=[
 ('tax_rate','Thuế suất đã tra cứu',[],'number',[],'D'),
 ('customs_value','Trị giá hải quan đã xác định',[],'number',[],'D')]
 FIELDS={s[0]:{'id':s[0],'label':s[1],'aliases':s[2],'type':s[3],'documents':s[4],'class':s[5],'level':'document','human_review':True,'sheet':'THONG_TIN_KHAI_BAO','official_mapping':'Pending — cần mẫu chỉ tiêu và danh mục hiện hành'} for s in SPECS}
+for field,kinds in {
+    'origin':['Contract'],
+    'contract_number':['Invoice','Packing List'],
+    'port_loading':['Invoice','Packing List','Contract','Arrival Notice','Delivery Order'],
+    'port_discharge':['Invoice','Packing List','Contract','Delivery Order'],
+    'shipper_address':['Arrival Notice','Delivery Order'],
+    'consignee_address':['Arrival Notice','Delivery Order'],
+    'place_delivery':['Arrival Notice','Delivery Order'],
+}.items():
+    FIELDS[field]['documents'] = list(dict.fromkeys([*FIELDS[field]['documents'],*kinds]))
 for spec in FIELDS.values():
     if any(kind in spec['documents'] for kind in ['Invoice', 'Packing List']):
         spec['documents'] = [*spec['documents'], 'Invoice & Packing List']
