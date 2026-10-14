@@ -3,6 +3,7 @@ set -euo pipefail
 npm ci --include=dev
 npm run build
 python3 -m pip install --disable-pip-version-check --no-cache-dir --target vendor -r requirements-cloud.txt
+PYTHONPATH="$PWD/vendor" python3 -c 'import io; from pypdf import PdfReader, PdfWriter; w=PdfWriter(); w.add_blank_page(width=100,height=100); b=io.BytesIO(); w.write(b); b.seek(0); assert len(PdfReader(b).pages)==1; print("PDF split engine ready")'
 # Native Node has Python but no Tesseract. Extract Debian packages without root.
 mkdir -p tools/debs tools/ocr tools/apt/lists/partial tools/apt/cache/archives/partial
 apt_options=(-o "Dir::State::lists=$PWD/tools/apt/lists" -o "Dir::Cache=$PWD/tools/apt/cache")
