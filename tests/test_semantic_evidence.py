@@ -116,3 +116,34 @@ def test_amount_currency_unit_has_its_own_evidence_and_raw_is_preserved():
     data.fields=[ai.FieldResult(field_id='invoice_total',raw_value='46,000.00',unit='USD',unit_evidence='AMOUNT (USD)',source_page=1,evidence_text='TOTAL: 46,000.00')]
     records=ai.validate_result(data,[{'number':1,'text':'INVOICE\nAMOUNT (USD)\nTOTAL: 46,000.00'}])
     assert records[0]['raw']=='46,000.00' and records[0]['value']['unit']=='USD'
+
+
+def test_line_pointers_resolve_real_source_but_do_not_allow_invented_values():
+    pages=[{'number':1,'text':'INVOICE\nInvoice No: A-001\nTOTAL: 100.00'}]
+    data=document('Invoice','INVOICE')
+    data.fields=[ai.FieldResult(field_id='invoice_total',raw_value='100.00',source_page=1,evidence_text='',evidence_start_line=3,evidence_end_line=3)]
+    assert ai.validate_result(data,pages)[0]['evidence']=='TOTAL: 100.00'
+    data.fields[0].raw_value='999.00'
+    with pytest.raises(ValueError,match='bằng chứng'):ai.validate_result(data,pages)
+    data.fields[0].evidence_start_line=4
+    with pytest.raises(ValueError,match='dòng'):ai.validate_result(data,pages)
+
+
+def test_currency_can_be_promoted_only_from_validated_agreeing_row_headers():
+    pages=[{'number':1,'text':'INVOICE\nAmount (USD)\nBolts 10\nAmount (EUR)\nNuts 20'}]
+    data=document('Invoice','INVOICE')
+    data.items=[ai.ItemResult(line_number='1',description='Bolts',quantity='10',currency='USD',source_page=1,evidence_text='',evidence_start_line=3,
+      cell_evidence=[ai.CellEvidence(attribute='currency',evidence_text='',start_line=2)])]
+    records,rejected=ai.validated_subset(data,pages)
+    assert not rejected and next(r for r in records if r['key']=='currency')['raw']=='USD'
+    data.items.append(ai.ItemResult(line_number='2',description='Nuts',quantity='20',currency='EUR',source_page=1,evidence_text='',evidence_start_line=5,
+      cell_evidence=[ai.CellEvidence(attribute='currency',evidence_text='',start_line=4)]))
+    records,rejected=ai.validated_subset(data,pages)
+    assert not rejected and not any(r['key']=='currency' for r in records)
+
+
+def test_voyage_number_cannot_be_a_booking_reference():
+    data=document('B/L','BILL OF LADING')
+    data.fields=[ai.FieldResult(field_id='booking',raw_value='S043',source_page=1,evidence_text='Voyage: S043')]
+    with pytest.raises(ValueError,match='Booking'):
+        ai.validate_result(data,[{'number':1,'text':'BILL OF LADING\nVoyage: S043'}])

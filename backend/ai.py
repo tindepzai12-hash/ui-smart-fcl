@@ -52,10 +52,15 @@ class FieldResult(Strict):
     evidence_text: str
     unit: Optional[str] = None
     unit_evidence: Optional[str] = None
+    evidence_start_line: Optional[int] = None
+    evidence_end_line: Optional[int] = None
+    unit_line: Optional[int] = None
 
 class CellEvidence(Strict):
     attribute: Literal['product_code','description','quantity','unit','unit_price','line_amount','currency','origin','container_number','seal_number','container_type']
     evidence_text: str
+    start_line: Optional[int] = None
+    end_line: Optional[int] = None
 
 class ConnectionResult(Strict):
     status: Literal['ok']
@@ -73,6 +78,8 @@ class ItemResult(Strict):
     source_page: int
     evidence_text: str
     cell_evidence: List[CellEvidence] = Field(default_factory=list)
+    evidence_start_line: Optional[int] = None
+    evidence_end_line: Optional[int] = None
 
 class ContainerResult(Strict):
     container_number: str
@@ -81,6 +88,8 @@ class ContainerResult(Strict):
     source_page: int
     evidence_text: str
     cell_evidence: List[CellEvidence] = Field(default_factory=list)
+    evidence_start_line: Optional[int] = None
+    evidence_end_line: Optional[int] = None
 
 class DocumentResult(Strict):
     document_type: Literal[
@@ -181,6 +190,17 @@ def evidence_ok(value, evidence, page, pages):
     norm = lambda s: re.sub(r'\s+', ' ', str(s)).casefold().strip()
     return bool(evidence.strip()) and norm(evidence) in norm(source) and norm(value) in norm(evidence)
 
+
+def source_quote(page, existing, start, end, pages):
+    """Resolve AI line pointers to verbatim source; never search-and-repair an invented quote."""
+    if start is None and end is None:
+        return existing or ''
+    lines=next((p['text'].splitlines() for p in pages if p['number']==page),[])
+    end=start if end is None else end
+    if start is None or not 1 <= start <= end <= len(lines) or end-start >= 50:
+        raise ValueError('Khoảng dòng bằng chứng không thuộc trang nguồn hoặc quá dài')
+    return '\n'.join(lines[start-1:end])
+
 def validate_result(result, pages):
     """No evidence-less data can enter persistence. AI never verifies a record."""
     classification_ok = any(evidence_ok(result.classification_evidence, result.classification_evidence, p['number'], pages) for p in pages)
@@ -194,7 +214,8 @@ def validate_result(result, pages):
         spec = FIELDS.get(f.field_id)
         if not spec or result.document_type not in spec['documents']:
             raise ValueError('AI trả field ngoài dictionary/loại chứng từ')
-        if not evidence_ok(f.raw_value, f.evidence_text, f.source_page, pages):
+        field_evidence=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
+        if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages):
             raise ValueError('AI trả giá trị không có bằng chứng nguồn')
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','packing_number','do_number','booking']:
             if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}', f.raw_value):
@@ -213,6 +234,11 @@ def validate_result(result, pages):
             labels=r'(?i)\b(?:port\s+of\s+discharge|discharge\s+port)\s*[:：]?'
             if not any(norm(f.raw_value) in norm(source[m.end():m.end()+160]) for m in re.finditer(labels,source)):
                 raise ValueError('Cảng dỡ thiếu nhãn chứng minh vai trò; không dùng cảng xếp/nơi phát hành thay thế')
+        if f.field_id == 'booking':
+            source = next((p['text'] for p in pages if p['number']==f.source_page),'')
+            norm = lambda s: re.sub(r'\s+',' ',s).casefold().strip()
+            if not any(norm(f.raw_value) in norm(source[m.end():m.end()+80]) for m in re.finditer(r'(?i)\bbooking\s*(?:no\.?|number|reference)?\s*[:：]?',source)):
+                raise ValueError('Booking thiếu nhãn nguồn; không dùng số chuyến tàu thay booking')
         if f.field_id == 'eta':
             source = next((p['text'] for p in pages if p['number']==f.source_page),'')
             labels = r'(?i)\b(?:ETA|est\.?\s*arrival\s*date|estimated\s*(?:time|date)\s*of\s*arrival)\s*[:：]?'
@@ -220,16 +246,17 @@ def validate_result(result, pages):
             if not any(norm(f.raw_value) in norm(source[m.end():m.end()+80]) for m in re.finditer(labels,source)):
                 raise ValueError('Ngày đến dự kiến thiếu nhãn ETA/Estimated Arrival; không dùng ngày phát hành hoặc xếp tàu')
         normalized = normalize(f.raw_value, spec['type'])
-        evidence = f.evidence_text
+        evidence = field_evidence
         if f.unit:
-            if spec['type'] not in ['number','weight','quantity'] or not f.unit_evidence or not evidence_ok(f.unit,f.unit_evidence,f.source_page,pages):
+            unit_evidence=source_quote(f.source_page,f.unit_evidence,f.unit_line,None,pages)
+            if spec['type'] not in ['number','weight','quantity'] or not unit_evidence or not evidence_ok(f.unit,unit_evidence,f.source_page,pages):
                 raise ValueError('Đơn vị thiếu bằng chứng riêng trên cùng trang')
             if normalized.get('unit'):
                 if normalized['unit'] != normalize('0 '+f.unit,spec['type'])['unit']:
                     raise ValueError('Đơn vị bổ sung khác đơn vị đã ghi trong giá trị gốc')
             else:
                 normalized = normalize(f.raw_value+' '+f.unit, spec['type'])
-            evidence += '\n[Đơn vị] '+f.unit_evidence
+            evidence += '\n[Đơn vị] '+unit_evidence
         records.append({
             'kind': 'field',
             'key': f.field_id,
@@ -243,9 +270,10 @@ def validate_result(result, pages):
         for r in group:
             v = r.model_dump()
             page = v.pop('source_page')
-            evidence = v.pop('evidence_text')
+            existing = v.pop('evidence_text')
+            evidence = source_quote(page,existing,v.pop('evidence_start_line'),v.pop('evidence_end_line'),pages)
             cells = v.pop('cell_evidence')
-            quotes = {cell['attribute']:cell['evidence_text'] for cell in cells}
+            quotes = {cell['attribute']:source_quote(page,cell['evidence_text'],cell['start_line'],cell['end_line'],pages) for cell in cells}
             if len(quotes) != len(cells):
                 raise ValueError('Bằng chứng ô bị trùng thuộc tính')
             for k, val in v.items():
@@ -290,15 +318,24 @@ def validated_subset(result, pages):
                 rejected.append(f'{name}[{index}]'+(' '+identifier if identifier else '')+f': {exc}')
     if rejected and not records:
         raise ValueError('Không có giá trị AI nào qua kiểm tra bằng chứng/dictionary. ' + rejected[0])
+    # A printed invoice currency in validated row/header evidence is also document currency.
+    # Never infer from country/symbol or choose a currency when rows disagree.
+    if supports(result.document_type,'Invoice') and not any(r['key']=='currency' for r in records):
+        items=[r for r in records if r['kind']=='item' and r['raw'].get('currency')]
+        currencies={r['raw']['currency'] for r in items}
+        if len(currencies)==1:
+            row=items[0];currency=row['raw']['currency']
+            records.append({'kind':'field','key':'currency','raw':currency,'value':normalize(currency,'currency'),
+                'page':row['page'],'evidence':row['evidence'],'method':'OpenAI'})
     return records, rejected
 
 def analyze(case_id, document, pages):
     if not key():
         raise ValueError('Chưa cấu hình OpenAI. Bạn có thể tiếp tục bằng chế độ Local.')
-    text = encode([{'page': p['number'], 'text': p['text']} for p in pages])
-    if len(text) > 90000:
+    if sum(len(p['text']) for p in pages) > 90000:
         raise ValueError('Tài liệu vượt 90.000 ký tự cho một yêu cầu AI; chia tài liệu để tránh bỏ sót.')
-    digest = hashlib.sha256(('schema-v5-sparse-forms|' + _model + '|' + text).encode()).hexdigest()
+    text = encode([{'page': p['number'], 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)]} for p in pages])
+    digest = hashlib.sha256(('schema-v6-source-lines|' + _model + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -316,6 +353,8 @@ def analyze(case_id, document, pages):
         'Return independent line items and containers. Every nonempty value must occur literally in its evidence on its source page. '
         'Copy raw_value EXACTLY as written, including spaces, punctuation, date format and separators. Never normalize a number/date/unit in raw_value. '
         'Evidence must be one contiguous quote from the page text (line breaks may become spaces), not a concatenation of separate cells. '
+        'Source text is provided as numbered lines. Prefer evidence_start_line/evidence_end_line to point to the smallest contiguous range containing the value. The server resolves the exact source quote from these pointers; evidence_text may be empty when pointers are supplied. Never point to unrelated lines. '
+        'For a separate field unit/currency set unit_line to its printed source line. For cell_evidence set start_line/end_line to the exact cell/header line range. Leave pointers null only when copying a verbatim evidence_text quote. '
         'For tables, provide cell_evidence entries per attribute when row/header cells are separated in reading order. Each entry must be its own contiguous quote on the SAME source_page. '
         'A unit or currency printed in a table column header can be copied with a cell_evidence quote of that header. Use null if not printed. Never combine two different rows. '
         'For numeric fields with units/currency in a separate cell, raw_value is the exact number, unit is the printed unit/currency, unit_evidence quotes that separate cell on the SAME page. Otherwise unit and unit_evidence=null. '
