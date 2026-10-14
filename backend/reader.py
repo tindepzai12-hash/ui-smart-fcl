@@ -143,6 +143,17 @@ def decode(data):
             pass
     raise ValueError('Không đọc được encoding. Lưu file dưới UTF-8 và thử lại.')
 
+
+def read_pdf_image(image):
+    """Retain genuinely blank pages without hiding unreadable content pages."""
+    gray = ImageOps.grayscale(image)
+    hist = gray.histogram()
+    pixels = gray.width * gray.height
+    if sum(hist[:220]) / pixels < .00001 and ImageStat.Stat(gray).stddev[0] < 1:
+        return '', 'Blank page', 'Trang trắng được giữ nguyên; kiểm tra bản gốc.', []
+    text, quality, tables = ocr(image, include_tables=True)
+    return text, 'OCR', quality, tables
+
 def render_pdf_page_png(path, page_number, scale=1.5):
     path = Path(path)
     if fitz is not None:
@@ -196,8 +207,8 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                         add(text, 'PDF text', '', tables)
                     else:
                         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                        text, quality, tables = ocr(Image.open(io.BytesIO(pix.tobytes('png'))), include_tables=True)
-                        add(text, 'OCR', quality, tables)
+                        text, method, quality, tables = read_pdf_image(Image.open(io.BytesIO(pix.tobytes('png'))))
+                        add(text, method, quality, tables)
         else:
             from pypdf import PdfReader
             import pdfplumber
@@ -226,8 +237,8 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                             add(text, 'PDF text', '', tables)
                         else:
                             pil_img = pdfium_doc[idx].render(scale=2).to_pil()
-                            text, quality, tables = ocr(pil_img, include_tables=True)
-                            add(text, 'OCR', quality, tables)
+                            text, method, quality, tables = read_pdf_image(pil_img)
+                            add(text, method, quality, tables)
                 finally:
                     pdfium_doc.close()
     elif ext in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
