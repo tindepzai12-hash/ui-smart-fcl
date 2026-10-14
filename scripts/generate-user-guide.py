@@ -1,24 +1,48 @@
-"""Generate an offline help page from the shipped guide's own text."""
-import re,html
+"""Generate the printable/offline guide from the same content used in the app."""
+import json,html
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-source=(root/'frontend/UserGuide.tsx').read_text(encoding='utf-8')
-steps=re.findall(r"\['([^']+)','([^']+)'\]",source)
-assert len(steps)==8
-problems=re.findall(r'<dt>(.*?)</dt><dd>(.*?)</dd>',source)
-intro='Hướng dẫn cho nhân viên chứng từ của FWD xử lý hồ sơ nhập khẩu FCL đường biển. Làm lần lượt từ tải chứng từ đến kiểm tra nguồn và xuất bảng kê. AI hỗ trợ đọc, nhân viên xác minh cuối cùng.'
-body='<h1>Hướng dẫn sử dụng U&amp;I SMART</h1><p>'+intro+'</p><ol>'
-for title,text in steps:body+=f'<li><h2>{html.escape(title)}</h2><p>{html.escape(text)}</p></li>'
-body+='</ol><h2>Khi có vấn đề</h2><dl>'
-for title,text in problems:body+=f'<dt>{html.escape(title)}</dt><dd>{html.escape(text)}</dd>'
-body+='</dl><p>Không tự kết luận mã HS, thuế, giấy phép hoặc điều kiện ưu đãi C/O. Phiên bản hướng dẫn ngày 15 tháng 10 năm 2026.</p>'
-document='<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hướng dẫn sử dụng U&amp;I SMART</title><style>body{font:16px/1.75 Arial,sans-serif;color:#172033;max-width:820px;margin:32px auto;padding:0 24px}h1{font-size:28px}h2{font-size:19px;margin:24px 0 6px}li{padding-left:6px;margin:24px 0}dt{font-weight:bold;margin-top:20px}dd{margin:6px 0}p{margin:8px 0}@media print{body{font-size:11pt;margin:0;max-width:none}li{break-inside:avoid}}</style><main>'+body+'</main></html>'
-public=root/'public';public.mkdir(exist_ok=True)
-(public/'huong-dan.html').write_text(document,encoding='utf-8')
+g=json.loads((root/'frontend/guide-content.json').read_text(encoding='utf-8'))
+esc=html.escape
+title='Hướng dẫn nhân viên xử lý hồ sơ U&I SMART'
+body=f'<h1>{title}</h1><p>{esc(g["intro"])}</p><p>{esc(g["scope"])}</p>'
+md=f'# {title}\n\n{g["intro"]}\n\n{g["scope"]}\n\n'
+s=g['scenario']
+body+=f'<section><h2>{esc(s["title"])}</h2><p>{esc(s["notice"])}</p><dl>'
+md+=f'## {s["title"]}\n\n{s["notice"]}\n\n'
+for label,value in s['facts']:
+    body+=f'<dt>{esc(label)}</dt><dd>{esc(value)}</dd>'
+    md+=f'- **{label}:** {value}\n'
+body+='</dl></section><nav aria-label="Các bước xử lý hồ sơ"><h2>Nhân viên làm theo thứ tự</h2><ol>'
+for i,s in enumerate(g['steps'],1):body+=f'<li><a href="#guide-{esc(s["id"])}">Bước {i}: {esc(s["title"])}</a></li>'
+body+='</ol></nav>'
+labels=[('task','Việc nhân viên làm'),('action','Thao tác trên web'),('check','Kiểm tra trong ví dụ sầu riêng'),('done','Khi nào chuyển bước?'),('problem','Nếu chưa đạt')]
+for i,s in enumerate(g['steps'],1):
+    body+=f'<section id="guide-{esc(s["id"])}"><h2>Bước {i}. {esc(s["title"])}</h2><dl>'
+    md+=f'\n\n## Bước {i}. {s["title"]}\n\n'
+    for key,label in labels:
+        body+=f'<dt>{label}</dt><dd>{esc(s[key])}</dd>'
+        md+=f'**{label}:** {s[key]}\n\n'
+    body+='</dl></section>'
+body+='<section><h2>Ba tình huống để biết phải xử lý thế nào</h2><dl>'
+md+='## Ba tình huống để biết phải xử lý thế nào\n\n'
+for s in g['examples']:
+    body+=f'<dt>{esc(s["title"])}</dt><dd>{esc(s["action"])}</dd>'
+    md+=f'### {s["title"]}\n\n{s["action"]}\n\n'
+body+='</dl></section><section><h2>Phần việc thực hiện bên ngoài U&I SMART</h2><ul>'
+md+='## Phần việc thực hiện bên ngoài U&I SMART\n\n'
+for text in g['external']:
+    body+=f'<li>{esc(text)}</li>';md+=f'- {text}\n'
+source=g['source']
+body+=f'</ul><p>{esc(g["limitation"])}</p><p>Nguồn nghiệp vụ: <a href="{esc(source["url"],quote=True)}">{esc(source["title"])}</a>. {esc(source["note"])}</p></section>'
+md+=f'\n{g["limitation"]}\n\nNguồn: [{source["title"]}]({source["url"]}). {source["note"]}\n\n'
+body+='<section><h2>Khi gặp vấn đề với web</h2><dl>';md+='## Khi gặp vấn đề với web\n\n'
+for title,text in g['problems']:
+    body+=f'<dt>{esc(title)}</dt><dd>{esc(text)}</dd>';md+=f'### {title}\n\n{text}\n\n'
+body+='</dl></section>'
+document='<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hướng dẫn nhân viên — U&amp;I SMART</title><style>body{font:16px/1.75 Arial,sans-serif;color:#172033;max-width:820px;margin:32px auto;padding:0 24px}h1{font-size:28px}h2{font-size:21px;margin:24px 0 8px}section,nav{padding:16px 0;border-bottom:1px solid #d9e1ea;scroll-margin-top:16px}dt{font-weight:bold;margin-top:18px}dd{margin:6px 0}li{margin:10px 0}a{color:#174ea6;overflow-wrap:anywhere}p{margin:8px 0}@media print{body{font-size:11pt;margin:0;max-width:none}nav{display:none}dt,h2{break-after:avoid}dd{break-inside:avoid}}</style><main>'+body+'</main></html>'
+(root/'public/huong-dan.html').write_text(document,encoding='utf-8')
 out=root.parent/'output';out.mkdir(exist_ok=True)
 (out/'HUONG_DAN_UI_SMART.html').write_text(document,encoding='utf-8')
-md='# Hướng dẫn sử dụng U&I SMART\n\n'+intro+'\n\n'
-for i,(title,text) in enumerate(steps,1):md+=f'## {i} {title}\n\n{text}\n\n'
-for title,text in problems:md+=f'## {title}\n\n{text}\n\n'
 (root/'docs/USER_GUIDE.md').write_text(md,encoding='utf-8')
-print('Generated guide: 8 steps and 4 troubleshooting entries.')
+print('Generated staff guide: 8 steps, durian scenario, 3 worked examples and external responsibilities.')

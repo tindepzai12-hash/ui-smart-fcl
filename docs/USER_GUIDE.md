@@ -1,52 +1,171 @@
-# Hướng dẫn sử dụng U&I SMART
+# Hướng dẫn nhân viên xử lý hồ sơ U&I SMART
 
-Hướng dẫn cho nhân viên chứng từ của FWD xử lý hồ sơ nhập khẩu FCL đường biển. Làm lần lượt từ tải chứng từ đến kiểm tra nguồn và xuất bảng kê. AI hỗ trợ đọc, nhân viên xác minh cuối cùng.
+Làm mẫu một hồ sơ nhập khẩu sầu riêng FCL: nhận chứng từ → đọc → xác minh → đối chiếu → bàn giao bảng kê.
 
-## 1 Tạo hồ sơ và tải chứng từ
+Bạn là nhân viên chứng từ/đại lý hải quan của FWD, nhận và kiểm tra hồ sơ cho khách nhập khẩu. Web hỗ trợ chuẩn bị dữ liệu, không tự khai hải quan, cấp giấy kiểm dịch, lấy lệnh giao hàng hay điều xe.
 
-Mỗi lô hàng tạo một hồ sơ. Chọn nhiều tệp cùng lúc tại Thêm chứng từ. PDF nhiều loại chứng từ cần Đọc & trích xuất rồi Tách bộ PDF theo trang; kiểm tra phân nhóm trước khi xác nhận.
+## Hồ sơ mẫu: sầu riêng tươi nhập khẩu bằng container lạnh
 
-## 2 Chọn cách đọc
+Tình huống đào tạo GIẢ LẬP, không phải hồ sơ thật hay xác nhận lô hàng được phép nhập khẩu. Nhân viên phải kiểm tra điều kiện theo dạng hàng, xuất xứ và quy định hiện hành. Web không tự nạp bộ hồ sơ ví dụ này.
 
-Local đọc lớp chữ và OCR trên máy chủ. AI hỗ trợ · OpenAI đọc thông tin OCR, có thêm phân nhóm ảnh và trích xuất AI. Chọn chế độ, đồng ý gửi dữ liệu nếu dùng OpenAI rồi bấm Đọc & trích xuất. Không thao tác sửa trong lúc đang đọc.
+- **Khách / người bán:** MINH AN FRUIT DEMO / THAI FRUIT DEMO — tên giả lập
+- **Hàng / tuyến minh họa:** Sầu riêng tươi Monthong; Laem Chabang, Thái Lan → Cát Lái, Việt Nam; 1 × 40RF (container lạnh)
+- **Invoice / Packing List / B/L:** INV-DUR-DEMO-001 / PL-DUR-DEMO-001 / BL-DUR-DEMO-001
+- **Số kiện / khối lượng:** 1.000 thùng; NW (tịnh) 18.000 kg; GW (cả bì hàng) 19.500 kg
+- **Số lượng tính tiền / trị giá:** 18.000 kg × 4,50 USD/kg = 81.000 USD; CIF Cát Lái, Incoterms 2020; giả định không có dòng phụ phí/chiết khấu riêng
+- **Container / seal:** CSQU3054383 / DURIAN-DEMO001 — dữ liệu minh họa, không theo dõi chuyến thật
 
-## 3 Kiểm tra loại chứng từ
 
-Chọn tệp, xem tiêu đề/nội dung và loại máy nhận diện, rồi bấm Xác nhận loại. Nếu sai, đổi loại và xác nhận; chạy lại trích xuất khi đã đổi. Tên tệp không quyết định loại chứng từ.
+## Bước 1. Nhận hồ sơ và lập danh sách còn thiếu
 
-## 4 Kiểm tra từng giá trị tại nguồn
+**Việc nhân viên làm:** Nhận yêu cầu dịch vụ/ủy quyền phù hợp, thông tin pháp nhân và chứng từ khách gửi. Hỏi hàng tươi hay đông lạnh, xuất xứ, mục đích nhập, ngày dự kiến đến và đầu mối bổ sung. Chưa đoán mã HS hoặc số liệu thiếu.
 
-Bấm Bắt đầu kiểm tra hoặc Xem nguồn. Web mở đúng tệp/trang và khoanh chữ khớp với dữ liệu máy đọc. Khung cam là chữ OCR có điểm nhận dạng thấp; chưa chắc là sai. Nếu có nhiều vị trí hoặc chưa định vị được, kiểm tra toàn trang và Câu trích dẫn; hệ thống không đoán vị trí.
+**Thao tác trên web:** Hồ sơ logistics → Tạo hồ sơ → đặt tên SAU-RIENG-DEMO-001, điền khách hàng và chọn Nhập khẩu FCL đường biển. Một lô hàng dùng một hồ sơ.
 
-## 5 Sửa và xác minh
+**Kiểm tra trong ví dụ sầu riêng:** Kiểm đếm Invoice, PL, B/L; nhận Contract, Arrival Notice, C/O nếu có/áp dụng. Nhờ đầu mối nghiệp vụ xác định hồ sơ kiểm dịch, ATTP và giấy phép nếu thuộc diện áp dụng. Phân biệt giấy nước xuất khẩu với đăng ký/kết quả tại Việt Nam; không phải tất cả giấy có ngay ngày đầu.
 
-Chọn Sửa giá trị ngay trong khung nguồn, sửa rồi bấm Lưu sửa; hoặc bấm Đúng, xác minh & tiếp để lưu và duyệt giá trị vừa sửa. Với hàng hóa/container, dùng hộp Kiểm tra / sửa. Ô trường bên phải cũng tự lưu khi rời ô. Để sau, mục tiếp bỏ qua mục hiện tại mà không duyệt, nhưng cần lưu bản sửa trước khi chuyển. Chờ xác minh không đồng nghĩa số liệu sai.
+**Khi nào chuyển bước?:** Biết khách nào, hàng gì, đang có giấy gì, thiếu gì và phải hỏi ai; đã tạo đúng hồ sơ lô hàng.
 
-## 6 Xử lý lệch và thiếu
+**Nếu chưa đạt:** Thiếu Invoice/PL/B/L hoặc thông tin dạng hàng/xuất xứ: yêu cầu khách bổ sung. Chưa rõ điều kiện nhập: chuyển người phụ trách tra cứu. Liên hệ qua kênh làm việc của đơn vị; web không tự gửi email.
 
-Mở Đối chiếu để xem nguồn gây lệch. Thiếu nghĩa chưa có dữ liệu/chứng từ phù hợp; bổ sung căn cứ hoặc điều chỉnh Checklist khi có lý do nghiệp vụ. Không điền số đoán để vượt kiểm tra. GW khác NW; 5,20 MT bằng 5.200 KG; số tiền bảo hiểm có thể khác trị giá Invoice vì khác phạm vi.
 
-## 7 Chuẩn bị và xuất Excel
 
-Kiểm tra bảng kê, các điều kiện chặn và căn cứ nghiệp vụ. Draft dùng để kiểm tra tạm. Reviewed chỉ dùng sau khi xác minh bản ghi, xử lý đối chiếu và Hoàn thành kiểm tra. Không bỏ cảnh báo chỉ để xuất file.
+## Bước 2. Tải đúng chứng từ, để ảnh hiện trường riêng
 
-## 8 Ảnh hiện trường thuộc bộ riêng
+**Việc nhân viên làm:** Gom đúng phiên bản giấy tờ của cùng lô. Scan phải đủ trang, đủ mép và đọc được chữ; không trộn Invoice lô khác.
 
-Container, seal, hàng hóa, màn hình tra cứu/chat tải vào Ảnh hiện trường & màn hình; không tham gia đối chiếu hay bảng kê. Ảnh chụp giấy Invoice/PL/B/L vẫn là chứng từ. OpenAI có thể chuyển ảnh JPG/PNG/TIFF rõ nội dung sang bộ riêng; PDF ảnh hiện trường và chế độ Local cần tự chuyển.
+**Thao tác trên web:** Chứng từ → Thêm chứng từ → chọn nhiều file cùng lúc. PDF gộp nhiều loại: tải lên, đọc xong rồi Tách bộ PDF, kiểm tra nhóm trang và xác nhận. Hợp đồng nhiều trang giữ cùng nhóm, không tách máy móc mỗi trang thành một chứng từ.
 
-## Ảnh mờ hoặc OCR đọc sai chữ/số
+**Kiểm tra trong ví dụ sầu riêng:** Invoice INV-DUR-DEMO-001; PL dẫn chiếu cùng Invoice; B/L đúng khách/lô. Tên 1.pdf không quyết định loại. Ảnh chụp giấy Invoice/PL/B/L vẫn vào Chứng từ; ảnh cont, seal, hàng hoặc màn hình tra cứu vào Ảnh hiện trường & màn hình.
 
-Phóng to bản gốc, kiểm tra chữ khoanh cam và nhãn kế bên. Dùng bản scan rõ hơn, đủ mép giấy, đúng chiều. Phóng to ảnh nhỏ không khôi phục được chi tiết đã mất.
+**Khi nào chuyển bước?:** Danh sách Chứng từ chứa đúng giấy tờ; ảnh hiện trường ở bộ riêng; PDF gộp đã chia đúng nhóm trước khi đối chiếu.
 
-## Xem nguồn chưa khoanh được vị trí
+**Nếu chưa đạt:** Ảnh vào nhầm Chứng từ: Thao tác tệp → chuyển sang bộ ảnh riêng. Giấy vào nhầm bộ ảnh: Chuyển về Chứng từ. Thiếu trang/mờ: xin bản rõ, không lấy ảnh màn hình thay giấy cần thiết.
 
-Xem Câu trích dẫn và Chữ OCR / PDF, đối chiếu toàn trang. Tệp Word/Excel/TXT dùng nguồn văn bản, không hứa vị trí trên trang in. Dữ liệu nhập tay cần bổ sung căn cứ.
 
-## Khóa API / kết nối AI
 
-Kiểm tra Cài đặt → kiểm tra kết nối. Không gửi key trong chat. Key đặt trong Environment của Render được giữ qua lần triển khai; key nhập theo phiên có thể mất khi khởi động.
+## Bước 3. Cho web đọc và xác nhận loại giấy
 
-## Render ngủ hoặc dữ liệu tạm mất
+**Việc nhân viên làm:** Cho máy hỗ trợ đọc rồi tự xác nhận giấy gì bằng tiêu đề/nội dung. Đề xuất của máy không thay kiểm tra của nhân viên.
 
-Chờ máy chủ khởi động rồi thử lại. Vào Cài đặt để sao lưu trước khi rời phiên; Render Free có thể mất hồ sơ khi khởi động lại/cập nhật.
+**Thao tác trên web:** Chọn Xử lý Local hoặc AI hỗ trợ · OpenAI; nếu dùng OpenAI thì đồng ý gửi dữ liệu → Đọc & trích xuất → chờ xong. Chọn từng tệp → xem loại → Xác nhận loại. Nếu đổi loại, xác nhận rồi chạy lại trích xuất.
+
+**Kiểm tra trong ví dụ sầu riêng:** COMMERCIAL INVOICE → Invoice; PACKING LIST → Packing List; BILL OF LADING → B/L. Phytosanitary Certificate là giấy kiểm dịch thực vật; C/O là chứng nhận xuất xứ. Hai giấy không thay nhau. File gộp phải tách nhóm đúng trước.
+
+**Khi nào chuyển bước?:** Tệp đọc xong, không còn lỗi đọc chưa xử lý và đã xác nhận đúng loại từng chứng từ.
+
+**Nếu chưa đạt:** Đọc lỗi: thử lại hoặc thay scan rõ. AI chưa kết nối: kiểm tra Cài đặt, có thể dùng Local rồi kiểm nguồn. Chưa rõ loại giấy: hỏi người phụ trách, không chọn tùy ý để hết cảnh báo.
+
+
+
+## Bước 4. Kiểm từng giá trị với giấy gốc
+
+**Việc nhân viên làm:** Đọc số, đơn vị, nhãn và ngữ cảnh. Chờ xác minh nghĩa là chưa được người duyệt, không có nghĩa AI đã cố tình đọc sai.
+
+**Thao tác trên web:** Bắt đầu kiểm tra hoặc Xem nguồn → xem đúng tệp/trang và chữ khoanh. Đúng: Đúng, xác minh & tiếp. Sai: Sửa giá trị → nhập theo bản gốc → Lưu sửa → xác minh; Đúng, xác minh & tiếp cũng lưu bản sửa trước khi chuyển. Hàng hóa/container dùng hộp Kiểm tra / sửa. Chưa đủ căn cứ: Để sau, mục tiếp.
+
+**Kiểm tra trong ví dụ sầu riêng:** Invoice: 81.000 USD, 18.000 kg × 4,50 USD/kg. PL: 1.000 thùng, NW 18.000 kg, GW 19.500 kg. Kiểm cont CSQU3054383, seal DURIAN-DEMO001 theo nguồn có ghi. Giấy ghi 18,000.00 KGS nhưng giá trị làm việc 18000 KG: kiểm quy ước dấu số và đơn vị, không vội coi là lệch.
+
+**Khi nào chuyển bước?:** Bản ghi được duyệt đều có căn cứ. Mục chưa chắc được để lại, không duyệt hàng loạt chỉ để giảm số đếm.
+
+**Nếu chưa đạt:** Cam là OCR có điểm nhận chữ thấp, chưa khẳng định sai. Nhiều vùng khớp: đọc nhãn NW/GW, dòng kế bên. Không khoanh được: xem Chữ OCR / PDF, Câu trích dẫn và toàn trang. Sửa ô dữ liệu không sửa chứng từ gốc của khách.
+
+
+
+## Bước 5. Xử lý số lệch giữa các giấy
+
+**Việc nhân viên làm:** Phân biệt máy đọc sai, khác cách thể hiện và chính giấy tờ mâu thuẫn. Chỉ sửa kết quả máy khi bản gốc chứng minh được; không làm các số khớp giả tạo.
+
+**Thao tác trên web:** Đối chiếu → mục lệch → Xem nguồn từng bên. OCR sai: sửa bản ghi và xác minh. Khác đơn vị/phạm vi: kiểm nhãn/căn cứ, Ghi lý do xử lý khi mục đó cho phép và có giải thích phù hợp. Bản gốc mâu thuẫn: yêu cầu khách/bên phát hành làm rõ, sửa giấy và cung cấp phiên bản đúng.
+
+**Kiểm tra trong ví dụ sầu riêng:** NW 18.000 kg khác GW 19.500 kg là khác chỉ tiêu. B/L GW 19,5 MT bằng PL GW 19.500 kg nếu cùng phạm vi. B/L GW 19.800 kg khác PL GW 19.500 kg cho cùng lô thì phải làm rõ; không sửa 19.800 thành 19.500 để hết đỏ.
+
+**Khi nào chuyển bước?:** Sai lệch đã sửa đúng nguồn hoặc có giải thích hợp lệ theo quyền/quy trình đơn vị; không bỏ qua mâu thuẫn thực tế.
+
+**Nếu chưa đạt:** Chờ khách sửa giấy: giữ chưa hoàn tất, có thể xuất Draft trao đổi nội bộ. Không xác minh số mà bạn biết không khớp bản gốc.
+
+
+
+## Bước 6. Chuẩn bị khai báo và kiểm tra điều kiện hàng sầu riêng
+
+**Việc nhân viên làm:** Người có nghiệp vụ xác định HS, loại hình, mã địa điểm, thuế, trị giá hải quan và hồ sơ chuyên ngành. Ví dụ này không làm căn cứ pháp lý cho lô thật.
+
+**Thao tác trên web:** Chuẩn bị khai báo → Nhập hoặc Bổ sung chỉ tiêu → ghi căn cứ. Điều chỉnh Checklist chỉ khi đã xác định yêu cầu thực tế và có lý do. Tải giấy kiểm dịch đúng loại Phytosanitary Certificate để xem/kiểm nội dung.
+
+**Kiểm tra trong ví dụ sầu riêng:** Xác nhận dạng hàng tươi, xuất xứ và đối tượng nhập cụ thể. Đầu mối chuyên ngành xác định kiểm dịch/ATTP, giấy nước xuất khẩu, đăng ký/kết quả ở Việt Nam và giấy phép nếu áp dụng. Xin ưu đãi C/O phải kiểm điều kiện tương ứng. Web chưa có checklist kiểm dịch/ATTP riêng cho sầu riêng; nhân viên phải theo dõi phần này ngoài web.
+
+**Khi nào chuyển bước?:** Chỉ tiêu có người chịu trách nhiệm và căn cứ; phần chuyên ngành được xác định, giao đầu mối, ghi rõ việc đang chờ trong hồ sơ công việc đơn vị.
+
+**Nếu chưa đạt:** Chưa có căn cứ HS/thuế/kết quả chuyên ngành: chuyển người phụ trách, giữ việc thực tế ở trạng thái chờ. Không tắt Không bắt buộc chỉ để xuất Reviewed. Dấu xanh trên web không xác nhận sầu riêng được phép nhập.
+
+
+
+## Bước 7. Xuất bảng kê và bàn giao đúng trạng thái
+
+**Việc nhân viên làm:** Rà bảng kê với phiên bản giấy gốc cuối. Phân biệt nháp trao đổi với bản đã kiểm tra nội bộ; ghi rõ việc còn chờ khi bàn giao.
+
+**Thao tác trên web:** Xuất Excel → xem điều kiện chặn/dữ liệu. Còn mục chưa kiểm: Xuất bản nháp (Draft). Đã xác nhận loại, xác minh bản ghi và xử lý các mục chặn: Hoàn thành kiểm tra → Xuất bản đã duyệt (Reviewed). Mở Excel rà lại rồi gửi qua kênh của đơn vị.
+
+**Kiểm tra trong ví dụ sầu riêng:** Khách nhập, INV-DUR-DEMO-001, 81.000 USD, 1.000 thùng, GW/NW, cont/seal và chỉ tiêu tra cứu đúng bản cuối. Người phụ trách kiểm tra riêng tình trạng chuyên ngành bên ngoài theo phạm vi dịch vụ.
+
+**Khi nào chuyển bước?:** Có bảng kê đúng trạng thái, nguồn giấy tương ứng và danh sách việc còn chờ để bàn giao. Reviewed chỉ nghĩa qua cổng kiểm tra dữ liệu nội bộ web, không nghĩa hải quan đã thông quan.
+
+**Nếu chưa đạt:** Reviewed bị chặn: mở điều kiện chặn và xử lý từng mục. Sửa sau duyệt: xác minh lại bản mới, không dùng file cũ. Web không tự gửi Excel hoặc nộp tờ khai.
+
+
+
+## Bước 8. Phối hợp sau bàn giao, không điều xe trong web
+
+**Việc nhân viên làm:** Theo phạm vi hợp đồng, bàn giao đầu mối khai báo/kiểm dịch/giao nhận và theo dõi yêu cầu bổ sung. Xuất Excel chưa phải hoàn thành cả lô hàng.
+
+**Thao tác trên web:** Lịch sử để rà lần sửa/xác minh. Có giấy/phiên bản mới: bổ sung đúng hồ sơ, đọc và kiểm lại phần thay đổi. Cài đặt → tải sao lưu nếu cần giữ hồ sơ qua lần máy chủ khởi động.
+
+**Kiểm tra trong ví dụ sầu riêng:** Bàn giao đúng phiên bản, ghi kiểm dịch/ATTP còn chờ gì và ai theo dõi. Cont/seal/màn hình tra cứu vẫn ở bộ ảnh riêng, không thay giấy chứng nhận hoặc lệnh giao hàng.
+
+**Khi nào chuyển bước?:** Người nhận biết phần đã kiểm và việc chưa hoàn tất. Điều xe, vận hành container lạnh và giao hàng do đầu mối vận tải/giao nhận làm qua công cụ/quy trình của họ.
+
+**Nếu chưa đạt:** Giấy sửa sau bàn giao: báo người liên quan qua kênh đơn vị, thay/thu hồi bảng kê cũ theo quy trình. Web không tự cập nhật hải quan, hãng tàu, cảng hay vận tải.
+
+## Ba tình huống để biết phải xử lý thế nào
+
+### Máy đọc 81.000 USD thành 87.000 USD
+
+Xem TOTAL trên Invoice gốc. Giấy là 81.000 USD thì sửa dữ liệu 81000 USD, lưu và xác minh. Đây là sửa trích xuất, không sửa hóa đơn của khách.
+
+### PL NW 18.000 kg, B/L GW 19.500 kg
+
+Không ép hai số bằng nhau. Tìm GW trên PL để so với GW B/L; giữ NW riêng. Chỉ so cùng đơn vị và cùng phạm vi.
+
+### Thiếu kiểm dịch nhưng web không cảnh báo
+
+Web chưa bao phủ hết chuyên ngành. Kiểm danh sách nghiệp vụ ngoài web và yêu cầu bổ sung đúng đầu mối. Reviewed không thay kết quả kiểm dịch hoặc quyết định thông quan.
+
+## Phần việc thực hiện bên ngoài U&I SMART
+
+- Xác định khả năng nhập theo dạng hàng/xuất xứ/mục đích và quy định hiện hành; tra HS, thuế và căn cứ áp dụng.
+- Đăng ký, tiếp nhận kiểm tra và theo dõi kết quả kiểm dịch/ATTP, giấy phép nếu áp dụng qua cơ quan/hệ thống có thẩm quyền. Giấy nước xuất khẩu, giấy đăng ký và kết quả kiểm tra tại Việt Nam là các tài liệu khác nhau.
+- Khai hải quan, thuế, phản hồi/thông quan trên hệ thống được phép; xử lý bản gốc, ủy quyền và bổ sung theo nghiệp vụ.
+- Lệnh giao hàng, hãng tàu/cảng, điều xe và vận hành container lạnh do đầu mối được phân công làm. Cài đặt nhiệt độ theo chỉ dẫn hàng hóa/booking/thỏa thuận thực tế, không lấy từ ví dụ này.
+
+Giới hạn hiện tại: chưa có mẫu/checklist chuyên ngành sầu riêng; không tự xác thực C/O, giấy kiểm dịch, điều kiện nhập hay trạng thái hệ thống ngoài. Bộ hồ sơ pháp lý đầy đủ do người có nghiệp vụ xác định; đây là hướng dẫn làm việc với dữ liệu.
+
+Nguồn: [Cổng Dịch vụ công Quốc gia — kiểm dịch thực vật nhập khẩu và kiểm tra ATTP](https://vpcp.dichvucong.gov.vn/p/home/dvc-chi-tiet-thu-tuc-hanh-chinh.html?ma_thu_tuc=1.004038). Tham khảo 15/10/2026: phân biệt hồ sơ đăng ký, chứng nhận nước xuất khẩu, giấy phép khi áp dụng và kết quả kiểm tra. Tra lại quy định/cơ quan có thẩm quyền cho từng lô thật.
+
+## Khi gặp vấn đề với web
+
+### Không thấy hướng dẫn
+
+Bấm Hướng dẫn sử dụng ở đầu trang. Mở từ hồ sơ đang làm thì Quay lại hồ sơ để tiếp tục. Bản tải về mở riêng và in/lưu PDF bằng trình duyệt.
+
+### OCR chưa chắc hoặc không khoanh được
+
+Phóng to bản gốc, xem Câu trích dẫn và Chữ OCR / PDF; xin bản rõ hơn nếu cần. Điểm OCR chỉ phản ánh nhận chữ, không xác nhận đúng nghiệp vụ.
+
+### AI chưa kết nối
+
+Cài đặt → kiểm tra kết nối. Có thể đọc Local rồi xác minh. Không gửi key trong chat; key Environment Render giữ qua triển khai, key theo phiên có thể mất.
+
+### Render ngủ hoặc mất hồ sơ
+
+Chờ máy chủ thức dậy. Render Free lưu tạm, có thể mất khi khởi động/cập nhật. Tải sao lưu trong Cài đặt nếu cần giữ hồ sơ; Excel không thay sao lưu toàn bộ hồ sơ.
 
