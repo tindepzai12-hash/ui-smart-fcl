@@ -6,7 +6,17 @@ const digest = value => createHash('sha256').update(value).digest();
 const equal = (a, b) => timingSafeEqual(digest(a), digest(b));
 const loginPage = (message = '') => `<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Đăng nhập · U&I SMART</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f1f5f9;color:#172b46;font:16px/1.6 system-ui,sans-serif;padding:24px}main{width:min(100%,440px);background:white;border:1px solid #dbe3ed;border-radius:20px;padding:36px;box-shadow:0 16px 60px #142e4810}small{color:#64748b}h1{font-size:28px;margin:6px 0}p{color:#52647a}label{display:block;font-weight:600;margin-top:24px}input,button{width:100%;padding:13px 15px;font:inherit;border-radius:10px;margin-top:8px}input{border:1px solid #a4b4c8}button{border:0;background:#174c8d;color:white;cursor:pointer;font-weight:600}input:focus,button:focus-visible{outline:3px solid #8dbbff;outline-offset:2px}.error{color:#b42318}footer{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:18px;font-size:13px;color:#64748b}
-</style><main><small>FCL DOCUMENT WORKBENCH</small><h1>U&I SMART</h1><p>Đăng nhập để làm việc với hồ sơ chứng từ.</p>${message ? `<p role="alert" class="error">${message}</p>` : ''}<form method="post" action="/__cloud/login"><label for="password">Mật khẩu truy cập</label><input id="password" name="password" type="password" autocomplete="current-password" required autofocus maxlength="256"><button>Đăng nhập</button></form><footer>Bản demo Render Free. Dữ liệu tải lên có thể mất khi máy chủ ngủ hoặc khởi động lại. Hãy tải bản sao lưu trước khi rời phiên.</footer></main></html>`;
+</style><script src="/__cloud/login.js" defer></script><main><small>FCL DOCUMENT WORKBENCH</small><h1>U&I SMART</h1><p>Đăng nhập để làm việc với hồ sơ chứng từ.</p><p id="login-error" role="alert" class="error">${message}</p><form method="post" action="/__cloud/login"><label for="password">Mật khẩu truy cập</label><input id="password" name="password" type="password" autocomplete="current-password" required autofocus maxlength="256"><button>Đăng nhập</button></form><footer>Bản demo Render Free. Dữ liệu tải lên có thể mất khi máy chủ ngủ hoặc khởi động lại. Hãy tải bản sao lưu trước khi rời phiên.</footer></main></html>`;
+
+const loginScript = `document.querySelector('form').addEventListener('submit',async event=>{
+  event.preventDefault();const form=event.currentTarget,button=form.querySelector('button'),error=document.querySelector('#login-error');
+  button.disabled=true;button.textContent='Đang đăng nhập…';error.textContent='';
+  try{const response=await fetch('/__cloud/login',{method:'POST',body:new URLSearchParams(new FormData(form)),credentials:'same-origin'});
+    if(response.ok&&response.redirected){window.location.replace('/');return;}
+    error.textContent=response.status===429?'Thử sai quá nhiều lần. Hãy chờ 10 phút rồi thử lại.':'Mật khẩu chưa đúng. Hãy kiểm tra lại.';
+  }catch{error.textContent='Chưa kết nối được máy chủ. Vui lòng thử lại.';}
+  button.disabled=false;button.textContent='Đăng nhập';
+});`;
 
 export function createGateway({ password, secret, backendPort, secure = true, now = Date.now }) {
   if (!password || password.length < 16 || !secret || secret.length < 32) {
@@ -31,7 +41,7 @@ export function createGateway({ password, secret, backendPort, secure = true, no
       'Content-Type': html ? 'text/html; charset=utf-8' : 'application/json; charset=utf-8',
       'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+      'Content-Security-Policy': "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
       ...(secure ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}), ...headers,
     });
     res.end(html ? body : JSON.stringify(body));
@@ -56,6 +66,10 @@ export function createGateway({ password, secret, backendPort, secure = true, no
     if (pathname === '/robots.txt' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
       return res.end('User-agent: *\nDisallow: /\n');
+    }
+    if (pathname === '/__cloud/login.js' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(loginScript);
     }
     if (!['GET', 'HEAD'].includes(req.method) && !originAllowed(req)) return send(res, 403, { detail: 'Nguồn truy cập không được phép.' });
     if (pathname === '/__cloud/login') {

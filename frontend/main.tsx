@@ -1122,7 +1122,7 @@ function App() {
               <HardDrive size={13} />
               {health?.deployment?.cloud ? 'Cloud demo · Không gian dùng chung' : 'Local workspace · Nhân viên local'}
             </span>
-            {health?.deployment?.cloud && <form method="post" action="/__cloud/logout"><button className="btn" type="submit">Đăng xuất</button></form>}
+            {health?.deployment?.cloud && <form method="post" action="/__cloud/logout" onSubmit={e => { e.preventDefault(); run(async () => { const result = await fetch('/__cloud/logout', { method: 'POST' }); if (result.ok) window.location.assign('/__cloud/login'); else throw new Error('Chưa đăng xuất được. Hãy thử lại.'); }); }}><button className="btn" type="submit">Đăng xuất</button></form>}
             <div className="avatar" title={health?.deployment?.cloud ? 'Phiên truy cập không gian dùng chung' : 'Nhân viên local (chưa định danh đăng nhập)'}>
               NV
             </div>
