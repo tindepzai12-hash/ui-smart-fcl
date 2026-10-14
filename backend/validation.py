@@ -48,7 +48,9 @@ def build_checks(case, documents, records):
 
     for d in documents:
         doc_source = [{'id': d['id'], 'document': d['name'], 'type': d['type'], 'value': {'text': d['name']}, 'page': 1}]
-        if d['status'] != 'read':
+        if d['status'] == 'needs_split':
+            add('reading:' + d['id'], 'Needs Verification', 'Đã đọc nội dung. Tách bộ PDF thành từng chứng từ trước khi xác nhận loại và đối chiếu.', doc_source)
+        elif d['status'] != 'read':
             add('reading:' + d['id'], 'Needs Verification', d.get('error') or f"Tài liệu {d['name']} chưa đọc xong. Hãy bấm Đọc & trích xuất hoặc thử lại.", doc_source, severity='error')
         if not d['type_verified']:
             add('classification:' + d['id'], 'Needs Verification', 'Nhân viên cần xác nhận loại: ' + d['name'], doc_source)

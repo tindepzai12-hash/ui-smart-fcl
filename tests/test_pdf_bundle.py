@@ -20,8 +20,9 @@ def prepare():
     case = new(); data = packet()
     upload(case, [('packet.pdf', data)])
     result, job = process(case)
-    assert len(job['errors']) == 1 and 'Tách' in job['errors'][0]['error']
+    assert not job['errors'] and len(job['warnings']) == 1
     doc = result['documents'][0]
+    assert doc['status'] == 'needs_split' and doc['error'] is None
     assert doc['mixed_pdf'] and len(doc['split_suggestion']) == 3
     assert not result['records'], 'Never extract a mixed packet under one document type'
     return case, doc, data
@@ -139,7 +140,7 @@ def test_complete_six_document_workflow(name):
     case = new()
     upload(case, [(name,(db.ROOT/'samples'/name).read_bytes())])
     result, job = process(case)
-    assert len(job['errors']) == 1 and not result['records']
+    assert not job['errors'] and len(job['warnings']) == 1 and not result['records']
     response = split(result['documents'][0]); assert response.status_code == 200, response.text
     result = response.json()
     assert len(result['documents']) == 6

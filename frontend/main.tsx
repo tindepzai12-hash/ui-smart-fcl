@@ -224,7 +224,7 @@ function App() {
   useEffect(() => {
     setPageData(null);
     const doc = current?.documents.find((d: Any) => d.id === selectedDoc);
-    if (!doc || doc.status !== 'read') return;
+    if (!doc || !['read','needs_split'].includes(doc.status)) return;
     let active = true;
     api(`/documents/${selectedDoc}/pages/${page}`)
       .then((p) => {
@@ -533,7 +533,7 @@ function App() {
       const mixed = docs.find((d: Any) => d.mixed_pdf);
       if (mixed) return <div className="next-action-bar">
         <div><span className="badge warn">Bước 3 · PDF gồm nhiều chứng từ</span><strong>Tách {mixed.name} theo trang trước khi đối chiếu</strong><p>Đã đọc {mixed.pages.length} trang. Kiểm tra gợi ý phân nhóm, tách thành Invoice, Packing List, B/L và các chứng từ khác. File gốc được giữ lại.</p></div>
-        <button className="btn primary" disabled={loading || job?.status === 'running'} onClick={() => setDialog({ kind: 'split-pdf', document: mixed })}>Tách bộ PDF</button>
+        <button className="btn primary" disabled={loading || job?.status === 'running'} onClick={() => { setError(''); setDialog({ kind: 'split-pdf', document: mixed }); }}>Tách bộ PDF</button>
       </div>;
       return (
         <div className="next-action-bar">
@@ -1483,7 +1483,7 @@ function App() {
                             </div>
                           </button>
                           <div className="document-classification">
-                            {d.ext === '.pdf' && d.pages?.length > 1 && !d.source && <button className="btn small" disabled={loading || job?.status === 'running'} onClick={() => setDialog({ kind: 'split-pdf', document: d })}>Tách bộ PDF</button>}
+                            {d.ext === '.pdf' && d.pages?.length > 1 && !d.source && <button className="btn small" disabled={loading || job?.status === 'running'} onClick={() => { setError(''); setDialog({ kind: 'split-pdf', document: d }); }}>Tách bộ PDF</button>}
                             {d.source && <a className="text-btn" href={`/api/sources/${d.source.id}/original`} download>Tải PDF gốc</a>}
                             <select aria-label={'Loại chứng từ ' + d.name} value={documentTypes[d.id] || d.type} disabled={loading || job?.status === 'running'} onChange={(e) => setDocumentTypes((previous) => ({ ...previous, [d.id]: e.target.value }))}>
                               {dict.document_types.map((type: string) => <option key={type} value={type}>{type}</option>)}

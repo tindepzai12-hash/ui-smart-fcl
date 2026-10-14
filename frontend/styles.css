@@ -350,6 +350,7 @@ blockquote{margin:8px 0;padding:9px 12px;border-left:3px solid #a6c5fa;backgroun
 .split-range{display:grid;grid-template-columns:90px 90px minmax(0,1fr);gap:10px;margin-bottom:8px}
 .split-range label{display:grid;gap:6px;font-size:12px;min-width:0}
 .split-range input,.split-range select{width:100%;min-width:0}
+.pdf-split .modal-actions{position:sticky;bottom:-28px;background:#fff;padding:14px 0;margin-top:16px;z-index:2;box-shadow:0 -6px 12px #fff}
 @media(max-width:520px){.split-range{grid-template-columns:1fr 1fr}.split-range label:last-child{grid-column:1/-1}.split-preview-controls{flex-wrap:wrap}}
 .document-classification select{width:100%;min-width:0}
 .field-search{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}

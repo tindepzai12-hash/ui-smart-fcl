@@ -25,7 +25,8 @@ export function PdfSplit({ document: doc, types, loading, submit }: any) {
       </select></label>
       <small>Gợi ý theo tiêu đề từng trang; kiểm tra cả các trang tiếp nối.</small>
     </div>
-    <img className="split-preview" src={`/api/documents/${doc.id}/preview/${preview}`} alt={`Bản gốc trang ${preview}`} />
+    <a href={`/api/documents/${doc.id}/preview/${preview}`} target="_blank" rel="noopener noreferrer" title="Mở ảnh trang gốc để đọc rõ"><img className="split-preview" src={`/api/documents/${doc.id}/preview/${preview}`} alt={`Bản gốc trang ${preview} - bấm để phóng lớn`} /></a>
+    <small>Bấm ảnh để mở trang gốc và đọc rõ trước khi phân nhóm.</small>
     <form onSubmit={e => { e.preventDefault(); if (valid && !loading) submit({ groups }); }}>
       <div className="split-groups">
         {groups.map((g, i) => <fieldset key={i} disabled={loading}>

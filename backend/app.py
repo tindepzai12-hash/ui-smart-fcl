@@ -445,7 +445,7 @@ def worker(job_id):
             job.update(document=d['name'], index=idx + 1, total=len(docs), stage='Đọc / OCR', pages=0)
             started = time.monotonic()
             try:
-                if d['status'] == 'read':
+                if d['status'] in ['read', 'needs_split']:
                     pages = db.rows('SELECT number,text,method,quality,table_json FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
                     for p in pages:
                         p['tables'] = json.loads(p.pop('table_json'))
@@ -462,7 +462,12 @@ def worker(job_id):
                         )
                 job['stage'] = 'Phân loại / trích xuất ' + ('Local' if mode == 'local' else 'OpenAI')
                 if d['ext'] == '.pdf' and pdf_bundle.is_mixed(pages):
-                    raise ValueError('PDF gồm nhiều loại chứng từ. Chọn “Tách bộ PDF” để phân bổ trang trước khi trích xuất; bản gốc được giữ lại.')
+                    message = 'Đã đọc PDF gồm nhiều loại chứng từ. Chọn “Tách bộ PDF” để phân bổ trang trước khi trích xuất; bản gốc được giữ lại.'
+                    with db.connect() as c:
+                        c.execute("UPDATE documents SET status='needs_split',error=NULL,type_verified=0 WHERE id=?", (d['id'],))
+                        db.audit(c, id, 'Đọc bộ PDF; chờ tách theo trang', d['id'], after={'pages':len(pages),'groups':pdf_bundle.suggest(pages)})
+                    job['warnings'].append({'document':d['name'],'message':message})
+                    continue
                 if mode == 'openai':
                     result, records, _ = ai.analyze(id, d, pages)
                     kind = result.document_type
@@ -496,6 +501,8 @@ def worker(job_id):
         final_status = 'completed'
         if job['errors']:
             job['stage'] = f"Hoàn tất có cảnh báo ({len(job['errors'])}/{len(docs)} tệp lỗi — xem chi tiết từng tệp)"
+        elif job['warnings']:
+            job['stage'] = f"Đã đọc; {len(job['warnings'])} bộ PDF cần tách theo trang"
         else:
             job['stage'] = 'Chờ nhân viên xác minh'
     except InterruptedError:
@@ -544,6 +551,7 @@ def process(id: str, body: ProcessInput):
             'pages': 0,
             'cancel': False,
             'errors': [],
+            'warnings': [],
             'started_at': db.now(),
         }
         db.execute("UPDATE cases SET status='Reading' WHERE id=?", (id,))

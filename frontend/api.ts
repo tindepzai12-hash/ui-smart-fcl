@@ -69,6 +69,7 @@ export const statusLabel: Record<string, string> = {
   read: 'Đã đọc',
   error: 'Lỗi',
   reading: 'Đang đọc',
+  needs_split: 'Chờ tách PDF',
   saving: 'Đang lưu…',
   saved: 'Đã lưu',
   save_error: 'Lưu lỗi',
@@ -81,7 +82,7 @@ export const tone = (s: string): string =>
     ? 'good'
     : ['Mismatch', 'error', 'rejected', 'save_error'].includes(s)
     ? 'bad'
-    : ['Missing', 'pending', 'Needs Verification', 'Needs verification', 'saving'].includes(s)
+    : ['Missing', 'pending', 'Needs Verification', 'Needs verification', 'needs_split', 'saving'].includes(s)
     ? 'warn'
     : 'neutral';
 
