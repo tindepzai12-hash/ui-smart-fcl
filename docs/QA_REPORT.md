@@ -1,4 +1,15 @@
-# Báo cáo kiểm thử bản Gemini đã sửa — 14/10/2026
+# Báo cáo kiểm thử U&I SMART 1.1 — 14/10/2026
+
+## Kết quả bàn giao hiện tại
+
+- Bộ backend cuối cùng: **42 PASS** trong 24,21 giây, gồm hai kiểm thử PDF Packing List bị đặt tên Bill of Lading (text và scan).
+- Build TypeScript/Vite: PASS; frontend 8 PASS, Node gateway 2 PASS. Không đổi giao diện sau lần build này.
+- Bản Render 1.1: health 200, API chưa đăng nhập 401, đăng nhập 303, OCR eng/vie sẵn sàng. Hai bộ PDF 6 trang đều qua đọc, tách, giữ nguyên bản gốc, kiểm tra dòng hàng/container, chặn Reviewed chưa xác minh và xuất Draft 7 sheet. ZIP sao lưu qua kiểm tra toàn vẹn.
+- Đã kiểm tra trực quan tách scan, chặn khoảng trang trùng, xác nhận loại và lưu trạng thái xác minh sau reload. Đã xem Packing List scan trên bản Render.
+- Kết nối OpenAI thật được xác minh lại lúc 15:16 ngày 14/10/2026: HTTP 200, `gpt-4.1-mini`, phản hồi Structured Outputs hợp lệ, 58 input/6 output token. Giao diện đã hiện “Đã kiểm tra kết nối”. Key nhập qua giao diện có thể mất sau triển khai. Không gửi chứng từ đến OpenAI trong lượt bàn giao.
+- Chi tiết phiên bản, dữ liệu chuẩn và giới hạn ở RELEASE_1_1.md; kết quả cũ dưới đây được giữ làm lịch sử, không thay thế kết quả bàn giao này.
+
+## Lịch sử sửa bản Gemini
 
 Chạy thực tế trên Windows, Python 3.12.14, Node 24.21 và Edge headless. Dữ liệu thử tách khỏi dữ liệu làm việc. Báo cáo này thay thế kết quả trong gói Gemini, không dùng kết quả cũ làm bằng chứng cho bản hiện tại.
 
@@ -51,7 +62,7 @@ Bằng chứng: `qa/e2e-report.json`, `qa/screenshots/`, `qa/e2e-draft.xlsx`, `q
 ## Phạm vi chưa chứng nhận
 
 - Chưa có bộ chứng từ khách hàng được phép dùng để đo độ chính xác; mọi kiểm thử nghiệp vụ dùng dữ liệu giả lập.
-- Chưa gọi OpenAI trả phí thật; đã kiểm thử cấu hình, schema, consent và xử lý lỗi giả lập.
+- Tại thời điểm kiểm thử Gemini ban đầu chưa gọi OpenAI thật. Sau đó connection probe thật đã thành công; chưa đo trích xuất chứng từ khách hàng.
 - Excel là bảng làm việc nội bộ; chưa kiểm chứng import ECUS/VNACCS.
 - Chưa kiểm thử screen reader thật, Safari/Firefox hoặc mở file bằng Microsoft Excel desktop. Không suy ra các kiểm thử này từ Edge/openpyxl.
 - Các giới hạn OCR, bảo mật nhiều người dùng và triển khai vận hành nằm trong `docs/LIMITATIONS.md`.

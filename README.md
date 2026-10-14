@@ -2,6 +2,8 @@
 
 ## Bản nâng cấp 1.1
 
+Gói bàn giao: đọc [Bắt đầu tại đây](docs/BAN_GIAO_1_1.md), [Hướng dẫn thử hai PDF](docs/HUONG_DAN_TEST.md) và [QA hiện tại](docs/QA_REPORT.md). Bộ backend cuối cùng gồm 42 ca đã qua; không gửi key hoặc dữ liệu khách hàng cùng source.
+
 Đã bổ sung tách bộ PDF nhiều chứng từ theo trang, giữ file gốc và truy vết nguồn; nâng cấp OCR bảng scan, sửa cảnh báo sau chỉnh dữ liệu và nối lại tác vụ khi mở hồ sơ. Hai PDF giả lập cùng dữ liệu có sẵn trong mục Chứng từ → Chứng từ để kiểm thử. [Hướng dẫn, dữ liệu kỳ vọng và kiểm thử 1.1](docs/RELEASE_1_1.md).
 
 Bản nâng cấp chạy xử lý/lưu/xuất file thật. Render Free vẫn lưu tạm thời và dùng mật khẩu chung; chưa đủ để giữ hồ sơ doanh nghiệp lâu dài hay phân quyền nhân viên. 40 kiểm thử backend, 8 frontend, 2 gateway và build đã pass trên Windows bằng dữ liệu giả lập.

@@ -1,5 +1,11 @@
 # Render live verification — 14 October 2026
 
+## Release 1.1 handoff
+
+Final handoff connection probe succeeded at 15:16 Asia/Saigon: HTTP 200, gpt-4.1-mini, valid Structured Outputs, 58 input and 6 output tokens. The browser displayed the connected state. The user's key was entered directly in the app and was neither retrieved nor packaged. No document content was sent to OpenAI during handoff.
+
+Deployed application commit `0a94a34` passed live packet verification: both six-page digital/raster PDFs split into six types and 64 pending source records, preserved original bytes/hash, extracted expected item codes/amounts/container/seal, enforced the Reviewed guard and produced seven-sheet Draft workbooks. Backup ZIP integrity passed. The scan row-label warning was retained. Browser confirmation covered the live Packing List original preview and pending records. Latest local backend suite: 42 passed; frontend/gateway: 8+2 passed. See `RELEASE_1_1.md` and `QA_REPORT.md` for current scope and limitations. Notes below describe the earlier deployment and connection probe.
+
 - Repository: private `tindepzai12-hash/ui-smart-fcl`, branch `main`.
 - Service: https://ui-smart-fcl.onrender.com — Free, Node 24.13.0, Singapore.
 - Application commit verified: `6d689986e6b94fd80b4a7ebba443144f85dc015e`.
