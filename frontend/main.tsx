@@ -20,6 +20,7 @@ import {
 } from './api';
 import './styles.css';
 import { TemplateCenter } from './TemplateCenter';
+import { PdfSplit } from './PdfSplit';
 
 type Any = any;
 
@@ -239,6 +240,8 @@ function App() {
     const b = await run(() => api('/cases/' + id));
     if (b) {
       setCurrent(b);
+      setJob(b.active_job || null);
+      setConsent(false);
       setView('case');
       setTab('documents');
       setSelectedDoc(b.documents[0]?.id || '');
@@ -343,6 +346,7 @@ function App() {
 
   async function upload(files: FileList | File[]) {
     if (!files.length) return;
+    setConsent(false);
     const f = new FormData();
     Array.from(files).forEach((file) => f.append('files', file));
     await run(async () => {
@@ -504,7 +508,7 @@ function App() {
       return (
         <div className="next-action-bar">
           <div>
-            <span className="badge info">Việc cần làm tiếp theo · Bước 3</span>
+            <span className="badge info">Việc cần làm tiếp theo · Bước 2</span>
             <strong>Tải bộ chứng từ FCL (Invoice, Packing List, B/L) vào hồ sơ</strong>
             <p>Kéo thả hoặc chọn tệp từ máy tính để bắt đầu đọc và trích xuất dữ liệu local.</p>
           </div>
@@ -526,6 +530,11 @@ function App() {
       );
     }
     if (unreadDocs.length > 0) {
+      const mixed = docs.find((d: Any) => d.mixed_pdf);
+      if (mixed) return <div className="next-action-bar">
+        <div><span className="badge warn">Bước 3 · PDF gồm nhiều chứng từ</span><strong>Tách {mixed.name} theo trang trước khi đối chiếu</strong><p>Đã đọc {mixed.pages.length} trang. Kiểm tra gợi ý phân nhóm, tách thành Invoice, Packing List, B/L và các chứng từ khác. File gốc được giữ lại.</p></div>
+        <button className="btn primary" disabled={loading || job?.status === 'running'} onClick={() => setDialog({ kind: 'split-pdf', document: mixed })}>Tách bộ PDF</button>
+      </div>;
       return (
         <div className="next-action-bar">
           <div>
@@ -1097,7 +1106,7 @@ function App() {
           <span className={'dot ' + (health?.ok ? 'online' : '')} />
           <div>
             <strong>{health?.ok ? (health?.deployment?.cloud ? 'Đã kết nối cloud' : 'Đã kết nối local') : 'Đang kiểm tra backend'}</strong>
-            <small>{health?.deployment?.cloud ? 'Dữ liệu demo tạm thời' : 'SQLite lưu trên máy này'}</small>
+            <small>{health?.deployment?.cloud ? 'Máy chủ lưu dữ liệu tạm thời' : 'SQLite lưu trên máy này'}</small>
           </div>
         </div>
       </aside>
@@ -1120,7 +1129,7 @@ function App() {
           <div className="row">
             <span className="badge neutral">
               <HardDrive size={13} />
-              {health?.deployment?.cloud ? 'Cloud demo · Không gian dùng chung' : 'Local workspace · Nhân viên local'}
+              {health?.deployment?.cloud ? 'Cloud · Không gian dùng chung' : 'Local workspace · Nhân viên local'}
             </span>
             {health?.deployment?.cloud && <form method="post" action="/__cloud/logout" onSubmit={e => { e.preventDefault(); run(async () => { const result = await fetch('/__cloud/logout', { method: 'POST' }); if (result.ok) window.location.assign('/__cloud/login'); else throw new Error('Chưa đăng xuất được. Hãy thử lại.'); }); }}><button className="btn" type="submit">Đăng xuất</button></form>}
             <div className="avatar" title={health?.deployment?.cloud ? 'Phiên truy cập không gian dùng chung' : 'Nhân viên local (chưa định danh đăng nhập)'}>
@@ -1129,7 +1138,7 @@ function App() {
           </div>
         </header>
         <main id="main-content" tabIndex={-1}>
-          {health?.deployment?.ephemeral && <div className="alert warn" role="status"><AlertTriangle size={18} /><div><strong>Bản demo Render Free — dữ liệu tạm thời.</strong><p>Hồ sơ và file có thể mất khi máy chủ ngủ, khởi động lại hoặc cập nhật. Tải bản sao lưu trong Cài đặt trước khi rời phiên. Máy chủ có thể cần khoảng 1 phút để thức dậy.</p></div><button className="btn" onClick={() => setView('settings')}>Sao lưu</button></div>}
+          {health?.deployment?.ephemeral && <div className="alert warn" role="status"><AlertTriangle size={18} /><div><strong>Render Free · cần tải sao lưu để giữ hồ sơ.</strong><p>Hồ sơ và file có thể mất khi máy chủ ngủ, khởi động lại hoặc cập nhật. Tải bản sao lưu trong Cài đặt trước khi rời phiên. Máy chủ có thể cần khoảng 1 phút để thức dậy.</p></div><button className="btn" onClick={() => setView('settings')}>Sao lưu</button></div>}
           {error && (
             <div className="alert bad" role="alert">
               <AlertTriangle size={18} />
@@ -1427,9 +1436,13 @@ function App() {
                         <span>{current.documents.length}</span>
                       </div>
                       <div className="sample-loader">
-                        <small>Dữ liệu giả lập · nạp vào hồ sơ trống</small>
+                        <details><summary>Chứng từ để kiểm thử</summary>
+                        <small>Cùng một lô FCL giả lập · 6 chứng từ/PDF. Tải lên hai hồ sơ riêng, đọc rồi tách bộ PDF để so sánh.</small>
+                        <a className="btn small" href="/api/samples/fcl-text.pdf" download>Tải bộ PDF rõ nét</a>
+                        <a className="btn small" href="/api/samples/fcl-scan.pdf" download>Tải bộ PDF scan</a>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false)}>Bộ mẫu chuẩn</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(true)}>Bộ mẫu sai lệch</button>
+                        </details>
                       </div>
                       {current.documents.map((d: Any) => {
                         const docPending = current.records.filter(
@@ -1455,6 +1468,7 @@ function App() {
                                 {d.type} · {Math.ceil(d.size / 1024)} KB
                               </small>
                               <small>{d.reading_method || 'Chưa đọc'}{d.pages?.some((p: Any) => p.quality) ? ' · Có ghi chú chất lượng đọc' : ''}</small>
+                              {d.source && <small>Gốc: {d.source.name} · trang {d.source.start_page}–{d.source.end_page}</small>}
                               <div className="row" style={{ gap: 4 }}>
                                 <Badge status={d.status} />
                                 {d.status === 'read' && (
@@ -1469,6 +1483,8 @@ function App() {
                             </div>
                           </button>
                           <div className="document-classification">
+                            {d.ext === '.pdf' && d.pages?.length > 1 && !d.source && <button className="btn small" disabled={loading || job?.status === 'running'} onClick={() => setDialog({ kind: 'split-pdf', document: d })}>Tách bộ PDF</button>}
+                            {d.source && <a className="text-btn" href={`/api/sources/${d.source.id}/original`} download>Tải PDF gốc</a>}
                             <select aria-label={'Loại chứng từ ' + d.name} value={documentTypes[d.id] || d.type} disabled={loading || job?.status === 'running'} onChange={(e) => setDocumentTypes((previous) => ({ ...previous, [d.id]: e.target.value }))}>
                               {dict.document_types.map((type: string) => <option key={type} value={type}>{type}</option>)}
                             </select>
@@ -2474,7 +2490,7 @@ function App() {
 
           <footer className="app-footer">
             U&I SMART · Hồ sơ chứng từ nhập khẩu FCL{' '}
-            <span>Local first · Nhân viên xác minh cuối cùng</span>
+            <span>U&I SMART 1.1 · Nhân viên xác minh cuối cùng</span>
           </footer>
         </main>
       </div>
@@ -2514,7 +2530,10 @@ function App() {
                 {error}
               </div>
             )}
-            <DialogContent
+            {dialog.kind === 'split-pdf' ? <PdfSplit document={dialog.document} types={dict.document_types} loading={loading} submit={async (payload: Any) => {
+              const b = await update(() => post('/documents/' + dialog.document.id + '/split', payload), 'Đã tách PDF · xác nhận loại và kiểm tra dữ liệu từng chứng từ');
+              if (b) { setDialog(null); setSelectedDoc(b.documents[0]?.id || ''); setPage(1); }
+            }} /> : <DialogContent
               key={dialog.kind + ':' + (dialog.record?.id || dialog.defaultKey || 'new')}
               dialog={dialog}
               setDialog={setDialog}
@@ -2598,7 +2617,7 @@ function App() {
                   }
                 }
               }}
-            />
+            />}
           </dialog>
         </div>
       )}

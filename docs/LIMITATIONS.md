@@ -9,7 +9,7 @@
 | Hạng mục | Trạng thái / việc cần làm |
 |---|---|
 | Độ chính xác trên hồ sơ U&I | Chưa có mẫu thật được phép dùng/tập ground truth độc lập. Pilot theo từng layout/mặt hàng; không báo accuracy từ synthetic |
-| OCR phức tạp | Chưa tự deskew/orientation, bbox, highlight vùng ảnh, xử lý bảng scan đa cột ổn định, handwriting. Có quality warning/sửa tay; ảnh xoay ở viewer không thay đổi OCR |
+| OCR phức tạp | 1.1 phục hồi bảng scan đơn giản theo tọa độ chữ và gợi ý tách bộ PDF theo trang. Chưa tự deskew/orientation, highlight bbox, bảng merge/nhiều tầng/viết tay ổn định. Có quality warning/sửa tay; ảnh xoay ở viewer không thay đổi OCR |
 | Trích xuất layout tự do | Rules cần nhãn/header hỗ trợ, không suy diễn hàng bị thiếu; số có dấu phân cách mơ hồ bị chặn review. Ngày slash mơ hồ bị cảnh báo; cần kiểm tra nguồn rồi lưu YYYY-MM-DD |
 | XML/EDI/e-invoice ký số | Chưa hỗ trợ; chỉ loại file trong reader hiện tại |
 | Line matching và canonical source | Chưa ghép SKU giữa PL/Invoice theo mọi tình huống hoặc chọn bản ghi đại diện sau resolution. Giữ hàng theo nguồn, cảnh báo phạm vi; không auto merge |
@@ -17,7 +17,7 @@
 | Chỉ tiêu chính thức | Có ứng viên mapping/source nghiên cứu; rà soát toàn bộ sửa đổi hiện hành và biểu mẫu chi tiết Pending |
 | Workbook C / ECUS/VNACCS | Chưa có template thật và import thử. Không gọi template nội bộ là tương thích |
 | Mapping nâng cao | Chưa export bảng lặp vào template, công thức/macro, tự nhận diện header; UI hiện mở lại mapping scalar đã lưu |
-| AI thật | Chưa thử key/API thật; chỉ unit/schema/mock error. Model availability, billing, fidelity/refusal, timeout/retry thật cần key và consent |
+| AI thật | Đã xác minh kết nối Structured Outputs thật với gpt-4.1-mini ngày 14/10/2026; không gửi chứng từ. Chưa đo fidelity trích xuất khách hàng, refusal hoặc timeout/retry thực tế trên bộ hồ sơ thật |
 | AI semantic layer | Chưa có giải thích xung đột/normalization bằng model độc lập; normalization/validation hiện deterministic. Cache/schema vẫn cần bump khi đổi dictionary |
 | Bằng chứng AI | Kiểm tra literal evidence hỗ trợ chống bịa, chưa chứng minh kết luận semantic đúng; không auto verify |
 | Đo chi phí | Token thật có nếu API phản hồi; không bịa estimated cost, chưa bảng giá theo model/thời điểm |

@@ -1,5 +1,11 @@
 # U&I SMART — hồ sơ nhập khẩu FCL đường biển
 
+## Bản nâng cấp 1.1
+
+Đã bổ sung tách bộ PDF nhiều chứng từ theo trang, giữ file gốc và truy vết nguồn; nâng cấp OCR bảng scan, sửa cảnh báo sau chỉnh dữ liệu và nối lại tác vụ khi mở hồ sơ. Hai PDF giả lập cùng dữ liệu có sẵn trong mục Chứng từ → Chứng từ để kiểm thử. [Hướng dẫn, dữ liệu kỳ vọng và kiểm thử 1.1](docs/RELEASE_1_1.md).
+
+Bản nâng cấp chạy xử lý/lưu/xuất file thật. Render Free vẫn lưu tạm thời và dùng mật khẩu chung; chưa đủ để giữ hồ sơ doanh nghiệp lâu dài hay phân quyền nhân viên. 40 kiểm thử backend, 8 frontend, 2 gateway và build đã pass trên Windows bằng dữ liệu giả lập.
+
 ## Bản cloud dùng thử
 
 Web: **https://ui-smart-fcl.onrender.com**. Repository riêng tư: **https://github.com/tindepzai12-hash/ui-smart-fcl**.
@@ -64,9 +70,9 @@ Tám bước có thể bấm hoặc dùng bàn phím để mở vùng tương �
 
 Vào **Cài đặt → Kết nối OpenAI**, nhập key trong ô mật khẩu, chọn model rồi Lưu cấu hình. Key bị xóa khỏi ô sau khi lưu; chỉ backend giữ trong bộ nhớ phiên hoặc lấy từ biến `OPENAI_API_KEY`. Không ghi key vào SQLite, workbook, browser storage hay gói backup. Khởi động lại sẽ mất key nhập qua UI.
 
-Kiểm tra kết nối chỉ đọc thông tin model; thành công không chứng minh model được phép dùng Structured Outputs cho chứng từ. Để xử lý AI: chọn OpenAI trong hồ sơ, chủ động đánh dấu đồng ý gửi nội dung rồi bắt đầu. Nội dung trang đã đọc/OCR sẽ gửi ra ngoài; file gốc không được upload trong adapter hiện tại. Đây là thao tác tùy chọn, có thể phát sinh phí API; không tự bật khi Local lỗi.
+Kiểm tra kết nối gửi yêu cầu Structured Outputs nhỏ, không chứa chứng từ; thành công xác nhận truy cập model/schema, không đo độ chính xác trích xuất. Để xử lý AI: chọn OpenAI trong hồ sơ, chủ động đánh dấu đồng ý gửi nội dung rồi bắt đầu. Nội dung trang đã đọc/OCR sẽ gửi ra ngoài; file gốc không được upload trong adapter hiện tại. Đây là thao tác tùy chọn, có thể phát sinh phí API; không tự bật khi Local lỗi.
 
-Kết quả AI cần schema và bằng chứng khớp trang nguồn; vẫn phải nhân viên xác minh. Có timeout/retry, cache và token usage thật; chưa có bảng giá để tính tiền. Tích hợp đã kiểm tra bằng phản hồi giả lập; **chưa gọi OpenAI thật** vì chưa có key được người dùng cấu hình/cho phép cho chứng từ. Không gửi key trong chat.
+Kết quả AI cần schema và bằng chứng khớp trang nguồn; vẫn phải nhân viên xác minh. Có timeout/retry, cache và token usage thật; chưa có bảng giá để tính tiền. Kết nối thật với gpt-4.1-mini đã thành công ngày 14/10/2026 bằng key người dùng nhập trực tiếp; chưa đo trích xuất trên chứng từ khách hàng. Không gửi key trong chat.
 
 ## Lưu trữ, sao lưu và khôi phục
 

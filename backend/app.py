@@ -14,12 +14,12 @@ except ImportError:
     ConfigDict = None
 from PIL import Image
 from openpyxl import load_workbook
-from . import db, reader, extraction, validation, ai, excel, templates
+from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle
 from .dictionary import FIELDS, TYPES, default_requirements
 from .normalize import normalize
 
 db.migrate()
-app = FastAPI(title='U&I SMART local', version='1.0.0')
+app = FastAPI(title='U&I SMART', version='1.1.0')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
 JOBS = {}
 LOCK = threading.RLock()
@@ -79,6 +79,13 @@ class ClassInput(Input):
         'Insurance', 'Freight Invoice', 'Import Permit',
         'Inspection Certificate', 'Phytosanitary Certificate', 'Other'
     ]
+
+class SplitGroup(ClassInput):
+    start: int = Field(ge=1, le=100)
+    end: int = Field(ge=1, le=100)
+
+class SplitInput(Input):
+    groups: List[SplitGroup] = Field(min_length=2, max_length=30)
 
 class EditInput(Input):
     value: Union[str, Dict[str, Any]]
@@ -146,6 +153,11 @@ def bundle(id):
     for d in docs:
         d.pop('path')
         d['pages'] = db.rows('SELECT number,method,quality,length(text) characters FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
+        if d['ext'] == '.pdf' and len(d['pages']) > 1:
+            text_pages = db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
+            d['split_suggestion'] = pdf_bundle.suggest(text_pages)
+            d['mixed_pdf'] = pdf_bundle.is_mixed(text_pages)
+        d['source'] = db.one('SELECT s.id,s.name,s.hash,m.start_page,m.end_page FROM document_sources m JOIN bundle_sources s ON s.id=m.source_id WHERE m.document_id=?', (d['id'],))
     records = [validation.unpack(r) for r in db.rows('SELECT * FROM records WHERE case_id=? ORDER BY rowid', (id,))]
     checks = db.rows('SELECT * FROM checks WHERE case_id=? ORDER BY rowid', (id,))
     for c in checks:
@@ -159,6 +171,7 @@ def bundle(id):
         'checks': checks,
         'blockers': validation.blockers(case, docs, records, checks),
         'exports': db.rows('SELECT id,created_at,version,mode,workbook_type,case_revision FROM exports WHERE case_id=? ORDER BY version DESC', (id,)),
+        'active_job': next((j for j in JOBS.values() if j['case_id'] == id and j['status'] == 'running'), None),
     }
 
 def revalidate(c, id):
@@ -187,6 +200,7 @@ def health():
         'deployment': {'cloud': os.getenv('UI_SMART_CLOUD') == '1', 'ephemeral': os.getenv('UI_SMART_CLOUD') == '1'},
         'database_ready': ready,
         'service': 'U&I SMART',
+        'version': '1.1.0',
         'ocr': ocr,
         'ai': ai.status(),
         'supported': sorted(reader.SUPPORTED),
@@ -226,7 +240,7 @@ def delete_case(id: str):
     with LOCK:
         busy(id)
         require_case(id)
-        paths = db.rows('SELECT path FROM documents WHERE case_id=? UNION ALL SELECT path FROM exports WHERE case_id=?', (id, id))
+        paths = db.rows('SELECT path FROM documents WHERE case_id=? UNION ALL SELECT path FROM exports WHERE case_id=? UNION ALL SELECT path FROM bundle_sources WHERE case_id=?', (id, id, id))
         with db.connect() as c:
             c.execute('DELETE FROM cases WHERE id=?', (id,))
             db.audit(c, id, 'Xóa hồ sơ', reason='Người dùng xác nhận xóa')
@@ -268,7 +282,7 @@ async def upload(id: str, files: List[UploadFile] = File(...)):
             digest = hashlib.sha256(data).hexdigest()
             with LOCK:
                 busy(id)
-                if db.one('SELECT id FROM documents WHERE case_id=? AND hash=?', (id, digest)):
+                if db.one('SELECT id FROM documents WHERE case_id=? AND hash=? UNION ALL SELECT id FROM bundle_sources WHERE case_id=? AND hash=?', (id, digest, id, digest)):
                     results.append({'name': name, 'status': 'duplicate', 'error': 'Nội dung đã có trong hồ sơ'})
                     continue
                 doc_id = db.uid()
@@ -307,6 +321,9 @@ def classification(id: str, body: ClassInput):
     with LOCK:
         doc = require_doc(id)
         busy(doc['case_id'])
+        pages = db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number', (id,))
+        if doc['ext'] == '.pdf' and pdf_bundle.is_mixed(pages):
+            raise HTTPException(409, 'PDF chứa nhiều loại chứng từ. Tách theo trang trước khi xác nhận loại.')
         with db.connect() as c:
             if doc['type'] != body.type:
                 # Classification change requires extraction to be rerun, retain edited/verified records for review.
@@ -316,6 +333,72 @@ def classification(id: str, body: ClassInput):
             db.touch(c, doc['case_id'])
             db.audit(c, doc['case_id'], 'Xác nhận loại tài liệu', id, before=doc['type'], after=body.type)
             revalidate(c, doc['case_id'])
+    return bundle(doc['case_id'])
+
+@app.get('/api/sources/{id}/original')
+def original_bundle(id: str):
+    source = db.one('SELECT * FROM bundle_sources WHERE id=?', (id,))
+    if not source:
+        raise HTTPException(404, 'Không tìm thấy PDF gốc')
+    return FileResponse(source['path'], filename=source['name'], media_type='application/pdf')
+
+@app.post('/api/documents/{id}/split')
+def split_pdf(id: str, body: SplitInput):
+    from pypdf import PdfReader, PdfWriter
+    created_paths = []
+    with LOCK:
+        doc = require_doc(id)
+        busy(doc['case_id'])
+        if doc['ext'] != '.pdf':
+            raise HTTPException(422, 'Chỉ tách tệp PDF.')
+        if db.one('SELECT document_id FROM document_sources WHERE document_id=?', (id,)):
+            raise HTTPException(409, 'Chứng từ đã tách; dùng bản gốc trong hồ sơ mới để chia lại.')
+        if db.one("SELECT id FROM records WHERE document_id=? AND (status!='pending' OR method LIKE 'Manual%')", (id,)):
+            raise HTTPException(409, 'Chứng từ có dữ liệu đã sửa/xác minh. Tách bản gốc trong hồ sơ mới để giữ lịch sử.')
+        original = PdfReader(doc['path'])
+        if original.is_encrypted or len(original.pages) > reader.MAX_PAGES:
+            raise HTTPException(422, 'PDF khóa hoặc vượt giới hạn trang.')
+        pdf_bundle.validate_ranges(body.groups, len(original.pages))
+        pages = db.rows('SELECT * FROM pages WHERE document_id=? ORDER BY number', (id,))
+        if len(pages) != len(original.pages):
+            raise HTTPException(409, 'Đọc/OCR hết PDF trước khi tách để có căn cứ theo trang.')
+        try:
+            with db.connect() as c:
+                source_id = db.uid()
+                c.execute('INSERT INTO bundle_sources VALUES (?,?,?,?,?)', (source_id, doc['case_id'], doc['name'], doc['hash'], doc['path']))
+                # Transaction replaces the working bundle; the physical original is retained.
+                c.execute('DELETE FROM documents WHERE id=?', (id,))
+                for index, group in enumerate(body.groups):
+                    writer = PdfWriter()
+                    for n in range(group.start - 1, group.end):
+                        writer.add_page(original.pages[n])
+                    buffer = io.BytesIO()
+                    writer.write(buffer)
+                    data = buffer.getvalue()
+                    digest = hashlib.sha256(data).hexdigest()
+                    if c.execute('SELECT id FROM documents WHERE case_id=? AND hash=?', (doc['case_id'], digest)).fetchone():
+                        raise ValueError('Một phần PDF trùng nội dung đã có. Chưa tách; file gốc giữ nguyên.')
+                    child_id = db.uid()
+                    path = db.DATA / 'files' / (child_id + '.pdf')
+                    path.write_bytes(data)
+                    created_paths.append(path)
+                    name = f"{Path(doc['name']).stem[:85]} - {index+1:02d} {group.type.replace('/', '-')} (p{group.start}-{group.end}).pdf"
+                    c.execute('INSERT INTO documents(id,case_id,name,ext,size,hash,path,status,type,reading_method) VALUES (?,?,?,?,?,?,?,?,?,?)', (child_id, doc['case_id'], name, '.pdf', len(data), digest, str(path), 'read', group.type, doc['reading_method']))
+                    c.execute('INSERT INTO document_sources VALUES (?,?,?,?)', (child_id, source_id, group.start, group.end))
+                    child_pages = pages[group.start-1:group.end]
+                    for n, p in enumerate(child_pages, 1):
+                        c.execute('INSERT INTO pages VALUES (?,?,?,?,?,?,?)', (db.uid(), child_id, n, p['text'], p['method'], p['quality'], p['table_json']))
+                    # Extraction stays pending and classification still requires staff confirmation.
+                    values = [{**p, 'number': n, 'tables': json.loads(p['table_json'])} for n, p in enumerate(child_pages, 1)]
+                    for record in extraction.extract(values, group.type):
+                        add_record(c, doc['case_id'], child_id, record)
+                db.touch(c, doc['case_id'])
+                db.audit(c, doc['case_id'], 'Tách bộ PDF; giữ bản gốc', source_id, before={'name': doc['name'], 'hash': doc['hash']}, after={'groups': [g.model_dump() for g in body.groups]})
+                revalidate(c, doc['case_id'])
+        except Exception:
+            for path in created_paths:
+                path.unlink(missing_ok=True)
+            raise
     return bundle(doc['case_id'])
 
 @app.get('/api/documents/{id}/pages/{number}')
@@ -378,6 +461,8 @@ def worker(job_id):
                             (', '.join(sorted({p['method'] for p in pages})), time.monotonic() - started, d['id']),
                         )
                 job['stage'] = 'Phân loại / trích xuất ' + ('Local' if mode == 'local' else 'OpenAI')
+                if d['ext'] == '.pdf' and pdf_bundle.is_mixed(pages):
+                    raise ValueError('PDF gồm nhiều loại chứng từ. Chọn “Tách bộ PDF” để phân bổ trang trước khi trích xuất; bản gốc được giữ lại.')
                 if mode == 'openai':
                     result, records, _ = ai.analyze(id, d, pages)
                     kind = result.document_type
@@ -432,8 +517,16 @@ def process(id: str, body: ProcessInput):
     with LOCK:
         require_case(id)
         busy(id)
+        if os.getenv('UI_SMART_CLOUD') == '1' and any(j['status'] == 'running' for j in JOBS.values()):
+            raise HTTPException(409, 'Máy chủ đang xử lý hồ sơ khác. Chờ hoàn tất rồi thử lại để tránh quá tải OCR.')
         if body.mode == 'openai' and not ai.key():
             raise HTTPException(409, 'Chưa cấu hình OpenAI. Tiếp tục Local hoặc mở Cài đặt.')
+        if len(JOBS) >= 200:
+            for old_id in list(JOBS):
+                if JOBS[old_id]['status'] != 'running':
+                    del JOBS[old_id]
+                if len(JOBS) < 150:
+                    break
         if body.mode == 'openai' and not body.allow_external:
             raise HTTPException(422, 'Cần chủ động đồng ý gửi nội dung chứng từ ra OpenAI cho yêu cầu này.')
         if not db.one('SELECT id FROM documents WHERE case_id=?', (id,)):
@@ -466,9 +559,9 @@ def job_status(id: str):
 @app.get('/api/samples/{name}')
 def sample_document(name: str):
     # Only synthetic fixtures explicitly shipped for the two UI demo sets.
-    if name not in {'invoice.txt', 'packing.txt', 'bl.txt', 'bl-conflict.txt'}:
+    if name not in {'invoice.txt', 'packing.txt', 'bl.txt', 'bl-conflict.txt', 'fcl-text.pdf', 'fcl-scan.pdf'}:
         raise HTTPException(404, 'Không có chứng từ mẫu này')
-    return FileResponse(db.ROOT / 'samples' / name, filename=name, media_type='text/plain')
+    return FileResponse(db.ROOT / 'samples' / name, filename=name, media_type='application/pdf' if name.endswith('.pdf') else 'text/plain')
 
 @app.post('/api/jobs/{id}/cancel')
 def cancel(id: str):
@@ -492,6 +585,16 @@ def checked_value(kind, key, value):
         raise ValueError('Giá trị dòng quá dài/không hợp lệ')
     if kind == 'item' and not value.get('description'):
         raise ValueError('Cần mô tả hàng')
+    if kind == 'item':
+        from .normalize import decimal_text
+        import re
+        # Recompute warnings after a staff edit; never retain a stale OCR warning
+        # or allow a caller to clear an invalid number by removing the warning flag.
+        value = {k:v for k,v in value.items() if k != 'warning'}
+        if value.get('line_number') and not re.fullmatch(r'\d+', value['line_number']):
+            value['warning'] = 'Số thứ tự dòng chưa rõ; đối chiếu bảng gốc và sửa trước khi xác minh.'
+        if any(value.get(k) and decimal_text(value[k]) is None for k in ['quantity','unit_price','line_amount']):
+            value['warning'] = 'Có số chưa rõ định dạng; cần sửa trước khi xác minh.'
     if kind == 'container':
         import re
         value = {**value, 'container_number': validation.container_number(value.get('container_number'))}

@@ -22,7 +22,10 @@ def restore(archive,data=None,check_server=True):
             with c:
                 if c.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise ValueError('SQLite integrity check failed')
                 if c.execute('SELECT max(version) FROM schema_versions').fetchone()[0]!=1:raise ValueError('Schema backup chưa hỗ trợ')
-                for table,folder in [('documents','files'),('exports','exports'),('templates','templates')]:
+                tables=[('documents','files'),('exports','exports'),('templates','templates')]
+                if c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bundle_sources'").fetchone():
+                    tables.append(('bundle_sources','files'))
+                for table,folder in tables:
                     for id,path in c.execute(f'SELECT id,path FROM {table}').fetchall():
                         file=Path(path).name
                         if not (stage/folder/file).is_file():raise ValueError('Backup thiếu file '+file)

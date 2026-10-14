@@ -1,5 +1,5 @@
 """Offline readers; preserve page/table boundaries. No document instructions executed."""
-import csv, io, os, shutil, subprocess
+import csv, io, os, shutil, subprocess, re, statistics
 from pathlib import Path
 try:
     import fitz
@@ -42,7 +42,66 @@ def ocr_status():
     except Exception:
         return {'ready': False, 'languages': [], 'detail': 'Không chạy được Tesseract'}
 
-def ocr(image):
+def ocr_tables(data):
+    """Recover simple aligned tables from word coordinates, never infer missing cells."""
+    from .extraction import ITEM_ALIASES, CONT_ALIASES
+    words = []
+    for i, text in enumerate(data['text']):
+        if text.strip() and float(data['conf'][i]) >= 0:
+            words.append({'text': text.strip(), 'x': data['left'][i], 'y': data['top'][i] + data['height'][i]/2,
+                          'right': data['left'][i]+data['width'][i], 'height': data['height'][i]})
+    if not words:
+        return []
+    tolerance = max(4, statistics.median(w['height'] for w in words) * .5)
+    rows = []
+    for word in sorted(words, key=lambda w: (w['y'], w['x'])):
+        if rows and abs(word['y'] - rows[-1][0]['y']) < tolerance:
+            rows[-1].append(word)
+        else:
+            rows.append([word])
+    rows = [sorted(row, key=lambda w: w['x']) for row in rows]
+    compact = lambda s: re.sub(r'[^a-z0-9]', '', s.casefold())
+    tables = []
+    for row_index, row in enumerate(rows):
+        for mode, aliases, required in [('item', ITEM_ALIASES, {'description','quantity'}), ('container', CONT_ALIASES, {'container_number'})]:
+            columns = []; cursor = 0
+            while cursor < len(row):
+                matches = []
+                for length in range(1, min(4, len(row)-cursor)+1):
+                    phrase = compact(' '.join(w['text'] for w in row[cursor:cursor+length]))
+                    for key, labels in aliases.items():
+                        if phrase in {compact(label) for label in labels}:
+                            matches.append((length, key))
+                if not matches:
+                    cursor += 1
+                    continue
+                length, key = max(matches)
+                columns.append((key, row[cursor]['x']))
+                cursor += length
+            if not required.issubset({col[0] for col in columns}) or len(columns) < 2:
+                continue
+            if len({col[0] for col in columns}) != len(columns):
+                continue
+            table = [[aliases[key][0] for key, _ in columns]]
+            for data_row in rows[row_index+1:]:
+                cells = [''] * len(columns)
+                for word in data_row:
+                    center = (word['x']+word['right'])/2
+                    index = max((i for i, (_, x) in enumerate(columns) if center >= x-tolerance), default=0)
+                    cells[index] = (cells[index]+' '+word['text']).strip()
+                values = {key:cells[i] for i, (key, _) in enumerate(columns)}
+                if mode == 'container':
+                    valid = bool(re.fullmatch(r'[A-Z]{4}\d{7}', re.sub(r'\s','',values.get('container_number','')).upper()))
+                else:
+                    valid = bool(values.get('description') and re.fullmatch(r'[\d., ]+', values.get('quantity','')))
+                if not valid:
+                    break
+                table.append(cells)
+            if len(table) > 1:
+                tables.append(table)
+    return tables
+
+def ocr(image, include_tables=False):
     status = ocr_status()
     if not status['ready']:
         raise ValueError('OCR local chưa sẵn sàng. Cài Tesseract và thử lại; PDF text vẫn đọc được.')
@@ -52,7 +111,8 @@ def ocr(image):
         raise ValueError('Ảnh quá lớn để OCR an toàn')
     lang = 'eng+vie' if 'vie' in status['languages'] else 'eng'
     gray = ImageOps.autocontrast(ImageOps.grayscale(image))
-    data = pytesseract.image_to_data(gray, lang=lang, config='--psm 6', output_type=pytesseract.Output.DICT, timeout=60)
+    # Automatic page segmentation preserves large headings and multiple text/table blocks.
+    data = pytesseract.image_to_data(gray, lang=lang, config='--psm 3', output_type=pytesseract.Output.DICT, timeout=60)
     lines = {}
     scores = []
     for i, t in enumerate(data['text']):
@@ -72,7 +132,8 @@ def ocr(image):
         quality.append('Ảnh nhỏ/độ tương phản thấp; có thể bỏ sót chữ.')
     if 'vie' not in status['languages']:
         quality.append('Chưa cài ngôn ngữ vie; dấu tiếng Việt có thể đọc sai.')
-    return text, ' '.join(quality) or 'OCR cần nhân viên kiểm tra'
+    result = (text, ' '.join(quality) or 'OCR cần nhân viên kiểm tra')
+    return (*result, ocr_tables(data)) if include_tables else result
 
 def decode(data):
     for encoding in ['utf-8-sig', 'utf-16', 'cp1258']:
@@ -135,8 +196,8 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                         add(text, 'PDF text', '', tables)
                     else:
                         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                        text, quality = ocr(Image.open(io.BytesIO(pix.tobytes('png'))))
-                        add(text, 'OCR', quality)
+                        text, quality, tables = ocr(Image.open(io.BytesIO(pix.tobytes('png'))), include_tables=True)
+                        add(text, 'OCR', quality, tables)
         else:
             from pypdf import PdfReader
             import pdfplumber
@@ -165,8 +226,8 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                             add(text, 'PDF text', '', tables)
                         else:
                             pil_img = pdfium_doc[idx].render(scale=2).to_pil()
-                            text, quality = ocr(pil_img)
-                            add(text, 'OCR', quality)
+                            text, quality, tables = ocr(pil_img, include_tables=True)
+                            add(text, 'OCR', quality, tables)
                 finally:
                     pdfium_doc.close()
     elif ext in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
@@ -176,8 +237,8 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                 raise ValueError('Ảnh vượt giới hạn 100 trang')
             for n in range(count):
                 im.seek(n)
-                text, q = ocr(im.copy())
-                add(text, 'OCR', q)
+                text, q, tables = ocr(im.copy(), include_tables=True)
+                add(text, 'OCR', q, tables)
     elif ext == '.xlsx':
         wb = load_workbook(path, read_only=True, data_only=False)
         try:

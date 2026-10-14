@@ -28,6 +28,8 @@ def extract_tables(table,doc_type,page):
                 values={key:cells[idx] if idx<len(cells) else '' for idx,key in mapping.items()}
                 if mode=='item' and values.get('description') and decimal_text(values.get('quantity','')) is not None:
                     values.setdefault('line_number',str(len([o for o in output if o['kind']=='item'])+1))
+                    if not re.fullmatch(r'\d+', values['line_number']):
+                        values['warning']='Số thứ tự dòng chưa rõ; đối chiếu bảng gốc và sửa trước khi xác minh.'
                     for k in ['quantity','unit_price','line_amount']:
                         if k in values:
                             n=decimal_text(values[k])

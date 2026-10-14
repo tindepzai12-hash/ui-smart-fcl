@@ -222,6 +222,10 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
         for r in records
     ]
     history += [[a['action'], a.get('after_json', ''), '', '', '', a['actor'], '', a['created_at'], a.get('before_json', ''), a['reason']] for a in audit]
+    for doc in documents:
+        if doc.get('source'):
+            source = doc['source']
+            history.append(['Nguồn PDF gốc', doc['name'], source['name'], f"{source['start_page']}-{source['end_page']}", 'SHA-256: ' + source['hash'], 'Tách PDF / giữ bản gốc', 'Chờ xác minh theo từng bản ghi', '', '', 'Khoảng trang trên PDF gốc; trang chứng từ con bắt đầu từ 1.'])
     sheet(
         wb,
         SHEETS[6],
