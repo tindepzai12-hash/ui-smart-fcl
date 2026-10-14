@@ -17,6 +17,7 @@ from .db import one, execute, encode, uid, now
 from .dictionary import FIELDS, supports
 from .extraction import classify
 from .normalize import normalize
+from .ai_guidance import EXAMPLES
 
 _key = None
 _model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
@@ -329,13 +330,72 @@ def validated_subset(result, pages):
                 'page':row['page'],'evidence':row['evidence'],'method':'OpenAI'})
     return records, rejected
 
+def repair_targets(result, records, rejected, pages):
+    """Request missing/rejected values, never supply expected evaluation answers."""
+    fields = {match.group(1) for reason in rejected
+              if (match := re.match(r'fields\[\d+\] ([a-z_]+):', reason))}
+    found = {r['key'] for r in records if r['kind'] == 'field'}
+    text = '\n'.join(p['text'] for p in pages)
+    if supports(result.document_type, 'Invoice') and re.search(r'(?i)\b(?:total|amount)\b', text):
+        fields.update({'invoice_total', 'currency'} - found)
+    if result.document_type in ['B/L', 'Invoice & Packing List', 'Packing List'] and re.search(r'(?i)\b(?:gross\s+weight|GW|KGM|KGS)\b', text):
+        fields.update({'gross_weight'} - found)
+    fields = {k for k in fields if result.document_type in FIELDS[k]['documents']}
+    items = any(reason.startswith('items[') for reason in rejected)
+    if supports(result.document_type, 'Invoice') and re.search(r'(?i)\b(?:quantity|qty)\b', text):
+        items |= not any(r['kind'] == 'item' and r['raw'].get('quantity') for r in records)
+    containers = any(reason.startswith('containers[') for reason in rejected)
+    return {'fields': sorted(fields), 'items': items, 'containers': containers}
+
+
+def merge_supported_repair(first, repair, pages, targets):
+    """Accept a second reading only through the unchanged evidence validator."""
+    base = {'document_type': first.document_type, 'classification_evidence': first.classification_evidence,
+            'fields': [], 'items': [], 'containers': []}
+    validate_result(DocumentResult.model_validate(base), pages)
+    if repair.document_type != first.document_type:
+        raise ValueError('Lượt đọc lại đổi loại chứng từ; giữ kết quả ban đầu')
+    validate_result(DocumentResult.model_validate({**base, 'classification_evidence': repair.classification_evidence}), pages)
+    def valid(name, value):
+        try:
+            validate_result(DocumentResult.model_validate({**base, name: [value]}), pages)
+            return True
+        except ValueError:
+            return False
+    def identity(name, value):
+        key = value['field_id'] if name == 'fields' else value['line_number'] if name == 'items' else value['container_number']
+        return value['source_page'], key
+    merged = first.model_dump()
+    for name in ['fields', 'items', 'containers']:
+        if name != 'fields' and not targets[name]:
+            continue
+        for candidate in getattr(repair, name):
+            value = candidate.model_dump()
+            if name == 'fields' and value['field_id'] not in targets['fields']:
+                continue
+            if not valid(name, value):
+                continue
+            existing = [v for v in merged[name] if identity(name, v) == identity(name, value)]
+            good = [v for v in existing if valid(name, v)]
+            if good:
+                if name == 'fields':
+                    continue  # Never overwrite an accepted field with another reading.
+                # A fuller row may fill null cells, but must agree with every existing value.
+                attributes = (['product_code', 'description', 'quantity', 'unit', 'unit_price', 'line_amount', 'currency', 'origin']
+                              if name == 'items' else ['container_number', 'seal_number', 'container_type'])
+                if any(v.get(k) is not None and v[k] != value.get(k) for v in good for k in attributes):
+                    continue
+            merged[name] = [v for v in merged[name] if identity(name, v) != identity(name, value)] + [value]
+    return DocumentResult.model_validate(merged)
+
+
 def analyze(case_id, document, pages):
     if not key():
         raise ValueError('Chưa cấu hình OpenAI. Bạn có thể tiếp tục bằng chế độ Local.')
     if sum(len(p['text']) for p in pages) > 90000:
         raise ValueError('Tài liệu vượt 90.000 ký tự cho một yêu cầu AI; chia tài liệu để tránh bỏ sót.')
     text = encode([{'page': p['number'], 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)]} for p in pages])
-    digest = hashlib.sha256(('schema-v6-source-lines|' + _model + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v7-guided-repair|' + _model + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -373,14 +433,17 @@ def analyze(case_id, document, pages):
         'If [OCR sparse layer] exists, it is a second reading of the SAME page for disconnected table cells. Use an existing quote from either layer for missing cells, but never synthesize or normalize a value by combining readings. '
         'Content classifier result (not filename or staff hint): '+encode({'type':content_type,'quote':content_quote})+'. If type is not Other, preserve that content-supported type. '
         'Never correct inconsistent source data. Never use codes/legal classifications. Empty unavailable values=null. Fields allowed: ' + encode(permitted)
+        + '\n' + EXAMPLES
     )
     client = OpenAI(api_key=key(), timeout=60, max_retries=1)
     try:
+        sampling = {'temperature': 0} if _model.startswith(('gpt-4.1', 'gpt-4o')) else {}
         response = client.responses.parse(
             model=_model,
             input=[{'role': 'system', 'content': instructions}, {'role': 'user', 'content': text}],
             text_format=DocumentResult,
             store=False,
+            **sampling,
         )
         usage = response.usage
         execute(
@@ -390,9 +453,38 @@ def analyze(case_id, document, pages):
         result = response.output_parsed
         if result is None:
             raise ValueError('AI từ chối hoặc chưa trả kết quả có cấu trúc')
+        base = {**result.model_dump(), 'fields': [], 'items': [], 'containers': []}
+        validate_result(DocumentResult.model_validate(base), pages)
+        try:
+            records, rejected = validated_subset(result, pages)
+        except ValueError as exc:
+            records, rejected = [], [str(exc)]
+        targets = repair_targets(result, records, rejected, pages)
+        repair_error = None
+        if targets['fields'] or targets['items'] or targets['containers']:
+            try:
+                feedback = ('One bounded correction pass. Return only the requested fields/groups below. '
+                    'Re-read the original numbered source, not the failed output. Rejections are diagnostics, not evidence. '
+                    'Do not invent unavailable values or normalize OCR punctuation. Keep units null if unproven. '
+                    'Every returned value must have correct source pointers and literal evidence. '
+                    'Targets: '+encode(targets)+'; diagnostics: '+encode(rejected[:20]))
+                retry = client.responses.parse(model=_model,
+                    input=[{'role': 'system', 'content': instructions+'\n'+feedback}, {'role': 'user', 'content': text}],
+                    text_format=DocumentResult, store=False, **sampling)
+                usage = retry.usage
+                execute('INSERT INTO ai_usage VALUES (?,?,?,?,?,?,?)',
+                    (uid(), case_id, now(), _model, getattr(usage,'input_tokens',None), getattr(usage,'output_tokens',None), 'repair_received'))
+                if retry.output_parsed is None:
+                    raise ValueError('Lượt đọc lại chưa trả dữ liệu có cấu trúc')
+                result = merge_supported_repair(result, retry.output_parsed, pages, targets)
+            except Exception as exc:
+                repair_error = str(exc) if isinstance(exc, ValueError) else safe_error(exc)
         records, rejected = validated_subset(result, pages)
-        execute('INSERT OR REPLACE INTO ai_cache VALUES (?,?,?)', (digest, result.model_dump_json(), now()))
-        return result, records, {'source': 'api', 'rejected': rejected}
+        if repair_error:
+            rejected.append('Lượt đọc lại chưa hoàn tất; giữ dữ liệu đã có bằng chứng. '+repair_error)
+        else:
+            execute('INSERT OR REPLACE INTO ai_cache VALUES (?,?,?)', (digest, result.model_dump_json(), now()))
+        return result, records, {'source': 'api', 'rejected': rejected, 'repair_requested': targets}
     except ValueError:
         raise
     except Exception as exc:
