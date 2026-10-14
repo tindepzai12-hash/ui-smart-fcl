@@ -11,5 +11,23 @@ cd tools/debs
 apt-get "${apt_options[@]}" download tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie libtesseract5 liblept5
 for package in ./*.deb; do dpkg-deb -x "$package" ../ocr; done
 cd ../..
-LD_LIBRARY_PATH="$PWD/tools/ocr/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" TESSDATA_PREFIX="$PWD/tools/ocr/usr/share/tesseract-ocr/5/tessdata" tools/ocr/usr/bin/tesseract --list-langs
+# Runtime images omit libraries present on the build image. Bundle the complete
+# linked dependency closure, excluding glibc which belongs to the runtime OS.
+mkdir -p tools/ocr/lib
+LD_LIBRARY_PATH="$PWD/tools/ocr/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" ldd tools/ocr/usr/bin/tesseract | awk '$2 == "=>" && $3 ~ /^\// { print $3 }' | while IFS= read -r library; do
+  case "$(basename "$library")" in
+    libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libresolv.so.*|ld-linux*) continue ;;
+  esac
+  cp -L "$library" tools/ocr/lib/
+done
+cat > tools/ocr/tesseract <<'WRAPPER'
+#!/usr/bin/env bash
+set -e
+ocr_root="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export LD_LIBRARY_PATH="$ocr_root/lib:${LD_LIBRARY_PATH:-}"
+export TESSDATA_PREFIX="$ocr_root/usr/share/tesseract-ocr/5/tessdata"
+exec "$ocr_root/usr/bin/tesseract" "$@"
+WRAPPER
+chmod +x tools/ocr/tesseract
+tools/ocr/tesseract --list-langs
 node --test tests/cloud-gateway.test.mjs

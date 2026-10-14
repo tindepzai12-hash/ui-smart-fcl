@@ -22,8 +22,9 @@ MAX_PAGES = 100
 Image.MAX_IMAGE_PIXELS = 35_000_000
 
 def ocr_status():
-    candidate = os.getenv('TESSERACT_CMD') or shutil.which('tesseract')
-    for p in [ROOT / 'tools/ocr/usr/bin/tesseract', ROOT / 'tools/tesseract/tesseract.exe', Path('C:/Program Files/Tesseract-OCR/tesseract.exe')]:
+    cloud_ocr = ROOT / 'tools/ocr/tesseract'
+    candidate = os.getenv('TESSERACT_CMD') or (str(cloud_ocr) if cloud_ocr.exists() else shutil.which('tesseract'))
+    for p in [ROOT / 'tools/tesseract/tesseract.exe', Path('C:/Program Files/Tesseract-OCR/tesseract.exe')]:
         if not candidate and p.exists():
             candidate = str(p)
     if not candidate:

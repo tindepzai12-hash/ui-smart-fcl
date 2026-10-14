@@ -1,0 +1,13 @@
+SYNTHETIC TEST DOCUMENT — NOT FOR COMMERCIAL USE
+COMMERCIAL INVOICE
+Invoice No: 000123-A
+Invoice Date: 2026-10-01
+Seller: Demo Seller Ltd
+Buyer: Công ty Mẫu Việt Nam
+Currency: USD
+Incoterms: CIF Cat Lai Incoterms 2020
+Payment Terms: T/T
+Invoice Total: 1750.25
+Item No | Product Code | Description | Quantity | Unit | Unit Price | Amount | Currency
+1 | 00123 | Thiết bị mẫu A | 10 | PCS | 100 | 1000 | USD
+2 | 00456 | Thiết bị mẫu B | 5 | PCS | 150.05 | 750.25 | USD

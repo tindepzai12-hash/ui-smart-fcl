@@ -1,0 +1,10 @@
+SYNTHETIC TEST DOCUMENT
+PACKING LIST
+Invoice Reference: 000123-A
+Packing List No: PK-001
+Total Packages: 100 CTNS
+Gross Weight: 1000 KGS
+Net Weight: 900 KG
+Container | Seal | Type
+MSCU1234567 | SEAL01 | 20GP
+CSNU7654321 | SEAL02 | 40HC

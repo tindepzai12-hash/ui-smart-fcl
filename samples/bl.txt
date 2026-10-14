@@ -1,0 +1,14 @@
+SYNTHETIC TEST DOCUMENT
+BILL OF LADING
+B/L No: BL-0001
+Shipper: Demo Forwarder Ltd
+Consignee: Công ty Mẫu Việt Nam
+Vessel: DEMO OCEAN
+Voyage: V001
+Port of Loading: Shanghai
+Port of Discharge: Cat Lai
+Packages: 100 CARTONS
+Gross Weight: 1 MT
+Container | Seal | Type
+MSCU1234567 | SEAL01 | 20GP
+CSNU7654321 | SEAL02 | 40HC
