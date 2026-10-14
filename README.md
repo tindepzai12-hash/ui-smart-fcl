@@ -1,5 +1,17 @@
 # U&I SMART — hồ sơ nhập khẩu FCL đường biển
 
+## Bản cloud dùng thử
+
+Web: **https://ui-smart-fcl.onrender.com**. Repository riêng tư: **https://github.com/tindepzai12-hash/ui-smart-fcl**.
+
+Triển khai Render **Free / Node 24 / Singapore**. Node quản lý web, đăng nhập và bộ xử lý Python trên loopback. OCR tiếng Anh/Việt hoạt động trên máy chủ. Mật khẩu truy cập được đặt bằng biến môi trường, không lưu trong Git. Mọi người có mật khẩu cùng truy cập một không gian dùng chung.
+
+Chứng từ tải lên bản cloud được xử lý trên máy chủ Singapore. Chế độ “Local” ở đây nghĩa là không dùng OpenAI. Render Free xóa SQLite và file khi ngủ, khởi động lại hoặc triển khai lại; tải sao lưu trong Cài đặt trước khi rời phiên. Bản này dành cho demo và thử nghiệm. Dữ liệu thật trên máy local không được đưa lên repository hoặc máy chủ.
+
+Kết nối OpenAI trong Cài đặt bằng key riêng của bạn. Key nhập tại web chỉ ở bộ nhớ phiên máy chủ; để giữ sau khởi động lại, đặt `OPENAI_API_KEY` trong Render Environment. Chi tiết: [hướng dẫn triển khai](docs/RENDER_DEPLOY.md).
+
+## Bản local
+
 Bản local một người dùng cho nhân viên chứng từ/đại lý hải quan của forwarder U&I. Giao diện, OCR, đối chiếu, chỉnh sửa và xuất Excel chạy thật. Khởi động và xử lý Local không cần OpenAI key. Đây là bản MVP đã kiểm thử bằng chứng từ giả lập; cần pilot với mẫu nghiệp vụ được phép sử dụng trước khi áp dụng hàng ngày.
 
 ## Mở trên máy hiện tại

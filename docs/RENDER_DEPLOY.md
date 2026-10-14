@@ -11,7 +11,8 @@ This is a Node deployment with a Python document engine, not a rewrite of docume
 ## Configuration
 
 - Runtime: Node; region: Singapore; instance: Free; branch: main.
-- Build: `bash scripts/render-build.sh`; start: `npm start`; health: `/healthz`.
+- Build: `bash scripts/render-build.sh`; start: `npm start`; public readiness endpoint: `/healthz`.
+- The deployed service was created through MCP, which cannot set a custom HTTP health-check path. It currently uses Render's default TCP check. Node binds its public port only after the Python processor and SQLite report readiness, and exits if the processor exits. `render.yaml` sets `/healthz` for future Blueprint deployments; it is not automatically applied to this MCP-created service. To enable ongoing HTTP checks, set Health Check Path to `/healthz` in Render Settings.
 - Required secret environment values: `UI_SMART_PASSWORD` (16+ characters), `UI_SMART_SESSION_SECRET` (32+ random characters).
 - Optional: `OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-4.1-mini`). Do not commit keys or paste them in chat.
 - Node 24; Python 3 from native runtime; Python dependencies installed in ignored `vendor/`.
