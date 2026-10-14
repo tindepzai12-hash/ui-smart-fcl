@@ -1276,9 +1276,11 @@ function App() {
                 </div>
               </div>
 
-              <StepTracker current={current} onSelectTab={(t: string) => setTab(t)} />
-              <ContainerSummaryBanner records={current.records} documents={current.documents} checks={current.checks} />
-              {renderNextActionBanner()}
+              {tab !== 'references' && <>
+                <StepTracker current={current} onSelectTab={(t: string) => setTab(t)} />
+                <ContainerSummaryBanner records={current.records} documents={current.documents} checks={current.checks} />
+                {renderNextActionBanner()}
+              </>}
 
               <nav className="tabs" aria-label="Các phân hệ kiểm tra hồ sơ">
                 {caseTabs.map(([id, title]) => (
