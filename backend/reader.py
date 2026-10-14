@@ -50,7 +50,7 @@ def ocr_tables(data):
     from .extraction import ITEM_ALIASES, CONT_ALIASES
     words = []
     for i, text in enumerate(data['text']):
-        if text.strip() and float(data['conf'][i]) >= 0:
+        if text.strip() and not re.fullmatch(r'[|¦]+', text.strip()) and float(data['conf'][i]) >= 0:
             words.append({'text': text.strip(), 'x': data['left'][i], 'y': data['top'][i] + data['height'][i]/2,
                           'right': data['left'][i]+data['width'][i], 'height': data['height'][i]})
     if not words:
