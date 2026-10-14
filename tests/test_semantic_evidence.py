@@ -1,0 +1,74 @@
+import pytest
+from PIL import Image
+from backend import ai, extraction, reader
+from backend.dictionary import supports
+from backend.normalize import normalize, decimal_text
+from backend.validation import build_checks
+
+
+def document(kind, text, **parts):
+    return ai.DocumentResult.model_validate(dict(document_type=kind, classification_evidence=text,
+        fields=[],items=[],containers=[],**parts))
+
+
+def test_titles_outweigh_references_and_misleading_filename():
+    assert extraction.classify([{'text':'SALES CONTRACT\nARTICLE 4: DOCUMENTS REQUIRED\n1. CLEAN SHIPPED ON BOARD OCEAN BILL OF LADING\n2. ORIGINAL SIGNED COMMERCIAL INVOICE'}])[0]=='Contract'
+    assert extraction.classify([{'text':'ACME DELIVERY ORDER\nArrival Date: MAR 05 2025\nB/L No: X-01'}])[0]=='Delivery Order'
+    assert extraction.classify([{'text':'B/L No: X-01\nEst. Arrival Date: MAR 05 2025\nFree Time Until: 2025/03/10'}])[0]=='Arrival Notice'
+    assert extraction.classify([{'text':'COMMERCIAL INVOICE & PACKING LIST\nQuantity: 100'}])[0]=='Invoice & Packing List'
+
+
+def test_classification_cannot_use_valid_but_unrelated_quote():
+    pages=[{'number':1,'text':'ACME DELIVERY ORDER\nB/L No: X-01'}]
+    data=document('B/L','B/L No: X-01')
+    with pytest.raises(ValueError,match='mâu thuẫn'):ai.validate_result(data,pages)
+
+
+def test_literal_container_row_is_not_a_bill_number():
+    pages=[{'number':1,'text':'BILL OF LADING\nABCU1234567 20DC SEAL99'}]
+    data=document('B/L','BILL OF LADING')
+    data.fields=[ai.FieldResult(field_id='bl_number',raw_value='ABCU1234567 20DC SEAL99',source_page=1,evidence_text='ABCU1234567 20DC SEAL99')]
+    with pytest.raises(ValueError,match='định danh'):ai.validate_result(data,pages)
+    data.fields[0].raw_value='ABCU1234567'
+    with pytest.raises(ValueError,match='container'):ai.validate_result(data,pages)
+
+
+def test_separate_table_header_evidence_is_valid_but_invented_unit_is_not():
+    pages=[{'number':1,'text':'INVOICE\nQUANTITY (SET)\nAMOUNT (USD)\nBolts 20.000 23 46,000.00'}]
+    data=document('Invoice','INVOICE')
+    data.items=[ai.ItemResult(line_number='1',description='Bolts',quantity='20.000',unit='SET',currency='USD',source_page=1,
+        evidence_text='Bolts 20.000 23 46,000.00',cell_evidence=[ai.CellEvidence(attribute='unit',evidence_text='QUANTITY (SET)'),ai.CellEvidence(attribute='currency',evidence_text='AMOUNT (USD)')])]
+    records=ai.validate_result(data,pages)
+    assert records[0]['raw']['quantity']=='20.000' and records[0]['value']['warning']
+    assert '[unit] QUANTITY (SET)' in records[0]['evidence']
+    data.items[0].unit='PCS'
+    with pytest.raises(ValueError,match='unit'):ai.validate_result(data,pages)
+
+
+def test_unit_cell_must_be_on_same_page():
+    data=document('B/L','BILL OF LADING')
+    data.fields=[ai.FieldResult(field_id='gross_weight',raw_value='5,580.000',unit='KGM',unit_evidence='KGM',source_page=1,evidence_text='5,580.000')]
+    pages=[{'number':1,'text':'BILL OF LADING\n5,580.000\nKGM'}]
+    records=ai.validate_result(data,pages)
+    assert records[0]['raw']=='5,580.000' and records[0]['value']['unit']=='KG'
+    pages[0]['text']='BILL OF LADING\n5,580.000';pages.append({'number':2,'text':'KGM'})
+    with pytest.raises(ValueError,match='Đơn vị'):ai.validate_result(data,pages)
+
+
+def test_combined_page_satisfies_both_checklist_entries_without_duplicate_source():
+    case={'mode':'FCL','requirements':{'Invoice':{'required':True,'note':'Required'},'Packing List':{'required':True,'note':'Required'}}}
+    docs=[{'id':'1','name':'combined.pdf','type':'Invoice & Packing List','status':'read','type_verified':False}]
+    checks=build_checks(case,docs,[])
+    assert all(c['result']=='Matched' for c in checks if c['key'].startswith('document:'))
+    assert any(c['key']=='classification:1' and c['result']=='Needs Verification' for c in checks)
+    assert supports(docs[0]['type'],'Invoice') and supports(docs[0]['type'],'Packing List')
+
+
+def test_hybrid_preserves_original_identifiers_when_ocr_disagrees(monkeypatch):
+    monkeypatch.setattr(reader,'ocr_status',lambda:{'ready':True})
+    monkeypatch.setattr(reader,'ocr',lambda *a,**k:('DELIVERY ORDER\nOrder No: O123','OCR needs review',[]))
+    text,method,quality,tables=reader.hybrid_text('Order No: 0123',Image.new('RGB',(10,10)),[])
+    assert text.startswith('Order No: 0123') and 'Order No: O123' in text
+    assert method=='PDF text + OCR' and quality
+    assert decimal_text('20.000') is None
+    assert normalize('MAR 05 2025','date')['text']=='2025-03-05'

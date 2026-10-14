@@ -74,7 +74,7 @@ class ProcessInput(Input):
 
 class ClassInput(Input):
     type: Literal[
-        'Invoice', 'Packing List', 'B/L', 'Sea Waybill', 'AWB', 'C/O',
+        'Invoice', 'Invoice & Packing List', 'Packing List', 'B/L', 'Sea Waybill', 'AWB', 'C/O',
         'Arrival Notice', 'Delivery Order', 'Contract', 'Purchase Order',
         'Insurance', 'Freight Invoice', 'Import Permit',
         'Inspection Certificate', 'Phytosanitary Certificate', 'Other'

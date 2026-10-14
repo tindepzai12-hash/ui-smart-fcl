@@ -1,5 +1,8 @@
 """Stable field IDs and document-specific semantics; legal codes are never inferred."""
-TYPES=['Invoice','Packing List','B/L','Sea Waybill','AWB','C/O','Arrival Notice','Delivery Order','Contract','Purchase Order','Insurance','Freight Invoice','Import Permit','Inspection Certificate','Phytosanitary Certificate','Other']
+TYPES=['Invoice','Invoice & Packing List','Packing List','B/L','Sea Waybill','AWB','C/O','Arrival Notice','Delivery Order','Contract','Purchase Order','Insurance','Freight Invoice','Import Permit','Inspection Certificate','Phytosanitary Certificate','Other']
+
+def supports(document_type, kind):
+    return document_type == kind or (document_type == 'Invoice & Packing List' and kind in ['Invoice', 'Packing List'])
 # id, Vietnamese label, aliases, type, applicable documents, business class
 SPECS=[
 ('invoice_number','Số hóa đơn',['invoice no','invoice number','commercial invoice no','invoice reference','số hóa đơn'],'text',['Invoice','Packing List','C/O','Contract','Purchase Order'],'A'),
@@ -68,6 +71,15 @@ SPECS=[
 ('tax_rate','Thuế suất đã tra cứu',[],'number',[],'D'),
 ('customs_value','Trị giá hải quan đã xác định',[],'number',[],'D')]
 FIELDS={s[0]:{'id':s[0],'label':s[1],'aliases':s[2],'type':s[3],'documents':s[4],'class':s[5],'level':'document','human_review':True,'sheet':'THONG_TIN_KHAI_BAO','official_mapping':'Pending — cần mẫu chỉ tiêu và danh mục hiện hành'} for s in SPECS}
+for spec in FIELDS.values():
+    if any(kind in spec['documents'] for kind in ['Invoice', 'Packing List']):
+        spec['documents'] = [*spec['documents'], 'Invoice & Packing List']
+# These roles and references also occur on carrier delivery notices/orders.
+for field in ['shipper','consignee','notify_party','vessel','voyage','packages','gross_weight','volume']:
+    for kind in ['Arrival Notice','Delivery Order']:
+        if kind not in FIELDS[field]['documents']:
+            FIELDS[field]['documents'] = [*FIELDS[field]['documents'], kind]
+FIELDS['do_number']['aliases'] += ['ma nhan container (so lenh)', 'mã nhận container (số lệnh)']
 LEGAL=[s[0] for s in SPECS if s[5] in ['C','D']]
 
 def default_requirements(mode='FCL'):

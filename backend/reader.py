@@ -162,6 +162,19 @@ def read_pdf_image(image):
     text, quality, tables = ocr(image, include_tables=True)
     return text, 'OCR', quality, tables
 
+
+def hybrid_text(text, image, tables):
+    """Keep selectable text AND image-only labels. Neither layer overwrites the source."""
+    status = ocr_status()
+    if not status['ready']:
+        return text, 'PDF text', 'PDF có ảnh; OCR chưa sẵn sàng, có thể thiếu nhãn/tiêu đề.', tables
+    try:
+        raster_text, quality, raster_tables = ocr(image, include_tables=True)
+    except ValueError as exc:
+        return text, 'PDF text', 'Không đọc thêm được lớp ảnh: '+str(exc), tables
+    return (text+'\n\n[OCR image layer — đối chiếu ảnh gốc nếu khác lớp chữ]\n'+raster_text,
+            'PDF text + OCR', quality, tables or raster_tables)
+
 def render_pdf_page_png(path, page_number, scale=1.5):
     path = Path(path)
     if fitz is not None:
@@ -212,7 +225,11 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                             tables = [t.extract() for t in page.find_tables().tables]
                         except Exception:
                             pass
-                        add(text, 'PDF text', '', tables)
+                        if page.get_images():
+                            pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72))
+                            add(*hybrid_text(text, Image.open(io.BytesIO(pix.tobytes('png'))), tables))
+                        else:
+                            add(text, 'PDF text', '', tables)
                     else:
                         pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72))
                         text, method, quality, tables = read_pdf_image(Image.open(io.BytesIO(pix.tobytes('png'))))
@@ -242,7 +259,10 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                                 tables = p_page.extract_tables() or []
                             except Exception:
                                 pass
-                            add(text, 'PDF text', '', tables)
+                            if p_page.images:
+                                add(*hybrid_text(text, pdfium_doc[idx].render(scale=200/72).to_pil(), tables))
+                            else:
+                                add(text, 'PDF text', '', tables)
                         else:
                             pil_img = pdfium_doc[idx].render(scale=200/72).to_pil()
                             text, method, quality, tables = read_pdf_image(pil_img)

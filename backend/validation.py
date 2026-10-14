@@ -2,7 +2,7 @@
 import json
 import re
 from decimal import Decimal
-from .dictionary import FIELDS
+from .dictionary import FIELDS, supports
 from .normalize import comparable, decimal_text, normalize
 from .db import uid, encode
 
@@ -34,7 +34,7 @@ def build_checks(case, documents, records):
 
     requirements = json.loads(case['requirements']) if isinstance(case['requirements'], str) else case['requirements']
     for kind, rule in requirements.items():
-        matching_docs = [d for d in documents if d['type'] == kind or (kind == 'B/L' and d['type'] == 'Sea Waybill')]
+        matching_docs = [d for d in documents if supports(d['type'],kind) or (kind == 'B/L' and d['type'] == 'Sea Waybill')]
         found = len(matching_docs) > 0
         doc_sources = [{'id': d['id'], 'document': d['name'], 'type': d['type'], 'value': {'text': d['type']}, 'page': 1} for d in matching_docs]
         note_text = rule.get('note', '')
@@ -94,7 +94,7 @@ def build_checks(case, documents, records):
                     severity='warning',
                 )
 
-    if not any(r['kind'] == 'item' for r in active):
+    if not any(r['kind'] == 'item' and (not r.get('document_id') or any(supports(docs.get(r['document_id'],{}).get('type'),t) for t in ['Invoice','Packing List'])) for r in active):
         if required(inv_rule) or required(pl_rule):
             add('missing:items', 'Missing', 'Chưa có dòng hàng độc lập. Thêm dòng hàng hoặc kiểm tra bảng gốc.', severity='error')
         else:
@@ -143,7 +143,7 @@ def build_checks(case, documents, records):
 
     # Invoice arithmetic is per document, never across all invoices.
     for d in documents:
-        if d['type'] != 'Invoice':
+        if not supports(d['type'],'Invoice'):
             continue
         items = [r for r in active if r['kind'] == 'item' and r['document_id'] == d['id']]
         totals = [r for r in fields.get('invoice_total', []) if r['document_id'] == d['id']]

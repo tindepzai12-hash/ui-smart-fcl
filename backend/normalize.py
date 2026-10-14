@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 UNITS = {
-    'KGS': 'KG', 'KILOGRAMS': 'KG', 'KILOGRAM': 'KG', 'KG': 'KG',
+    'KGS': 'KG', 'KGM': 'KG', 'KILOGRAMS': 'KG', 'KILOGRAM': 'KG', 'KG': 'KG',
     'MT': 'MT', 'TONNES': 'MT', 'TONNE': 'MT',
     'LBS': 'LB', 'LB': 'LB',
     'PCS': 'PCS', 'PIECES': 'PCS', 'PIECE': 'PCS',
@@ -32,6 +32,8 @@ def decimal_text(raw):
             s = s.replace(',', '')
         else:
             s = s.replace(',', '.') if s.count(',') == 1 else ''
+    elif re.fullmatch(r'[+-]?\d{1,3}\.\d{3}',s):
+        return None  # 20.000 can mean twenty or twenty thousand; retain raw and require review.
     elif s.count('.') > 1:
         if re.fullmatch(r'[+-]?\d{1,3}(?:\.\d{3})+', s):
             s = s.replace('.', '')
@@ -70,7 +72,7 @@ def normalize(raw, kind='text'):
     elif kind == 'date':
         found = None
         matched_fmt = None
-        for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%d %b %Y', '%d %B %Y']:
+        for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%d/%m/%Y', '%d-%m-%Y', '%d %b %Y', '%d %B %Y', '%b %d %Y', '%B %d %Y']:
             try:
                 found = datetime.strptime(raw, fmt).date().isoformat()
                 matched_fmt = fmt
