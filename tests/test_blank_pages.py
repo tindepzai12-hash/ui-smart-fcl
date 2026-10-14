@@ -35,3 +35,13 @@ def test_all_blank_pdf_is_not_a_successful_document(tmp_path):
     path=tmp_path/'blank.pdf';writer.write(path)
     with pytest.raises(ValueError,match='không có nội dung'):
         reader.read_document(path)
+
+
+def test_ocr_timeout_is_actionable_and_thread_limit_is_set(monkeypatch):
+    import os
+    assert os.environ.get('OMP_THREAD_LIMIT')
+    monkeypatch.setattr(reader,'ocr_status',lambda:{'ready':True,'cmd':'test','languages':['eng']})
+    def timeout(*args,**kwargs):raise RuntimeError('Tesseract process timeout')
+    monkeypatch.setattr(reader.pytesseract,'image_to_data',timeout)
+    with pytest.raises(ValueError,match='60 giây'):
+        reader.ocr(Image.new('RGB',(1000,1400),'white'))

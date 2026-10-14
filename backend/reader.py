@@ -11,6 +11,9 @@ from openpyxl import load_workbook
 import xlrd, pytesseract
 from .db import ROOT
 
+# Tesseract's OpenMP defaults can oversubscribe a small Render instance and time out.
+os.environ.setdefault('OMP_THREAD_LIMIT', '1')
+
 if (ROOT / 'tools/tessdata/eng.traineddata').exists():
     os.environ['TESSDATA_PREFIX'] = str(ROOT / 'tools/tessdata')
 elif (ROOT / 'tools/ocr/usr/share/tesseract-ocr/5/tessdata/eng.traineddata').exists():
@@ -112,7 +115,12 @@ def ocr(image, include_tables=False):
     lang = 'eng+vie' if 'vie' in status['languages'] else 'eng'
     gray = ImageOps.autocontrast(ImageOps.grayscale(image))
     # Automatic page segmentation preserves large headings and multiple text/table blocks.
-    data = pytesseract.image_to_data(gray, lang=lang, config='--psm 3', output_type=pytesseract.Output.DICT, timeout=60)
+    try:
+        data = pytesseract.image_to_data(gray, lang=lang, config='--psm 3', output_type=pytesseract.Output.DICT, timeout=60)
+    except RuntimeError as exc:
+        if 'timeout' in str(exc).lower():
+            raise ValueError('OCR vượt 60 giây cho một trang. Hãy dùng bản scan rõ hơn hoặc chia nhỏ chứng từ.') from None
+        raise
     lines = {}
     scores = []
     for i, t in enumerate(data['text']):
@@ -206,7 +214,7 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                             pass
                         add(text, 'PDF text', '', tables)
                     else:
-                        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                        pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72))
                         text, method, quality, tables = read_pdf_image(Image.open(io.BytesIO(pix.tobytes('png'))))
                         add(text, method, quality, tables)
         else:
@@ -236,7 +244,7 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                                 pass
                             add(text, 'PDF text', '', tables)
                         else:
-                            pil_img = pdfium_doc[idx].render(scale=2).to_pil()
+                            pil_img = pdfium_doc[idx].render(scale=200/72).to_pil()
                             text, method, quality, tables = read_pdf_image(pil_img)
                             add(text, method, quality, tables)
                 finally:

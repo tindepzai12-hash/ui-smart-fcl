@@ -52,6 +52,8 @@ def build_checks(case, documents, records):
             add('reading:' + d['id'], 'Needs Verification', 'Đã đọc nội dung. Tách bộ PDF thành từng chứng từ trước khi xác nhận loại và đối chiếu.', doc_source)
         elif d['status'] != 'read':
             add('reading:' + d['id'], 'Needs Verification', d.get('error') or f"Tài liệu {d['name']} chưa đọc xong. Hãy bấm Đọc & trích xuất hoặc thử lại.", doc_source, severity='error')
+        elif d.get('error'):
+            add('reading:' + d['id'], 'Needs Verification', d['error'], doc_source, severity='error')
         if not d['type_verified']:
             add('classification:' + d['id'], 'Needs Verification', 'Nhân viên cần xác nhận loại: ' + d['name'], doc_source)
         if case['mode'] == 'FCL' and d['type'] == 'AWB':

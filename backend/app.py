@@ -461,6 +461,7 @@ def worker(job_id):
                             (', '.join(sorted({p['method'] for p in pages})), time.monotonic() - started, d['id']),
                         )
                 job['stage'] = 'Phân loại / trích xuất ' + ('Local' if mode == 'local' else 'OpenAI')
+                extraction_warning = None
                 if d['ext'] == '.pdf' and pdf_bundle.is_mixed(pages):
                     message = 'Đã đọc PDF gồm nhiều loại chứng từ. Chọn “Tách bộ PDF” để phân bổ trang trước khi trích xuất; bản gốc được giữ lại.'
                     with db.connect() as c:
@@ -469,9 +470,12 @@ def worker(job_id):
                     job['warnings'].append({'document':d['name'],'message':message})
                     continue
                 if mode == 'openai':
-                    result, records, _ = ai.analyze(id, d, pages)
+                    result, records, info = ai.analyze(id, d, pages)
                     kind = result.document_type
                     evidence = result.classification_evidence
+                    if info['rejected']:
+                        extraction_warning = f"OpenAI: {len(info['rejected'])} giá trị bị loại vì không qua kiểm tra bằng chứng/dictionary. Cần kiểm tra phần dữ liệu thiếu. " + '; '.join(info['rejected'])[:400]
+                        job['warnings'].append({'document': d['name'], 'message': extraction_warning})
                 else:
                     kind, evidence = extraction.classify(pages)
                     if d['type_verified']:
@@ -490,7 +494,7 @@ def worker(job_id):
                         if any(p['kind'] == r['kind'] and p['key'] == r['key'] and p['page'] == r['page'] and p['raw'] == r['raw'] for p in protected):
                             continue
                         add_record(c, id, d['id'], r)
-                    c.execute('UPDATE documents SET error=NULL WHERE id=?', (d['id'],))
+                    c.execute("UPDATE documents SET status='read',error=? WHERE id=?", (extraction_warning, d['id']))
                     db.audit(c, id, 'Đọc và trích xuất ' + mode, d['id'], after={'type': kind, 'pages': len(pages), 'records': len(records)})
             except InterruptedError:
                 raise
@@ -502,7 +506,7 @@ def worker(job_id):
         if job['errors']:
             job['stage'] = f"Hoàn tất có cảnh báo ({len(job['errors'])}/{len(docs)} tệp lỗi — xem chi tiết từng tệp)"
         elif job['warnings']:
-            job['stage'] = f"Đã đọc; {len(job['warnings'])} bộ PDF cần tách theo trang"
+            job['stage'] = f"Đã đọc; {len(job['warnings'])} cảnh báo cần kiểm tra"
         else:
             job['stage'] = 'Chờ nhân viên xác minh'
     except InterruptedError:
