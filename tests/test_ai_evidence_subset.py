@@ -25,6 +25,21 @@ def test_missing_classification_quote_cannot_be_bypassed():
     with pytest.raises(ValueError,match='Phân loại AI'):
         ai.validated_subset(ai.DocumentResult.model_validate(data),PAGES)
 
+def test_global_invoice_currency_and_row_unit_require_literal_cell_evidence():
+    text='COMMERCIAL INVOICE\nBolts\n10\nPCS\n12.00\n120.00\nCurrency for all line amounts: USD.'
+    data={'document_type':'Invoice','classification_evidence':'COMMERCIAL INVOICE','fields':[],
+          'items':[{'line_number':'1','description':'Bolts','quantity':'10','unit':'PCS','unit_price':'12.00','line_amount':'120.00','currency':'USD',
+                    'source_page':1,'evidence_text':'Bolts 10 PCS 12.00 120.00',
+                    'cell_evidence':[{'attribute':'unit','evidence_text':'','start_line':4,'end_line':4},
+                                     {'attribute':'currency','evidence_text':'','start_line':7,'end_line':7}]}],'containers':[]}
+    pages=[{'number':1,'text':text}]
+    records,rejected=ai.validated_subset(ai.DocumentResult.model_validate(data),pages)
+    assert not rejected and records[0]['value']['unit']=='PCS' and records[0]['value']['currency']=='USD'
+    data['items'][0]['cell_evidence'][1]['start_line']=4
+    data['items'][0]['cell_evidence'][1]['end_line']=4
+    with pytest.raises(ValueError,match='Không có giá trị AI'):
+        ai.validated_subset(ai.DocumentResult.model_validate(data),pages)
+
 
 def test_non_invoice_items_do_not_enter_invoice_scope():
     data={'document_type':'Packing List','classification_evidence':'PACKING LIST','fields':[],
