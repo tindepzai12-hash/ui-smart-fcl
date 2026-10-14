@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FolderOpen, FileCheck2, History, Settings, PanelLeftClose,
   Plus, ArrowRight, FileText, Upload, ChevronLeft, ChevronRight, Search,
   Check, AlertTriangle, Download, RotateCw, ZoomIn, ZoomOut, ShieldCheck,
-  X, Loader2, Trash2, Undo2, Eye, FileSpreadsheet, HardDrive, Link2
+  X, Loader2, Trash2, Undo2, Eye, FileSpreadsheet, HardDrive, Link2, BookOpen
 } from 'lucide-react';
 import '@fontsource/inter/latin-400.css';
 import '@fontsource/inter/latin-500.css';
@@ -22,6 +22,8 @@ import './styles.css';
 import { TemplateCenter } from './TemplateCenter';
 import { PdfSplit } from './PdfSplit';
 import { ReferenceFiles } from './ReferenceFiles';
+import { SourceInspector } from './SourceInspector';
+import { UserGuide } from './UserGuide';
 
 type Any = any;
 
@@ -109,7 +111,7 @@ const date = (s: string) =>
 
 function App() {
   const [view, setView] = useState('overview');
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [cases, setCases] = useState<Any[]>([]);
   const [health, setHealth] = useState<Any>(null);
   const [dict, setDict] = useState<Any>({ fields: {}, document_types: [] });
@@ -147,6 +149,7 @@ function App() {
   const [showText, setShowText] = useState(false);
   const [saveStates, setSaveStates] = useState<Record<string, { status: string; message?: string }>>({});
   const [activeRecordId, setActiveRecordId] = useState('');
+  const [sourceRecordId, setSourceRecordId] = useState('');
 
   const refresh = async () => {
     const [c, h, d] = await Promise.all([api('/cases'), api('/health'), api('/dictionary')]);
@@ -250,6 +253,7 @@ function App() {
       setRotation(0);
       setHighlight('');
       setSaveStates({});
+      setSourceRecordId('');
       location.hash = 'case=' + id;
     }
   }
@@ -307,6 +311,8 @@ function App() {
   }, [dialog?.kind]);
 
   const activeDoc = current?.documents.find((d: Any) => d.id === selectedDoc);
+  const sourceRecord = current?.records.find((r:Any) => r.id === sourceRecordId && r.document_id === selectedDoc);
+  const sourceConflict = sourceRecord && current?.checks.find((c:Any) => ['Mismatch','Needs Verification'].includes(c.result) && !c.resolution && c.detail.sources?.some((r:Any)=>r.id===sourceRecord.id));
   const allGroupRecords = current?.records.filter((r: Any) => r.kind === recordGroup) || [];
   const scopedRecords = allGroupRecords.filter(
     (r: Any) => !docScopeOnly || !selectedDoc || r.document_id === selectedDoc || !r.document_id
@@ -377,41 +383,40 @@ function App() {
   }
 
   function chooseSource(r: Any) {
+    setSourceRecordId(r.id || '');
+    setRecordGroup(r.kind);
+    setRecordFilter('all');
+    setRecordSearch('');
     setActiveRecordId(r.id || '');
     if (r.document_id) {
       setSelectedDoc(r.document_id);
       setPage(r.page || 1);
       setHighlight(r.evidence || '');
       setTab('documents');
-      setShowText(true);
+      setShowText(false);
+      setTimeout(() => document.querySelector('.source-inspector')?.scrollIntoView({behavior:'smooth',block:'start'}), 60);
     }
   }
 
-  function jumpToNextPending() {
-    if (!current?.records?.length) return;
-    setTab('documents');
-    setRecordFilter('all');
-    setRecordSearch('');
-    const pendingList = current.records.filter((r: Any) => r.status === 'pending');
-    if (!pendingList.length) {
-      notify('Tất cả bản ghi đã được xác minh.');
-      return;
-    }
-    const idx = pendingList.findIndex((r: Any) => r.id === activeRecordId);
-    const next = pendingList[(idx + 1) % pendingList.length];
-    setRecordGroup(next.kind);
-    setActiveRecordId(next.id);
-    if (next.document_id) {
-      setSelectedDoc(next.document_id);
-      setPage(next.page || 1);
-      setHighlight(next.evidence || '');
-      setShowText(true);
-    }
-    setTimeout(() => {
-      const el = document.getElementById('card-' + next.id) || document.getElementById('field-' + next.id);
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      if (el && 'focus' in el) (el as HTMLElement).focus();
-    }, 60);
+  function jumpToNextPending(bundle = current, afterId = activeRecordId) {
+    if (!bundle?.records?.length) return;
+    const conflicts = new Set(bundle.checks.filter((c:Any) => ['Mismatch','Needs Verification'].includes(c.result) && !c.resolution).flatMap((c:Any) => (c.detail.sources || []).map((r:Any) => r.id)));
+    const pendingList = bundle.records.filter((r:Any) => r.status === 'pending').sort((a:Any,b:Any) =>
+      Number(!!b.value?.warning || conflicts.has(b.id)) - Number(!!a.value?.warning || conflicts.has(a.id)));
+    if (!pendingList.length) { setSourceRecordId(''); notify('Đã kiểm tra hết bản ghi chờ. Mở Đối chiếu để hoàn tất hồ sơ.'); return; }
+    const index = pendingList.findIndex((r:Any) => r.id === afterId);
+    chooseSource(pendingList[(index+1)%pendingList.length]);
+  }
+
+  async function verifyAndNext(r:Any, skipInput = false) {
+    const updated = await verifyRecord(r,'verified',skipInput);
+    if (updated) jumpToNextPending(updated,r.id);
+  }
+
+  function focusRecordEditor(r:Any) {
+    if (r.kind !== 'field') { editDialog(r); return; }
+    const input = document.getElementById('field-'+r.id) as HTMLInputElement | null;
+    input?.scrollIntoView({behavior:'smooth',block:'center'}); input?.focus(); input?.select();
   }
 
   async function saveRecordValue(r: Any, value: Any) {
@@ -457,10 +462,10 @@ function App() {
     finally { if (savesInFlight.current[r.id] === task) delete savesInFlight.current[r.id]; }
   }
 
-  async function verifyRecord(r: Any, status: string) {
+  async function verifyRecord(r: Any, status: string, skipInput = false) {
     let targetRecord = savesInFlight.current[r.id] ? await savesInFlight.current[r.id] : r;
     if (!targetRecord) return;
-    if (r.kind === 'field') {
+    if (r.kind === 'field' && !skipInput) {
       const inputEl = document.getElementById('field-' + r.id) as HTMLInputElement | null;
       if (inputEl && inputEl.value !== textValue(targetRecord.value)) {
         const updated = await editRecord(targetRecord, inputEl.value);
@@ -488,6 +493,7 @@ function App() {
         [targetRecord.id]: { status: 'saved', message: status === 'verified' ? 'Đã xác minh' : 'Đã cập nhật' },
       }));
       notify('Đã lưu trạng thái xác minh');
+      return b;
     } catch (e: Any) {
       setSaveStates((prev) => ({ ...prev, [targetRecord.id]: { status: 'save_error', message: e.message } }));
       setError(e.message);
@@ -500,6 +506,7 @@ function App() {
 
   function renderNextActionBanner() {
     if (!current) return null;
+    if (job?.status === 'running') return <div className="processing-summary" role="status"><Loader2 size={16} className="spin"/> Đang đọc {job.index}/{job.total} tệp · {job.stage}. Chờ hoàn tất để kiểm tra nguồn.</div>;
     const docs = current.documents || [];
     const unreadDocs = docs.filter((d: Any) => d.status !== 'read');
     const unverifiedDocs = docs.filter((d: Any) => d.status === 'read' && !d.type_verified);
@@ -655,8 +662,8 @@ function App() {
             <p>Đối chiếu từng giá trị với bằng chứng gốc rồi bấm “Xác minh” (không duyệt tự động hàng loạt).</p>
           </div>
           <div className="row">
-            <button className="btn primary" onClick={jumpToNextPending}>
-              Đi tới bản ghi chờ tiếp theo ({pending})
+            <button className="btn primary" onClick={() => jumpToNextPending()}>
+              Bắt đầu kiểm tra ({pending})
             </button>
             <button className="btn" onClick={() => setTab('review')}>
               Mở bàn Xác minh tổng hợp
@@ -856,7 +863,7 @@ function App() {
             <Eye size={14} />
             Xem nguồn
           </button>
-          <button
+          <details className="record-more"><summary>Thêm</summary>          <button
             className="icon-btn"
             title="Hoàn tác lần sửa gần nhất"
             aria-label="Hoàn tác"
@@ -864,23 +871,22 @@ function App() {
           >
             <Undo2 size={15} />
           </button>
+<button className="text-btn danger" onClick={()=>verifyRecord(r,'rejected')}>Từ chối bản ghi</button></details>
           {r.status === 'verified' ? (
             <button className="text-btn" onClick={() => verifyRecord(r, 'pending')}>
               Mở lại
             </button>
           ) : (
             <>
-              <button className="text-btn danger" onClick={() => verifyRecord(r, 'rejected')}>
-                Từ chối
-              </button>
+
               <button
                 className="btn small"
                 disabled={job?.status === 'running' || !!r.value.warning}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => verifyRecord(r, 'verified')}
+                onClick={() => sourceRecordId===r.id ? verifyAndNext(r) : verifyRecord(r, 'verified')}
               >
                 <Check size={14} />
-                Xác minh
+                {sourceRecordId===r.id?'Xác minh & tiếp':'Xác minh'}
               </button>
             </>
           )}
@@ -1086,6 +1092,7 @@ function App() {
             ['cases', 'Hồ sơ logistics', FolderOpen],
             ['history', 'Lịch sử xử lý', History],
             ['settings', 'Cài đặt', Settings],
+            ['guide', 'Hướng dẫn', BookOpen],
           ].map(([id, title, Icon]: Any) => (
             <button
               title={title}
@@ -1125,7 +1132,7 @@ function App() {
                 ? 'Lịch sử xử lý'
                 : view === 'cases'
                 ? 'Hồ sơ logistics'
-                : 'Tổng quan'}
+                : view === 'guide' ? 'Hướng dẫn' : 'Tổng quan'}
             </strong>
           </div>
           <div className="row">
@@ -1140,7 +1147,8 @@ function App() {
           </div>
         </header>
         <main id="main-content" tabIndex={-1}>
-          {health?.deployment?.ephemeral && <div className="alert warn" role="status"><AlertTriangle size={18} /><div><strong>Render Free · cần tải sao lưu để giữ hồ sơ.</strong><p>Hồ sơ và file có thể mất khi máy chủ ngủ, khởi động lại hoặc cập nhật. Tải bản sao lưu trong Cài đặt trước khi rời phiên. Máy chủ có thể cần khoảng 1 phút để thức dậy.</p></div><button className="btn" onClick={() => setView('settings')}>Sao lưu</button></div>}
+          {health?.deployment?.ephemeral && <details className="cloud-notice"><summary>Render Free · dữ liệu tạm thời — cần sao lưu</summary><p>Hồ sơ có thể mất khi máy chủ ngủ, khởi động lại hoặc cập nhật. <button className="text-btn" onClick={()=>setView('settings')}>Mở Sao lưu</button></p></details>}
+          {view === 'guide' && <UserGuide/>}
           {error && (
             <div className="alert bad" role="alert">
               <AlertTriangle size={18} />
@@ -1277,9 +1285,11 @@ function App() {
               </div>
 
               {tab !== 'references' && <>
-                <StepTracker current={current} onSelectTab={(t: string) => setTab(t)} />
-                <ContainerSummaryBanner records={current.records} documents={current.documents} checks={current.checks} />
-                {renderNextActionBanner()}
+                <details className="workflow-details"><summary>Quy trình & tổng hợp container · {current.documents.length} chứng từ · {pending} bản ghi chờ kiểm</summary>
+                  <StepTracker current={current} onSelectTab={(t: string) => setTab(t)} />
+                  <ContainerSummaryBanner records={current.records} documents={current.documents} checks={current.checks} />
+                </details>
+                {!(sourceRecord && tab === 'documents') && renderNextActionBanner()}
               </>}
 
               <nav className="tabs" aria-label="Các phân hệ kiểm tra hồ sơ">
@@ -1322,8 +1332,8 @@ function App() {
                         <option value="openai">AI hỗ trợ · OpenAI</option>
                       </select>
                       {pending > 0 && (
-                        <button className="btn small" onClick={jumpToNextPending}>
-                          Đi tới bản ghi chờ tiếp theo ({pending})
+                        <button className="btn small" onClick={() => jumpToNextPending()}>
+                          Bắt đầu kiểm tra ({pending})
                         </button>
                       )}
                     </div>
@@ -1371,9 +1381,9 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="collection-guide"><p><strong>Bộ chứng từ:</strong> PDF gốc, bản scan hoặc ảnh chụp Invoice, Packing List, B/L và chứng từ liên quan.</p>
+                  {!sourceRecord && <details className="collection-guide"><summary>Chứng từ hay ảnh hiện trường?</summary><p><strong>Bộ chứng từ:</strong> PDF gốc, bản scan hoặc ảnh chụp Invoice, Packing List, B/L và chứng từ liên quan.</p>
                     <button className="text-btn" onClick={() => setTab('references')}>Ảnh container / màn hình tra cứu → Bộ ảnh riêng ({current.reference_files?.length || 0})</button>
-                  </div>
+                  </details>}
 
                   {mode === 'openai' && (
                     <div className="alert info">
@@ -1470,6 +1480,7 @@ function App() {
                               setRotation(0);
                               setHighlight('');
                               setShowText(false);
+                              setSourceRecordId('');
                             }}
                           >
                             <FileText size={21} />
@@ -1493,15 +1504,12 @@ function App() {
                               </div>
                             </div>
                           </button>
-                          <div className="document-classification">
-                            {d.ext === '.pdf' && d.pages?.length > 1 && !d.source && <button className="btn small" disabled={loading || job?.status === 'running'} onClick={() => { setError(''); setDialog({ kind: 'split-pdf', document: d }); }}>Tách bộ PDF</button>}
+                          {selectedDoc === d.id && <details className="file-more"><summary>Thao tác tệp</summary><div className="document-classification">
+                            {d.ext === '.pdf' && d.pages?.length>1 && !d.source && <button className="btn small" disabled={loading || job?.status==='running'} onClick={()=>setDialog({kind:'split-pdf',document:d})}>Tách bộ PDF</button>}
                             {d.source && <a className="text-btn" href={`/api/sources/${d.source.id}/original`} download>Tải PDF gốc</a>}
-                            <select aria-label={'Loại chứng từ ' + d.name} value={documentTypes[d.id] || d.type} disabled={loading || job?.status === 'running'} onChange={(e) => setDocumentTypes((previous) => ({ ...previous, [d.id]: e.target.value }))}>
-                              {dict.document_types.map((type: string) => <option key={type} value={type}>{type}</option>)}
-                            </select>
-                            <button className="btn small" disabled={loading || d.status !== 'read' || (!!d.type_verified && (!documentTypes[d.id] || documentTypes[d.id] === d.type)) || job?.status === 'running'} onClick={() => update(() => patch('/documents/' + d.id + '/classification', { type: documentTypes[d.id] || d.type }), 'Đã xác nhận loại ' + d.name)}>Xác nhận loại</button>
-                            <button className="text-btn" disabled={loading || job?.status === 'running'} onClick={() => setDialog({ kind: 'move-reference', document: d })}>Chuyển sang bộ ảnh riêng</button>
-                          </div>
+                            <button className="text-btn" disabled={loading || job?.status==='running'} onClick={()=>setDialog({kind:'move-reference',document:d})}>Chuyển sang bộ ảnh riêng</button>
+                          </div></details>}
+
                           </div>
                         );
                       })}
@@ -1522,6 +1530,9 @@ function App() {
                     </aside>
 
                     <section className="preview-pane">
+                      {sourceRecord ? <SourceInspector record={sourceRecord} title={dict.fields[sourceRecord.key]?.label || (sourceRecord.kind==='item'?'Dòng hàng cần kiểm tra':'Container cần kiểm tra')}
+                        reason={sourceRecord.value?.warning || sourceConflict?.detail.reason} busy={loading || job?.status==='running' || saveStates[sourceRecord.id]?.status==='saving'}
+                        onClose={()=>setSourceRecordId('')} onVerify={(r:Any)=>verifyAndNext(r,true)} onSave={editRecord} onNext={()=>jumpToNextPending()} onEdit={()=>focusRecordEditor(sourceRecord)}/> : <>
                       <div className="preview-toolbar">
                         <strong>{activeDoc?.name || 'Xem trước chứng từ'}</strong>
                         <div className="row">
@@ -1566,13 +1577,9 @@ function App() {
                             Loại chứng từ
                             <select
                               aria-label="Loại chứng từ"
-                              value={activeDoc.type}
-                              onChange={(e) =>
-                                update(
-                                  () => patch('/documents/' + activeDoc.id + '/classification', { type: e.target.value }),
-                                  'Đã lưu loại · chạy lại trích xuất nếu đã đổi loại'
-                                )
-                              }
+                              value={documentTypes[activeDoc.id] || activeDoc.type}
+                              disabled={loading || job?.status==='running'}
+                              onChange={(e) => setDocumentTypes(previous=>({...previous,[activeDoc.id]:e.target.value}))}
                             >
                               {dict.document_types.map((t: string) => (
                                 <option key={t}>{t}</option>
@@ -1586,15 +1593,15 @@ function App() {
                           )}
                           <button
                             className="btn small"
-                            disabled={loading || !!activeDoc.type_verified}
+                            disabled={loading || job?.status==='running' || activeDoc.status!=='read' || (!!activeDoc.type_verified && (!documentTypes[activeDoc.id] || documentTypes[activeDoc.id]===activeDoc.type))}
                             onClick={() =>
                               update(
-                                () => patch('/documents/' + activeDoc.id + '/classification', { type: activeDoc.type }),
+                                () => patch('/documents/' + activeDoc.id + '/classification', { type: documentTypes[activeDoc.id] || activeDoc.type }),
                                 'Đã xác nhận loại'
                               )
                             }
                           >
-                            {activeDoc.type_verified ? (
+                            {activeDoc.type_verified && (!documentTypes[activeDoc.id] || documentTypes[activeDoc.id]===activeDoc.type) ? (
                               <>
                                 <Check size={14} />
                                 Đã xác nhận
@@ -1693,6 +1700,7 @@ function App() {
                           </button>
                         </div>
                       </footer>
+                      </>}
                     </section>
 
                     <aside className="fields-pane">
@@ -1767,7 +1775,7 @@ function App() {
                             </small>
                           </div>
                         )}
-                        {recordGroup === 'field' && recordFilter !== 'verified' && current.checks.filter((c: Any) => c.key.startsWith('missing:') && !['missing:items', 'missing:containers'].includes(c.key) && !c.resolution && (!recordSearch || (dict.fields[c.key.slice(8)]?.label || '').toLocaleLowerCase('vi').includes(recordSearch.toLocaleLowerCase('vi')))).map((c: Any) => (
+                        {job?.status !== 'running' && recordGroup === 'field' && recordFilter !== 'verified' && current.checks.filter((c: Any) => c.key.startsWith('missing:') && !['missing:items', 'missing:containers'].includes(c.key) && !c.resolution && (!recordSearch || (dict.fields[c.key.slice(8)]?.label || '').toLocaleLowerCase('vi').includes(recordSearch.toLocaleLowerCase('vi')))).map((c: Any) => (
                           <article className="field-card is-conflict" key={c.id}>
                             <strong>{dict.fields[c.key.slice(8)]?.label || 'Dữ liệu thiếu'}</strong>
                             <Badge status={c.result} /><p>{c.detail.reason}</p>
@@ -1844,7 +1852,7 @@ function App() {
                     </div>
                     <div className="row">
                       {pending > 0 && (
-                        <button className="btn" onClick={jumpToNextPending}>
+                        <button className="btn" onClick={() => jumpToNextPending()}>
                           Đi tới mục chờ tiếp theo
                         </button>
                       )}

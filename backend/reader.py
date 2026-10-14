@@ -104,6 +104,15 @@ def ocr_tables(data):
                 tables.append(table)
     return tables
 
+def prepare_ocr_image(image):
+    image = ImageOps.exif_transpose(image).convert('RGB')
+    # Small phone captures are easier to read after bounded enlargement. Never invent text.
+    if image.width < 1600:
+        scale=min(1600/image.width,(35_000_000/(image.width*image.height))**.5)
+        if scale>1:
+            image=image.resize((int(image.width*scale),int(image.height*scale)),Image.Resampling.LANCZOS)
+    return image
+
 def ocr(image, include_tables=False, psm=3):
     status = ocr_status()
     if not status['ready']:
@@ -113,6 +122,8 @@ def ocr(image, include_tables=False, psm=3):
     if image.width * image.height > 35_000_000:
         raise ValueError('Ảnh quá lớn để OCR an toàn')
     lang = 'eng+vie' if 'vie' in status['languages'] else 'eng'
+    original_width=image.width
+    image=prepare_ocr_image(image)
     gray = ImageOps.autocontrast(ImageOps.grayscale(image))
     # Automatic page segmentation preserves large headings and multiple text/table blocks.
     try:
@@ -136,7 +147,7 @@ def ocr(image, include_tables=False, psm=3):
         raise ValueError('OCR không đọc được chữ. Hãy dùng bản scan rõ hơn.')
     if not scores or sum(scores) / len(scores) < 70:
         quality.append('OCR chất lượng thấp; kiểm tra từng giá trị với bản gốc.')
-    if image.width < 800 or ImageStat.Stat(gray).stddev[0] < 20:
+    if original_width < 800 or ImageStat.Stat(gray).stddev[0] < 20:
         quality.append('Ảnh nhỏ/độ tương phản thấp; có thể bỏ sót chữ.')
     if 'vie' not in status['languages']:
         quality.append('Chưa cài ngôn ngữ vie; dấu tiếng Việt có thể đọc sai.')

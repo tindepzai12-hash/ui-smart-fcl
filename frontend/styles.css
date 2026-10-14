@@ -392,3 +392,75 @@ blockquote{margin:8px 0;padding:9px 12px;border-left:3px solid #a6c5fa;backgroun
 .reference-empty { padding: 40px 24px; }
 .upload-btn.disabled { opacity: .6; cursor: not-allowed; }
 @media (max-width: 800px) { .reference-layout { grid-template-columns: 1fr; } .reference-layout aside { max-height: 240px; overflow: auto; } }
+
+/* A quieter workbench: one current task and evidence beside the editable value. */
+.cloud-notice,.workflow-details{font-size:12px;color:#475569;margin:0 0 12px}
+.cloud-notice summary,.workflow-details>summary,.file-more>summary,.record-more>summary{cursor:pointer;padding:8px 0;font-weight:500}
+.cloud-notice p{max-width:75ch;line-height:1.6;margin:4px 0 12px}
+.workflow-details[open]>.steps{margin-top:10px}
+.next-action-bar{border-left-width:1px;padding:10px 14px;margin-bottom:12px;gap:12px}
+.next-action-bar .badge{font-size:11px;background:transparent;padding:0;color:#475569}
+.next-action-bar p{margin:3px 0 0;max-width:75ch}
+.next-action-bar strong{margin-top:2px}
+.case-heading h1{font-size:24px;line-height:1.3;margin:6px 0}
+.case-heading p{font-size:12px;margin:0}
+.case-heading{margin-bottom:12px}
+.collection-guide{padding:8px 0;font-size:12px}
+.file-more{padding:0 12px 6px;font-size:12px}
+.document-entry .document-item{padding:11px 10px;gap:8px}
+.document-item small{font-size:11px;line-height:1.5}
+.document-item .row .badge.neutral{background:transparent;padding:0}
+.field-card{padding:10px;margin-bottom:8px}
+.field-card.is-focused{box-shadow:none;border-color:#155eef;background:#f7faff}
+.field-actions{gap:8px;flex-wrap:wrap}
+.record-more{position:relative;font-size:12px}
+.record-more[open]{padding:0 8px;background:#f1f5f9;border-radius:6px}
+.record-more .icon-btn{min-height:32px}
+.processing-summary{display:flex;align-items:center;gap:10px;padding:10px 0;font-size:13px;color:#334155}
+.source-inspector{display:flex;flex-direction:column;height:100%;min-height:0;text-align:left;background:white}
+.source-inspector-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.source-inspector-head strong,.source-inspector-head small{display:block;overflow-wrap:anywhere}
+.source-inspector-head small{font-size:12px;color:#475569;margin-top:4px}
+.source-value{padding:10px 14px;background:#f7faff;font-size:13px;border-bottom:1px solid var(--line)}
+.source-value>span,.source-value>small{display:block;font-size:11px;color:#475569}
+.source-value>strong{display:block;font-size:16px;color:#102a56;overflow-wrap:anywhere;margin:4px 0}
+.source-value p{margin:4px 0 0;color:#475569;font-size:12px;line-height:1.5}
+.source-controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:6px 12px;font-size:12px}
+.source-notice{display:flex;gap:8px;padding:8px 12px;background:#fff8eb;color:#7c4100;font-size:12px;line-height:1.5}
+.source-notice svg{flex-shrink:0;margin-top:2px}
+.source-notice p{margin:0 0 4px}
+.source-canvas{flex:1;min-height:150px;overflow:auto;background:#edf1f5;padding:12px;scroll-padding:50px}
+.source-image{position:relative;margin:0 auto;line-height:0;min-width:0}
+.source-image img{width:100%;display:block;height:auto}
+.source-box{position:absolute;display:block;background:#155eef26;outline:2px solid #155eef;outline-offset:2px;min-width:2px;min-height:2px;pointer-events:auto}
+.source-box.low{background:#f7900933;outline-color:#b54708}
+.source-legend{font-size:11px;color:#475569;padding:7px 12px;margin:0;line-height:1.5}
+.source-quote{font-size:12px;padding:0 12px;color:#475569;max-height:140px;overflow:auto}
+.source-quote summary{cursor:pointer;padding:4px 0}
+.source-quote blockquote{white-space:pre-wrap;margin:8px 0;line-height:1.5}
+.source-review-actions{padding:10px 12px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);background:#fff}
+.source-text{background:white;padding:16px;font-size:13px}
+.source-text pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;font-family:inherit}
+.source-loading{padding:28px 16px;display:flex;gap:10px;align-items:center;font-size:13px}
+.user-guide{max-width:820px;margin:0 auto;padding-bottom:32px}
+.user-guide h1{display:flex;align-items:center;gap:10px}
+.user-guide p,.user-guide dd{max-width:75ch;line-height:1.75;color:#334155;font-size:14px}
+.user-guide ol{padding-left:25px}
+.user-guide li{padding-left:8px;margin:26px 0}
+.user-guide h2{font-size:17px;margin:0 0 8px}
+.user-guide dt{font-weight:600;margin:18px 0 6px}
+.user-guide dd{margin:0}
+.guide-intro{padding-bottom:16px;border-bottom:1px solid var(--line)}
+@media(min-width:1180px){.workspace{grid-template-columns:170px minmax(260px,1fr) 315px;height:760px}.preview-pane{overflow:hidden}}
+@media(max-width:1179px){.document-list{max-height:190px}.preview-pane:has(.source-inspector){height:730px;max-height:730px;min-height:600px}.source-inspector{min-height:0}.source-canvas{min-height:170px}}
+@media(max-width:600px){.case-heading h1{font-size:20px}.source-controls{padding:6px}.source-review-actions .btn{flex:1}.source-review-actions>.text-btn{width:100%;justify-content:center}.source-value>strong{font-size:15px}.source-legend{font-size:12px}.fields-pane{height:560px}.source-inspector .icon-btn{min-height:44px;min-width:44px}}
+@media print{body{background:#fff}.sidebar,.topbar,.cloud-notice,.app-footer,.user-guide .btn{display:none!important}.app,.main-shell{display:block!important;margin:0!important}main{padding:0!important}.user-guide{max-width:none}.user-guide li{break-inside:avoid}}
+.source-inline-editor{display:flex;gap:8px;align-items:center;margin:6px 0}
+.source-inline-editor input{min-width:0;flex:1;width:100%;font-size:15px}
+.source-review-actions{position:sticky;bottom:0;z-index:3}
+.source-inspector{overflow:auto;scroll-margin-top:12px}
+.collection-guide{display:block}
+.collection-guide summary{cursor:pointer;color:#475569;padding:6px 0}
+.collection-guide[open] p{margin:4px 0}
+@media(min-width:1180px){.workspace{height:clamp(580px,calc(100dvh - 48px),820px)}}
+@media(max-width:1179px){.preview-pane:has(.source-inspector){height:clamp(620px,calc(100dvh - 72px),780px);min-height:620px;max-height:780px}}

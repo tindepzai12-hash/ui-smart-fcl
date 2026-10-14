@@ -12,9 +12,9 @@ try:
     from pydantic import ConfigDict
 except ImportError:
     ConfigDict = None
-from PIL import Image
+from PIL import Image, ImageOps
 from openpyxl import load_workbook
-from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle
+from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle, source_locator
 from .dictionary import FIELDS, TYPES, default_requirements
 from .normalize import normalize
 
@@ -478,11 +478,25 @@ def preview(id: str, number: int):
             if number > getattr(im, 'n_frames', 1):
                 raise HTTPException(404, 'Không có trang này')
             im.seek(number - 1)
+            im = ImageOps.exif_transpose(im.copy())
             im.thumbnail((1800, 2200))
             buf = io.BytesIO()
             im.convert('RGB').save(buf, format='PNG')
             return Response(buf.getvalue(), media_type='image/png')
     raise HTTPException(404, 'Dùng xem văn bản/bảng cho định dạng này')
+
+@app.get('/api/records/{id}/source')
+def record_source(id: str):
+    record=require_record(id)
+    if not record['document_id'] or not record['page']:
+        raise HTTPException(422,'Bản ghi chưa có chứng từ/trang nguồn. Bổ sung căn cứ trước khi xác minh.')
+    doc=require_working_doc(record['document_id'])
+    page=db.one('SELECT number,text,method,quality FROM pages WHERE document_id=? AND number=?',(doc['id'],record['page']))
+    if not page:
+        raise HTTPException(404,'Trang nguồn chưa được đọc. Chạy Đọc & trích xuất trước.')
+    if any(j['status']=='running' for j in JOBS.values()):
+        raise HTTPException(409,'Đang đọc chứng từ. Chờ hoàn tất rồi mở vùng nguồn để tránh quá tải OCR.')
+    return source_locator.inspect(doc,record,page)
 
 def worker(job_id):
     job = JOBS[job_id]
