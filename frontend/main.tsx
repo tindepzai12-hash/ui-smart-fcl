@@ -21,6 +21,7 @@ import {
 import './styles.css';
 import { TemplateCenter } from './TemplateCenter';
 import { PdfSplit } from './PdfSplit';
+import { ReferenceFiles } from './ReferenceFiles';
 
 type Any = any;
 
@@ -178,7 +179,7 @@ function App() {
   const replace = (b: Any) => {
     if (b?.case) {
       setCurrent((previous: Any) => previous?.case?.id === b.case.id && previous.case.revision > b.case.revision ? previous : b);
-      if (!selectedDoc && b.documents.length) setSelectedDoc(b.documents[0].id);
+      if (!b.documents.some((d: Any) => d.id === selectedDoc)) { setSelectedDoc(b.documents[0]?.id || ''); setPage(1); }
     }
     return b;
   };
@@ -344,18 +345,18 @@ function App() {
         : b.updated_at.localeCompare(a.updated_at)
     );
 
-  async function upload(files: FileList | File[]) {
+  async function upload(files: FileList | File[], collection = 'document') {
     if (!files.length) return;
     setConsent(false);
     const f = new FormData();
     Array.from(files).forEach((file) => f.append('files', file));
     await run(async () => {
-      const result = await api('/cases/' + current.case.id + '/documents', { method: 'POST', body: f });
+      const result = await api('/cases/' + current.case.id + (collection === 'reference' ? '/reference-files' : '/documents'), { method: 'POST', body: f });
       replace(result.bundle);
       await refresh();
       const failed = result.results.filter((r: Any) => r.status !== 'uploaded');
       if (failed.length) setError(failed.map((r: Any) => r.name + ': ' + r.error).join('\n'));
-      notify('Đã nhận ' + result.results.filter((r: Any) => r.status === 'uploaded').length + ' file');
+      notify('Đã nhận ' + result.results.filter((r: Any) => r.status === 'uploaded').length + ' tệp vào ' + (collection === 'reference' ? 'bộ ảnh riêng' : 'bộ chứng từ'));
     });
   }
 
@@ -1033,6 +1034,7 @@ function App() {
 
   const caseTabs = [
     ['documents', 'Chứng từ'],
+    ['references', 'Ảnh hiện trường & màn hình'],
     ['review', 'Xác minh'],
     ['comparison', 'Đối chiếu'],
     ['customs', 'Chuẩn bị khai báo'],
@@ -1296,6 +1298,9 @@ function App() {
                 ))}
               </nav>
 
+              {tab === 'references' && <ReferenceFiles files={current.reference_files || []} busy={loading || job?.status === 'running'}
+                onUpload={files => upload(files, 'reference')}
+                onMove={id => update(() => patch('/documents/' + id + '/collection', { collection: 'document', reason: 'Người dùng xác nhận đây là chứng từ' }), 'Đã chuyển về Chứng từ · cần đọc và xác minh lại')} />}
               {tab === 'documents' && (
                 <>
                   <div className="processing-toolbar">
@@ -1364,6 +1369,10 @@ function App() {
                     </div>
                   </div>
 
+                  <div className="collection-guide"><p><strong>Bộ chứng từ:</strong> PDF gốc, bản scan hoặc ảnh chụp Invoice, Packing List, B/L và chứng từ liên quan.</p>
+                    <button className="text-btn" onClick={() => setTab('references')}>Ảnh container / màn hình tra cứu → Bộ ảnh riêng ({current.reference_files?.length || 0})</button>
+                  </div>
+
                   {mode === 'openai' && (
                     <div className="alert info">
                       <Link2 size={18} />
@@ -1383,7 +1392,7 @@ function App() {
                               checked={consent}
                               onChange={(e) => setConsent(e.target.checked)}
                             />
-                            Tôi chọn gửi văn bản đã đọc/OCR của các chứng từ trong hồ sơ tới OpenAI để phân loại và trích xuất cho yêu cầu này. File gốc được giữ local.
+                            Tôi đồng ý gửi văn bản đã đọc/OCR và ảnh thu nhỏ của tệp ảnh trong bộ Chứng từ tới OpenAI để phân nhóm và trích xuất. Bộ ảnh riêng không gửi trong tác vụ này. File gốc giữ trên máy chủ đang chạy app.
                           </label>
                         )}
                       </div>
@@ -1489,6 +1498,7 @@ function App() {
                               {dict.document_types.map((type: string) => <option key={type} value={type}>{type}</option>)}
                             </select>
                             <button className="btn small" disabled={loading || d.status !== 'read' || (!!d.type_verified && (!documentTypes[d.id] || documentTypes[d.id] === d.type)) || job?.status === 'running'} onClick={() => update(() => patch('/documents/' + d.id + '/classification', { type: documentTypes[d.id] || d.type }), 'Đã xác nhận loại ' + d.name)}>Xác nhận loại</button>
+                            <button className="text-btn" disabled={loading || job?.status === 'running'} onClick={() => setDialog({ kind: 'move-reference', document: d })}>Chuyển sang bộ ảnh riêng</button>
                           </div>
                           </div>
                         );
@@ -1496,7 +1506,7 @@ function App() {
                       <label className="drop-hint">
                         <Upload size={22} />
                         <strong>Kéo file vào đây</strong>
-                        <span>PDF, ảnh, Excel, CSV, TXT, DOCX · tối đa 25 MB/file</span>
+                        <span>PDF, ảnh chụp chứng từ, Excel, CSV, TXT, DOCX · 25 MB/tệp</span>
                         <input
                           type="file"
                           multiple
@@ -2530,7 +2540,14 @@ function App() {
                 {error}
               </div>
             )}
-            {dialog.kind === 'split-pdf' ? <PdfSplit document={dialog.document} types={dict.document_types} loading={loading} submit={async (payload: Any) => {
+            {dialog.kind === 'move-reference' ? <div className="stack"><h2>Chuyển sang bộ ảnh riêng?</h2>
+              <p><strong>{dialog.document.name}</strong> sẽ ra khỏi danh sách chứng từ, đối chiếu và bảng kê. Bản gốc và dữ liệu đã đọc được giữ lại để có thể chuyển về.</p>
+              <p>Chỉ dùng cho ảnh hiện trường hoặc màn hình tra cứu. Ảnh chụp giấy Invoice, Packing List, B/L vẫn là chứng từ.</p>
+              <div className="row"><button className="btn" onClick={() => setDialog(null)}>Giữ trong Chứng từ</button><button className="btn primary" disabled={loading} onClick={async () => {
+                const b = await update(() => patch('/documents/' + dialog.document.id + '/collection', { collection: 'reference', reason: 'Người dùng xác nhận ảnh hiện trường hoặc màn hình tra cứu' }), 'Đã chuyển sang bộ ảnh riêng');
+                if (b) { setDialog(null); setTab('references'); }
+              }}>Chuyển sang bộ ảnh riêng</button></div>
+            </div> : dialog.kind === 'split-pdf' ? <PdfSplit document={dialog.document} types={dict.document_types} loading={loading} submit={async (payload: Any) => {
               const b = await update(() => post('/documents/' + dialog.document.id + '/split', payload), 'Đã tách PDF · xác nhận loại và kiểm tra dữ liệu từng chứng từ');
               if (b) { setDialog(null); setSelectedDoc(b.documents[0]?.id || ''); setPage(1); }
             }} /> : <DialogContent

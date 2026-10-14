@@ -13,7 +13,7 @@ def validate_mapping(template, mapping, case_id):
     try:
         if any(c.data_type == 'f' for s in wb for row in s for c in row):
             raise ValueError('Bản mapping này không xử lý template có công thức; dùng mẫu dữ liệu thuần.')
-        docs = {d['id']: d['name'] for d in db.rows('SELECT id, name FROM documents WHERE case_id=?', (case_id,))}
+        docs = {d['id']: d['name'] for d in db.rows("SELECT id, name FROM documents WHERE case_id=? AND collection='document'", (case_id,))}
         for m in mapping:
             if set(m) != {'sheet', 'cell', 'record_id'}:
                 raise ValueError('Mapping cần sheet/cell/record_id')
@@ -29,6 +29,8 @@ def validate_mapping(template, mapping, case_id):
             record = db.one("SELECT * FROM records WHERE id=? AND case_id=? AND kind='field' AND status!='rejected'", (m['record_id'], case_id))
             if not record:
                 raise ValueError('Record không thuộc hồ sơ hoặc đã bị từ chối')
+            if record['document_id'] and record['document_id'] not in docs:
+                raise ValueError('Dữ liệu thuộc bộ ảnh riêng; không được đưa vào bảng kê.')
             record['document_name'] = docs.get(record['document_id'], 'Nhập tay')
             value = json.loads(record['value_json'])
             resolved.append((m, excel.value_text(value), record))

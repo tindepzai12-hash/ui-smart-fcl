@@ -80,6 +80,10 @@ class ClassInput(Input):
         'Inspection Certificate', 'Phytosanitary Certificate', 'Other'
     ]
 
+class CollectionInput(Input):
+    collection: Literal['document', 'reference']
+    reason: str = Field(default='', max_length=1000)
+
 class SplitGroup(ClassInput):
     start: int = Field(ge=1, le=100)
     end: int = Field(ge=1, le=100)
@@ -141,7 +145,18 @@ def require_record(id):
     record = db.one('SELECT * FROM records WHERE id=?', (id,))
     if not record:
         raise HTTPException(404, 'Không tìm thấy dữ liệu')
+    if record['document_id']:
+        require_working_doc(record['document_id'])
     return validation.unpack(record)
+
+def require_working_doc(id):
+    doc = require_doc(id)
+    if doc.get('collection', 'document') != 'document':
+        raise HTTPException(409, 'Tệp thuộc bộ ảnh riêng. Chuyển về Chứng từ trước khi trích xuất hoặc xác minh.')
+    return doc
+
+def working_records(id):
+    return [validation.unpack(r) for r in db.rows("SELECT * FROM records WHERE case_id=? AND (document_id IS NULL OR document_id IN (SELECT id FROM documents WHERE collection='document')) ORDER BY rowid", (id,))]
 
 def busy(case_id):
     if any(j['case_id'] == case_id and j['status'] == 'running' for j in JOBS.values()):
@@ -149,7 +164,7 @@ def busy(case_id):
 
 def bundle(id):
     case = require_case(id)
-    docs = db.rows('SELECT * FROM documents WHERE case_id=? ORDER BY rowid', (id,))
+    docs = db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document' ORDER BY rowid", (id,))
     for d in docs:
         d.pop('path')
         d['pages'] = db.rows('SELECT number,method,quality,length(text) characters FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
@@ -158,7 +173,8 @@ def bundle(id):
             d['split_suggestion'] = pdf_bundle.suggest(text_pages)
             d['mixed_pdf'] = pdf_bundle.is_mixed(text_pages)
         d['source'] = db.one('SELECT s.id,s.name,s.hash,m.start_page,m.end_page FROM document_sources m JOIN bundle_sources s ON s.id=m.source_id WHERE m.document_id=?', (d['id'],))
-    records = [validation.unpack(r) for r in db.rows('SELECT * FROM records WHERE case_id=? ORDER BY rowid', (id,))]
+    references = db.rows("SELECT id,name,ext,size,collection_reason,status FROM documents WHERE case_id=? AND collection='reference' ORDER BY rowid", (id,))
+    records = working_records(id)
     checks = db.rows('SELECT * FROM checks WHERE case_id=? ORDER BY rowid', (id,))
     for c in checks:
         c['detail'] = json.loads(c.pop('detail_json'))
@@ -167,6 +183,7 @@ def bundle(id):
     return {
         'case': case,
         'documents': docs,
+        'reference_files': references,
         'records': records,
         'checks': checks,
         'blockers': validation.blockers(case, docs, records, checks),
@@ -176,8 +193,8 @@ def bundle(id):
 
 def revalidate(c, id):
     case = dict(c.execute('SELECT * FROM cases WHERE id=?', (id,)).fetchone())
-    docs = [dict(r) for r in c.execute('SELECT * FROM documents WHERE case_id=?', (id,))]
-    records = [validation.unpack(r) for r in c.execute('SELECT * FROM records WHERE case_id=?', (id,))]
+    docs = [dict(r) for r in c.execute("SELECT * FROM documents WHERE case_id=? AND collection='document'", (id,))]
+    records = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE case_id=? AND (document_id IS NULL OR document_id IN (SELECT id FROM documents WHERE collection='document'))", (id,))]
     return validation.persist_checks(c, case, docs, records)
 
 def add_record(c, case_id, document_id, r):
@@ -214,8 +231,8 @@ def dictionary():
 @app.get('/api/cases')
 def list_cases():
     return db.rows(
-        "SELECT c.*,(SELECT count(*) FROM documents d WHERE d.case_id=c.id) document_count,"
-        "(SELECT count(*) FROM records r WHERE r.case_id=c.id AND r.status='pending') pending_count "
+        "SELECT c.*,(SELECT count(*) FROM documents d WHERE d.case_id=c.id AND d.collection='document') document_count,"
+        "(SELECT count(*) FROM records r WHERE r.case_id=c.id AND r.status='pending' AND (r.document_id IS NULL OR r.document_id IN (SELECT id FROM documents WHERE collection='document'))) pending_count "
         "FROM cases c ORDER BY updated_at DESC"
     )
 
@@ -263,6 +280,13 @@ def validate_zip(path):
 
 @app.post('/api/cases/{id}/documents')
 async def upload(id: str, files: List[UploadFile] = File(...)):
+    return await upload_files(id, files, 'document')
+
+@app.post('/api/cases/{id}/reference-files')
+async def upload_references(id: str, files: List[UploadFile] = File(...)):
+    return await upload_files(id, files, 'reference')
+
+async def upload_files(id, files, collection):
     require_case(id)
     if len(files) > 30:
         raise HTTPException(413, 'Tối đa 30 file mỗi lần')
@@ -274,6 +298,8 @@ async def upload(id: str, files: List[UploadFile] = File(...)):
             ext = Path(name).suffix.lower()
             if ext not in reader.SUPPORTED:
                 raise ValueError('Định dạng chưa hỗ trợ: ' + ext)
+            if collection == 'reference' and ext not in {'.pdf', '.png', '.jpg', '.jpeg', '.tif', '.tiff'}:
+                raise ValueError('Bộ ảnh nhận PDF hoặc ảnh JPG, PNG, TIFF. Chứng từ Word/Excel tải ở mục Chứng từ.')
             data = await f.read(reader.MAX_BYTES + 1)
             if len(data) > reader.MAX_BYTES:
                 raise ValueError('Tệp vượt giới hạn 25 MB')
@@ -283,17 +309,18 @@ async def upload(id: str, files: List[UploadFile] = File(...)):
             with LOCK:
                 busy(id)
                 if db.one('SELECT id FROM documents WHERE case_id=? AND hash=? UNION ALL SELECT id FROM bundle_sources WHERE case_id=? AND hash=?', (id, digest, id, digest)):
-                    results.append({'name': name, 'status': 'duplicate', 'error': 'Nội dung đã có trong hồ sơ'})
+                    results.append({'name': name, 'status': 'duplicate', 'error': 'Nội dung đã có trong hồ sơ. Dùng Chuyển bộ nếu tệp đang ở mục khác.'})
                     continue
                 doc_id = db.uid()
                 path = db.DATA / 'files' / (doc_id + ext)
                 path.write_bytes(data)
                 validate_zip(path)
                 with db.connect() as c:
-                    c.execute('INSERT INTO documents(id,case_id,name,ext,size,hash,path) VALUES (?,?,?,?,?,?,?)', (doc_id, id, name, ext, len(data), digest, str(path)))
-                    db.touch(c, id)
-                    db.audit(c, id, 'Tải chứng từ', doc_id, after={'name': name, 'size': len(data), 'hash': digest})
-                    revalidate(c, id)
+                    c.execute('INSERT INTO documents(id,case_id,name,ext,size,hash,path,collection) VALUES (?,?,?,?,?,?,?,?)', (doc_id, id, name, ext, len(data), digest, str(path), collection))
+                    if collection == 'document':
+                        db.touch(c, id)
+                        revalidate(c, id)
+                    db.audit(c, id, 'Tải chứng từ' if collection == 'document' else 'Tải ảnh vào bộ riêng', doc_id, after={'name': name, 'size': len(data), 'hash': digest, 'collection': collection})
                 results.append({'id': doc_id, 'name': name, 'status': 'uploaded'})
         except (ValueError, HTTPException) as exc:
             if path:
@@ -303,6 +330,30 @@ async def upload(id: str, files: List[UploadFile] = File(...)):
             await f.close()
     return {'results': results, 'bundle': bundle(id)}
 
+def move_collection(c, doc, target, reason):
+    c.execute('UPDATE documents SET collection=?,collection_reason=? WHERE id=?', (target, reason, doc['id']))
+    if target == 'document':
+        c.execute("UPDATE documents SET type_verified=0 WHERE id=?", (doc['id'],))
+        c.execute("UPDATE records SET status='pending',version=version+1 WHERE document_id=? AND status!='rejected'", (doc['id'],))
+    db.touch(c, doc['case_id'])
+    db.audit(c, doc['case_id'], 'Chuyển bộ tệp', doc['id'], before=doc.get('collection', 'document'), after=target, reason=reason)
+    revalidate(c, doc['case_id'])
+
+@app.patch('/api/documents/{id}/collection')
+def collection(id: str, body: CollectionInput):
+    with LOCK:
+        doc = require_doc(id)
+        busy(doc['case_id'])
+        if doc.get('collection', 'document') != body.collection:
+            with db.connect() as c:
+                move_collection(c, doc, body.collection, body.reason or 'Người dùng xác nhận chuyển bộ')
+    return bundle(doc['case_id'])
+
+@app.get('/api/documents/{id}/original')
+def original_document(id: str):
+    doc = require_doc(id)
+    return FileResponse(doc['path'], filename=doc['name'])
+
 @app.delete('/api/documents/{id}')
 def delete_doc(id: str):
     with LOCK:
@@ -310,7 +361,8 @@ def delete_doc(id: str):
         busy(doc['case_id'])
         with db.connect() as c:
             c.execute('DELETE FROM documents WHERE id=?', (id,))
-            db.touch(c, doc['case_id'])
+            if doc.get('collection', 'document') == 'document':
+                db.touch(c, doc['case_id'])
             db.audit(c, doc['case_id'], 'Xóa tài liệu', id, before={'name': doc['name']})
             revalidate(c, doc['case_id'])
         Path(doc['path']).unlink(missing_ok=True)
@@ -319,7 +371,7 @@ def delete_doc(id: str):
 @app.patch('/api/documents/{id}/classification')
 def classification(id: str, body: ClassInput):
     with LOCK:
-        doc = require_doc(id)
+        doc = require_working_doc(id)
         busy(doc['case_id'])
         pages = db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number', (id,))
         if doc['ext'] == '.pdf' and pdf_bundle.is_mixed(pages):
@@ -347,7 +399,7 @@ def split_pdf(id: str, body: SplitInput):
     from pypdf import PdfReader, PdfWriter
     created_paths = []
     with LOCK:
-        doc = require_doc(id)
+        doc = require_working_doc(id)
         busy(doc['case_id'])
         if doc['ext'] != '.pdf':
             raise HTTPException(422, 'Chỉ tách tệp PDF.')
@@ -438,13 +490,25 @@ def worker(job_id):
     mode = job['mode']
     final_status = 'error'
     try:
-        docs = db.rows('SELECT * FROM documents WHERE case_id=?', (id,))
+        docs = db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document'", (id,))
         for idx, d in enumerate(docs):
             if job['cancel']:
                 raise InterruptedError()
             job.update(document=d['name'], index=idx + 1, total=len(docs), stage='Đọc / OCR', pages=0)
             started = time.monotonic()
             try:
+                uncertain_image = False
+                if mode == 'openai' and d['ext'] in {'.png', '.jpg', '.jpeg', '.tif', '.tiff'} and not d['type_verified']:
+                    job['stage'] = 'Kiểm tra ảnh chứng từ / ảnh hiện trường'
+                    route = ai.route_image(id, d)
+                    if job['cancel']:
+                        raise InterruptedError()
+                    if route.category == 'reference' and route.certainty == 'clear':
+                        with db.connect() as c:
+                            move_collection(c, d, 'reference', route.reason)
+                        job['warnings'].append({'document': d['name'], 'message': 'Đã chuyển sang bộ ảnh riêng: ' + route.reason})
+                        continue
+                    uncertain_image = route.category == 'uncertain' or route.certainty != 'clear'
                 if d['status'] in ['read', 'needs_split']:
                     pages = db.rows('SELECT number,text,method,quality,table_json FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
                     for p in pages:
@@ -469,7 +533,11 @@ def worker(job_id):
                         db.audit(c, id, 'Đọc bộ PDF; chờ tách theo trang', d['id'], after={'pages':len(pages),'groups':pdf_bundle.suggest(pages)})
                     job['warnings'].append({'document':d['name'],'message':message})
                     continue
-                if mode == 'openai':
+                if uncertain_image:
+                    kind, evidence, records = 'Other', route.reason, []
+                    extraction_warning = 'Chưa rõ đây là chứng từ hay ảnh hiện trường. Kiểm tra bản gốc, xác nhận loại hoặc chuyển sang bộ ảnh riêng; chưa trích xuất dữ liệu.'
+                    job['warnings'].append({'document': d['name'], 'message': extraction_warning})
+                elif mode == 'openai':
                     result, records, info = ai.analyze(id, d, pages)
                     kind = result.document_type
                     evidence = result.classification_evidence
@@ -540,7 +608,7 @@ def process(id: str, body: ProcessInput):
                     break
         if body.mode == 'openai' and not body.allow_external:
             raise HTTPException(422, 'Cần chủ động đồng ý gửi nội dung chứng từ ra OpenAI cho yêu cầu này.')
-        if not db.one('SELECT id FROM documents WHERE case_id=?', (id,)):
+        if not db.one("SELECT id FROM documents WHERE case_id=? AND collection='document'", (id,)):
             raise HTTPException(422, 'Tải ít nhất một chứng từ')
         job_id = db.uid()
         JOBS[job_id] = {
@@ -621,7 +689,7 @@ def manual(id: str, body: NewRecord):
         busy(id)
         value = checked_value(body.kind, body.key, body.value)
         if body.document_id:
-            d = require_doc(body.document_id)
+            d = require_working_doc(body.document_id)
             if d['case_id'] != id:
                 raise HTTPException(422, 'Chứng từ thuộc hồ sơ khác')
             if body.page and not db.one('SELECT id FROM pages WHERE document_id=? AND number=?', (body.document_id, body.page)):

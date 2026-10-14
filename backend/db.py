@@ -30,6 +30,11 @@ def connect():
 def migrate():
     with connect() as c:
         c.executescript((ROOT / 'backend' / 'migrations' / '001.sql').read_text(encoding='utf-8'))
+        columns = {r['name'] for r in c.execute('PRAGMA table_info(documents)')}
+        if 'collection' not in columns:
+            c.execute("ALTER TABLE documents ADD COLUMN collection TEXT NOT NULL DEFAULT 'document' CHECK(collection IN ('document','reference'))")
+        if 'collection_reason' not in columns:
+            c.execute("ALTER TABLE documents ADD COLUMN collection_reason TEXT NOT NULL DEFAULT ''")
         c.execute('PRAGMA journal_mode=WAL')
         # Recover work interrupted by an application restart. Files are retained.
         c.execute("UPDATE documents SET status='error', error='Xử lý bị gián đoạn. Chọn thử lại.' WHERE status='reading'")
