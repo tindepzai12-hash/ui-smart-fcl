@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createGateway } from './cloud-gateway.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,6 +24,21 @@ function stop(code = 0) {
 child.on('error', () => { console.error('Document processor could not start. Check Python installation.'); stop(1); });
 child.on('exit', code => { if (!stopping) { console.error('Document processor stopped:', code); server.close(); process.exit(code || 1); } });
 server.on('error', error => { console.error('Web server failed:', error.code); stop(1); });
-server.listen(port, '0.0.0.0', () => console.log(`U&I SMART Node gateway listening on port ${port}`));
+// Expose the port only after the document processor and SQLite are ready.
+// This also makes Render's default TCP readiness check meaningful.
+async function startWhenReady() {
+  for (let attempt = 0; attempt < 120 && !stopping; attempt++) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${backendPort}/api/health`, { signal: AbortSignal.timeout(2000) });
+      if (response.ok && (await response.json()).ok) {
+        server.listen(port, '0.0.0.0', () => console.log(`U&I SMART Node gateway listening on port ${port}`));
+        return;
+      }
+    } catch { /* Processor is still importing libraries or migrating its empty database. */ }
+    await delay(1000);
+  }
+  if (!stopping) { console.error('Document processor readiness timed out.'); stop(1); }
+}
+startWhenReady().catch(() => stop(1));
 process.on('SIGTERM', () => stop());
 process.on('SIGINT', () => stop());
