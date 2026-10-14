@@ -1,0 +1,1569 @@
+APPENDIX I 
+(Issued together with the Circular No. 39/2018/TT-BTC dated April 20, 2018 of the Minister of Finance) 
+This is to replace the Appendix II of the Circular No. 38/2015/TT-BTC as follows: 
+Appendix II 
+DATA FIELDS RELATING TO ELECTRONIC CUSTOMS PROCEDURES AND REGIME FOR 
+MANAGEMENT OF EXPORTS AND IMPORTS 
+(Issued together with the Circular No. 38/2015/TT-BTC dated March 25, 2015 of the Minister of Finance) 
+No. 
+Data fields 
+Description and remarks 
+Code 
+system 
+Form 
+No.01 
+Electronic import 
+declaration 
+Upon the prior registration of information about imported 
+goods. 
+  
+A 
+General information 
+1.1 
+Declaration form number 
+Do not need to fill in this field. The e-customs system 
+automatically grants the declaration number. 
+Note: The customs authority and relevant entities use 11 
+initial characters of the declaration number. The 12th 
+character only represents the number of supplementation 
+times.  
+  
+1.2 First declaration sheet number Box 1: Enter only if the shipment contains more than 50 
+lines of products or another separate declaration is 
+needed.  Below is the typing guidance: 
+(1) For the first declaration sheet, enter the letter “F”; 
+(2) From the 2nd declaration sheet onwards, enter the first 
+declaration sheet number  
+Box 2: Enter the ordinal number of the declaration sheet 
+out of the total number of declaration sheets. 
+Box 3: Enter the total number of declaration sheets. 
+  
+1.3 
+Number of respective 
+temporary import – re-export 
+declaration 
+Fill in this field in the following cases: 
+(1) In case of the re-import of the temporarily exported 
+shipment, enter the number of the respective re-export 
+declaration. 
+(2) In case of the import of the temporarily imported 
+shipment for domestic consumption purposes, enter the 
+number of the temporary import declaration.  
+(3) If the temporary import declaration and the re-export 
+declaration are made by the same person. 
+(4) If the primary declaration remains valid (during the 
+period of permission for stay in Vietnam).  
+  
+1.4 
+Type code 
+The importer consults import documentation and purposes 
+to choose one of the import types according to the 
+instructions given by the General Department of Customs. 
+See the chart of type codes on the website 
+www.customs.gov.vn 
+X 
+
+1.5 
+Product classification code If a product falls into one of the following situations, typing 
+its respective code is compulsory:  
+“A”: Gifts or donations 
+“B”: National defence and security products 
+“C”: Emergency assistance products 
+“D”: Products intended for mitigation of natural disasters 
+and epidemics 
+“E”: Humanitarian aids/ non-refundable aids 
+“F”: Postal and express delivery products 
+“G”: Movable property 
+“H”: Products used by means of transport upon entry or 
+exit 
+“I”: Diplomatic products 
+“J”: Others prescribed by the Government’s regulations 
+“K”: Specially-preserved products 
+Note: Use the code “J” only if otherwise prescribed in the 
+Government’s particular document. This code is not 
+applicable to common products. 
+  
+1.6 
+Transportation mode code Based on the transportation mode, one of the following 
+codes is selected: 
+“1”: Aviation transport 
+“2”: Sea transport (using containers) 
+“3”: Sea transport (bulk cargos, liquid cargos, etc.) 
+“4”: Land transport (using goods-carrying motor vehicles) 
+“5”: Rail transport 
+“6”: Inland water transport 
+“9”: Other 
+Note:  
+- Select the respective code of mode of transportation of 
+goods imported from abroad to the port of entry in case of 
+transportation of the imported goods kept in the 
+consolidated container into a CFS warehouse. Example: If 
+goods kept in the consolidated container are transported 
+by sea, select the code “3”.  
+- The code “9” is used in the following cases: 
+1. Transport of the imported goods by using the mode of 
+transportation other than those assigned the code “1” 
+through the code “6”. Example: pipeline or cable transport, 
+etc.   
+2. Spot import; goods imported into bonded warehouses. 
+  
+
+- In case of air transport of the carry-on luggage, select the 
+code “1"; in case of sea transport thereof, select the code 
+“3”.   
+1.7 
+Individual/organization 
+classification 
+Depending on the nature of a transaction, select one of 
+the following codes: 
+Code “1”: Person to person 
+Code “2”: Organization/company to person 
+Code “3”: Person to organization/company 
+Code “4”: Organization/company to organization/company 
+Code “5”: Other 
+  
+1.8 
+Customs authority 
+(1) Specify the code of the Customs Subdepartment 
+where the customs declaration is registered in accordance 
+with laws. 
+If it is skipped, the system will automatically specify the 
+code of the Customs Subdepartment granting registration 
+of customs declarations based on the address of the 
+facility where the goods awaiting customs clearance are 
+stored.   (2) See the chart of “Codes of Customs 
+Subdepartments – Customs Import Procedure Teams” on 
+the website www.customs.gov.vn. 
+X 
+1.9 
+Code of the declaration 
+processing department 
+(1) Provide the code of the Customs Import Procedure 
+Team in charge of processing of customs declarations. 
+(2) If it is skipped, the system will automatically specify the 
+code of the Customs Import Procedure Team in charge of 
+processing of customs declarations based on the HS 
+code. 
+(3) See the chart of “Codes of Customs Subdepartments – 
+Customs Import Procedure Teams” on the website 
+www.customs.gov.vn.  
+X 
+1.10 
+Re-export duration 
+In case of use of the customs declaration of goods 
+imported in the form of re-import, based on regulations on 
+the respective duration during which temporarily imported 
+goods may stay in Vietnam, enter the deadline in the 
+dd/mm/yyyy format.   
+  
+1.11 
+(Proposed) submission date Enter the proposed date (dd/mm/yyyy) of implementation 
+of the IDC service. 
+In case of skipping this field, the e-customs system will 
+automatically import the date of implementation of this 
+service. 
+  
+1.12 
+Importer’s code 
+Enter the importer’s TIN. 
+Note:  
+- If the importer has registered use of VNACCS and has 
+already implemented the IDA service, the system will 
+automatically export the importer’s code. 
+  
+
+- If the foreign consignor hires a bonded warehouse, the 
+importer’s code is the code of the owner of that bonded 
+warehouse or the code of the customs brokerage agent. 
+1.13 
+Importer’s code 
+Enter the importer’s name. 
+Note:  
+- If the foreign consignor hires a bonded warehouse, the 
+importer’s name is the name of the owner of that bonded 
+warehouse or the name of the customs brokerage agent. 
+- If the importer has registered use of VNACCS or has 
+already entered “the importer's code”, the system will 
+automatically export the importer’s name. 
+  
+1.14 
+Zip/postal code 
+Enter the importer’s zip/postal code (if any). 
+  
+1.15 
+Importer’s address 
+(1) Enter the importer’s address. Do not need to fill in this 
+field if it is automatically displayed on the system. 
+(2) If the importer’s address is not correctly displayed on 
+the system, enter the correct address. 
+(3) If the importer has registered the use of VNACCS and 
+has already implemented the IDA service, inputting 
+information in this field is not required. 
+  
+1.16 
+Importer's telephone number (1) Enter the importer’s telephone number (hyphens are 
+not accepted). In case of the automatic display on the 
+system, data input is not required. 
+(2) If the importer’s telephone number is not correctly 
+displayed on the system, enter the correct telephone 
+number. 
+(3) If the importer has registered the use of VNACCS and 
+has already implemented the IDA service, inputting 
+information in this field is not required. 
+  
+1.17 
+Import-entrusting person’s 
+code 
+Enter the import-entrusting person’s TIN. 
+  
+1.18 
+Import-entrusting person’s 
+name 
+Enter the import-entrusting person’s name. 
+  
+1.19 
+Exporter’s code 
+Enter the exporter’s code or the foreign consignor’s code 
+in case of transport of goods into a bonded warehouse (if 
+any). 
+  
+1.20 
+Exporter’s name 
+(1) Enter the exporter’s name or the foreign consignor’s 
+name in case of transport of goods into a bonded 
+warehouse (if not available on the system). 
+(2) If available, the system will automatically export the 
+exporter's name. 
+Note:  
+- Enter the exporter (the seller)’s name under a contract 
+for trading of imported goods (even including the case in 
+which imported goods are traded through the third party); 
+  
+
+- Enter the customer’s name specified in the toll 
+manufacturing agreement (if goods are imported through 
+the third party designated by the toll manufacturing service 
+customer, enter the designated consignor in the box 
+intended for entering the export entrusting person's name); 
+- If the sales agreement prescribes the imported goods are 
+received in Vietnam (in case of the spot import), the 
+exporter’s name is the overseas buyer’s name; the name 
+of the designated consignor (in Vietnam) must be entered 
+in the box intended for the export entrusting person's 
+name;    
+- If the customs declarant is the owner of the imported 
+goods sent to a bonded warehouse, enter the foreign 
+seller’s name (the same as the exporter’s name inscribed 
+on the declaration of import of goods sent to a bonded 
+warehouse); 
+- The abbreviated or shortened name of the exporter is 
+accepted. 
+1.21 
+Exporter’s zip/postal code 
+Enter the exporter’s zip/postal code (if any). 
+  
+1.22 
+Address 
+Box 1: Enter street name, home/ post office box number. 
+The customs declarant must enter the address on his/her 
+own if the system does not automatically export 
+information.  
+Enter the accurate street name and home/post office box 
+number if the system gives inaccurate information. 
+Box 2: Continue to enter street name and home/post office 
+box number. 
+Box 3: Enter the city’s name. The customs declarant must 
+fill in this field if the system does not automatically export 
+information. 
+Enter the city’s accurate name if the information displayed 
+on the system is not correct. 
+Box 4: Enter the country’s name.  The customs declarant 
+must fill in this field if the system does not automatically 
+export information. 
+Enter the country’s accurate name if the information 
+displayed on the system is not correct. 
+  
+1.23 
+Country code 
+The country code contains 02 UN LOCODE letters (see 
+the chart of country codes at the Portal of the General 
+Department of Customs: www.customs.gov.vn), 
+specifically including the followings: 
+(1) If the goods are transported directly from the exporting 
+country to Vietnam or in transit through an intermediate 
+country without being traded or processed for 
+manufacturing of finished products or exported products, 
+or those obtain the customs clearance from the foreign 
+customs authority, the country of consignment will be the 
+exporting country.  
+X 
+
+(2) If the goods are transported from the exporting country 
+to Vietnam and in transit through one or multiple 
+intermediate countries, the country of consignment will be 
+the last country where the goods are in transit before 
+arrival in Vietnam, and where the goods are traded or 
+processed for manufacturing of finished products and 
+exported products, or where the goods obtain the customs 
+clearance.  
+(3) In case the abovementioned country code is not 
+defined, enter the exporter’s country code.   
+1.24 
+Import-entrusting person’s 
+name 
+Enter the export-entrusting person’s name (if any). 
+In case of the spot import assigned by the foreign 
+exporter, enter the name of the assigned consignor in 
+Vietnam. 
+  
+1.25 
+Customs brokerage agent’s 
+code 
+(1) If the customs brokerage agent implements the IDA 
+service and other following services, data entry is not 
+required. 
+(2) If the IDA service and the IDC service are implemented 
+by two different customs declarants, enter the code of the 
+user of the IDC service.  
+  
+1.26 
+Transport document number 
+(B/L, AWB number, etc.) 
+(1) Enter the transport document number containing digits, 
+alphabetical letters and special characters (if any) (B/L, 
+AWB and RWB number). 
+Note:  
+- Enter the number of the transport document on which the 
+importer's name is given at the box intended for the 
+consignee’s name. 
+Provide the transport document on which the consignee is 
+the importer.  
+- With respect to B/L and AWB, it is possible to enter as 
+many as 05 numerals but the goods defined by these 
+transport document numbers must be owned by one 
+consignor, consignee, and carried by the same means of 
+transport and on the same route as well as must have the 
+same date of arrival.   
+- The AWB number is not allowed to exceed 20 
+characters. 
+(2) If a transport document is used by multiple customs 
+declarations, the customs declarant must inform the 
+customs authority of the splitting of that transport 
+document according to the information requirements 
+prescribed in the form No. 12 of this Appendix through the 
+electronic customs data system. The system automatically 
+receives, checks and replies to the customs declarant’s 
+application for the splitting of the transport document 
+promptly after receipt of the notification of such splitting. 
+The customs declarant is required to use the branched 
+transport document number in a response to fill in this box. 
+  
+
+(3) If the goods are imported without the transport 
+document, the customs declarant must send information 
+about goods according to the information requirements set 
+forth in the form No.13 of this Appendix through the 
+electronic customs data processing system. The system 
+will automatically grant the cargo management number to 
+the imported shipment to fill in this box. 
+1.27 
+Quantity 
+Box 1: Enter the aggregate number of goods packs (based 
+on the commercial invoice, packing list and transport 
+document, etc.)  
+Note:  
+- Do not enter the decimal parts; 
+- Enter “1” for the goods not measured in such units as 
+parcel or case, etc. 
+Box 2: Enter the measurement unit code 
+Example: CS: case, BX: box,… 
+(See the chart of package type codes on the website 
+www.customs.gov.vn) 
+X 
+1.28 
+Gross weight 
+Box 1: Enter the total weight of the shipment (based on 
+the packing list, commercial invoice and transport 
+document)  
+Note:  
+- If the customs declarant selects the code “1" at the data 
+field “Transportation mode code”, 08 characters indicating 
+the integer parts and 01 character indicating the decimal 
+part may be entered. If the decimal part is more than 01 
+character, enter the exact gross weight into the box 
+"Note". 
+- As for other modes of transportation, 06 characters of the 
+integer part and 03 characters of the decimal part must be 
+entered. 
+- If the code of the gross weight of the shipment is “LBR” 
+(pound), the system will automatically convert into KGM 
+(kilogram). 
+- Do not need to fill in this box if the customs declarant 
+selects the code “9” at the data field “Transportation mode 
+code”. 
+Box 2: Enter the measurement unit code for the UN/ECE 
+gross weight of the shipment 
+Example: 
+KGM: kilogram 
+TNE: tonne 
+LBR: pound 
+(See the chart of “units of measure codes” on the website 
+www.customs.gov.vn) 
+X 
+
+- If the unit of measure which is not LBR is used, specify 
+the code of that unit of measure. 
+- If the code “LBR” (pound) is used, enter KGM. 
+1.29 Code of the proposed location 
+for storage of goods awaiting 
+customs clearance 
+Enter the code of the location for storage of goods upon 
+implementation of the import declaration. 
+(See the chart of codes of proposed facilities of storage of 
+goods awaiting customs clearance, places for intermediate 
+transportation under tax suspension and places of 
+destination for transportation under tax suspension on the 
+website www.customs.gov.vn)   
+Example 1: If Company A registers the import declaration 
+with the Hai Phong Region I Sub-department of 
+Bordergate Customs (the Subdepartment’s code is 03 
+CC), and their goods are stored at the Tan Cang Hai 
+Phong Warehouse Facility (according to the arrival notice), 
+enter the code of the Tan Cang Hai Phong Warehouse 
+Facility (03CCS03).   
+Example 2: If Company B registers the import declaration 
+with the Bac Thang Long Customs Subdepartment (its 
+code is 01NV) and their goods are kept at the Tan Thanh 
+Lang Son Storage Yard of Imported Goods (according to 
+the arrival notice), enter the code of Tan Thanh Storage 
+Yard of Imported Goods (15E4G02). 
+X 
+1.30 
+Codes and numbers 
+Enter codes and numbers of goods package (shown on 
+parcels or boxes, etc.).  
+  
+1.31 
+Means of transport 
+Box 1: Enter the call sign in case of sea/river transport. If 
+basic vessel information has not been input in the system, 
+enter “9999”.  
+Box 2: Enter the name of means of transport (according to 
+the transport document: B/L, AWB,...) 
+(1) Enter the vessel’s name in case of sea/river transport. 
+(2) In case information input is skipped, the system will 
+automatically export the vessel’s name registered on the 
+system based on its call sign given in the box 1. 
+(3) In case of air transport, enter the airline’s code (02 
+characters), flight number (04 characters), slash (01 
+character), dd/mmm (dd: 02 characters, mmm: 03 
+abbreviated characters of English month names).  
+Example: AB0001/01JAN 
+(4) In case of land transport, enter the registration plate 
+number. 
+(5) In case of rail transport, enter the train registration 
+number. 
+(6) Do not need to fill in this field if the customs declarant 
+selects the code “9” at the field “Transportation mode 
+code” and the system automatically export the name of the 
+means of transport. 
+  
+
+1.32 
+Arrival date 
+Enter the proposed date of arrival of goods at the 
+bordergate according to the transport document or the 
+arrival notice sent by the shipper to the consignee. 
+  
+1.33 
+Unloading location 
+Box 1: Enter the code of the unloading location: 
+(1) Enter the unloading port code (air or sea transport) 
+according to the transport document (B/L, AWB,...); 
+(2) Enter the stop station (rail transport);  
+(3) Enter the bordergate code (land or river transport); 
+(4) Data entry is compulsory if the customs declarant 
+selects the code “9” at the data field “Transportation mode 
+code”. 
+(Refer to the chart of domestic ICD codes, land 
+bordergates – railway terminals and domestic airports on 
+the website www.customs.gov.vn)  
+Box 2: Enter the unloading location: The system exports 
+the name of the unloading location based on the location 
+code. If the code of the unloading location is not available, 
+enter the unloading location’s name. 
+Note:  
+- In case of the spot import, enter the name of the 
+importing company's warehouse. 
+- Do not need to fill in this data field if the goods are 
+imported from non-tariff zones, except bonded 
+warehouses. 
+X 
+1.34 
+Loading location 
+Box 1: Enter the UN LOCODE loading location 
+code.  (See the chart of codes of overseas locations and 
+overseas airports on the website www.customs.gov.vn).  
+Note:  
+- In case the location is not present in the abovementioned 
+code chart, enter the country code (02 characters) + ZZZ. 
+- In case of the spot import, enter “VNZZZ”. If the goods in 
+non-tariff zones are sent to bonded warehouses; the 
+goods are imported from bonded warehouses into 
+domestic areas, enter “ZZZZZ”.  
+Box 2: Enter the location where the goods are loaded onto 
+the means of transport: 
+Note:  
+- Do not need to fill in this field if the system gives 
+automatic support. 
+- In case of rail transport, enter the railway terminal name. 
+-In case of the spot import or import of the goods from a 
+domestic area into a bonded warehouse, enter the name 
+of the exporting company’s warehouse.  
+- If the goods are imported from a non-tariff zone into a 
+bonded warehouse, enter the name of the non-tariff zone. 
+X 
+
+- In case the goods are imported from a bonded 
+warehouse into a domestic area, enter the name of the 
+bonded warehouse. 
+1.35 
+Quantity of containers 
+Enter the number of containers: 
+(1) The system automatically exports the number of 
+containers after registration.  
+(2) In case of the air transport or other mode of 
+transportation without using containers, and the imported 
+goods are packed in the consolidated container from a 
+CFS warehouse, data input in this field is not required. 
+(3) The customs declarant uses the HYS service to 
+register the list of containers (including information about 
+codes, numbers and seal numbers). 
+Note:  The list of containers is prepared in the excel file 
+format approved by the customs authority. 
+  
+1.36 
+Code of shipment content 
+inspection result 
+If the customs declarant checks the imported goods before 
+submission of the customs declaration, enter one of the 
+following codes: 
+“A”: NOT Abnormal  
+“B”: Abnormal 
+“C”: Consultation with the customs authority is needed 
+Note:  Enter the code “C” if the customs declarant 
+demands that the customs authority carry out the physical 
+inspection of the shipment.  
+  
+1.37 
+Codes of other legislative 
+documents 
+Enter the code of the legislative document on 
+management of imports specified on the customs 
+declaration, such as the import permit, sanitary and 
+phytosanitary test, food safety and quality inspection 
+results, etc. 
+(See codes of legislative documents in the chart of codes 
+of other regulatory documents and license classification on 
+the website www.customs.gov.vn)  
+Note:  
+- As for the goods subject to the administration by the 
+specialized regulatory body, data input in this box is 
+required. 
+- May enter 05 codes (at 05 boxes) at maximum and these 
+codes must be different.  
+X 
+1.38 
+Import permit 
+Fill in this data field if the goods have to obtain the import 
+permit and the specialized inspection result prior to 
+customs clearance; the imported goods are in the 
+reconciliation list, the list of off-system duty-free 
+investments, the list of synchronized equipment, the list of 
+goods imported in the form of full set and disassembled for 
+multiple imports and shipments, the list of supplies and 
+equipment imported for assembly, repair and maintenance 
+of railway locomotives and cars, the list of supplies and 
+X 
+
+equipment imported for the priority machinery 
+manufacturing industry, the written document on prior 
+valuation, the written document on code predetermination 
+and the written document on origin determination, and the 
+number of receipt of the processing contract/appendix to a 
+contract.     
+Box 1: Enter the classification code of the import permit. 
+(See codes of import permits in the chart of other 
+regulatory documents and license classification on the 
+website www.customs.gov.vn)  
+Box 2: Enter the number of the import permit or the 
+number of the written notification of the specialized 
+inspection result or the number of the reconciliation list or 
+the number of the written document on predetermination 
+of code/value/origin (if any) or the number of receipt of the 
+processing contract or the appendix thereto, which is 
+exported by the system when the customs declarant 
+informs the processing contract or the appendix thereto. 
+(Enter 05 types of import permits at maximum). 
+1.39 Classification of invoice types Enter one of the classification codes of invoicing forms as 
+follows: 
+“A”: Commercial invoices  
+“B”: Evidencing documents equivalent to commercial 
+invoices if the buyer is obliged to pay the seller or the 
+inventory of commercial invoices by using the form No. 
+02/BKHĐ/GSQL in the Appendix V hereto, or in case of 
+none of commercial invoices. 
+“D”: electronic invoices (if registration of the electronic 
+invoice on VNACCS has been completed) 
+Note:  In case of preparation of the inventory of invoices 
+according to the form No. 02/BKHĐ/GSQL in the Appendix 
+V, select the code “B”. 
+  
+1.40 
+Electronic invoice receipt 
+number 
+(1) If the invoice form is classified by the code “D”, the 
+electronic invoice receipt number will be required. 
+(2) If the invoice form is classified by the code other than 
+the code "D", this data field cannot be filled in. 
+  
+1.41 
+Invoice number 
+Enter the number of the commercial invoice or the number 
+of the evidencing documents equivalent to a commercial 
+invoice if the buyer is obliged to pay the seller or the 
+inventory of commercial invoices by using the form No. 
+02/BKHĐ/GSQL in the Appendix V hereto.  
+In case the commercial invoice is not available, the 
+customs declarant will not be required to fill in this box. 
+If the goods imported from a bonded warehouse into 
+domestic areas multiple times, enter the number of the 
+commercial invoice issued by the foreign seller upon 
+import of these goods into domestic areas.  
+  
+
+1.42 
+Invoicing date 
+Enter the date of issuance of the commercial invoice or 
+the date of formulation of the evidencing document 
+equivalent to a commercial invoice if the buyer is obliged 
+to pay the seller or the statement of commercial invoices 
+by using the form No. 02/BKHĐ/GSQL in the Appendix V 
+hereto. (dd/mm/yyyy). 
+Note:  If the commercial invoice is not available, enter the 
+date of implementation of IDA service. 
+  
+1.43 
+Payment method 
+Enter one of the following payment method codes:  
+“BIENMAU”: Border trade 
+“DA”: Documents against Acceptance Collection 
+“CAD”: Cash against Documents 
+“CANTRU”: Clearing and redemption 
+“CASH”: Cash 
+“CHEQUE”: Cheque 
+“DP”: Documents against Payment Collection 
+“GV”: Capital contribution 
+“H-D-H”: Swapping and Bartering   
+“H-T-N”: Goods for debt repayment 
+“HPH”: Bill of exchange 
+“KHONGTT”: No payment 
+“LC”: Letter of credit 
+“LDDT”: Investing joint venture 
+“OA”: Open account 
+“TTR”: Telegraphic Transfer Reimbursement. 
+“KC”: Other (including the TT payment) 
+Note:  
+- In case of payment made in other or combined forms, 
+enter the code “KC” and fill in the actual payment method 
+onto the box “Details of value declaration”;  
+- If the customs declarant is the owner of the goods sent to 
+a bonded warehouse, enter "No payment" in the data field 
+of payment method. 
+  
+1.44 
+Total invoice value  
+Box 1: Enter the classification code of invoice/ other 
+equivalent: 
+“A”: Invoice price of paid goods 
+“B”: Invoice price of unpaid goods (FOC/promotional 
+products) 
+“C”: Invoice price of both paid and unpaid goods 
+“D”: Other cases (including the case in which none of 
+commercial invoices is issued) 
+X 
+
+Box 2: Enter one of the following Incoterms terms and 
+conditions of delivery: 
+(1) CIF 
+(2) CIP 
+(3) FOB 
+(4) FCA 
+(5) FAS 
+(6) EXW 
+(7) C&F (CNF) 
+(8) CFR 
+(9) CPT 
+(10) DDP 
+(11) DAP 
+(12) DAT 
+(13) C&I 
+(14) DAF 
+(15) DDU 
+(16) DES 
+(17) DEQ 
+In case, upon import of goods in the form of toll 
+manufacturing, the customs declarant uses the third-party 
+invoice under invoice price terms and conditions which are 
+not relevant to delivery terms and conditions specified in a 
+contract, or in the absence of the commercial invoice, 
+enter CIF into the box "Invoice price terms and conditions". 
+Box 3: Enter the code of the currency unit specified on the 
+invoice according to the UN/LOCODE standards. 
+(See the chart of currency unit codes on the website 
+www.customs.gov.vn)  
+Box 4: Total invoice value: 
+(1) Enter total invoice value. 
+(2) If the shipment has multiple invoices with the same 
+transport document, the shipment documentation contains 
+the consolidated invoice combining these invoices or other 
+evidencing document replacing the invoice is prepared 
+under instructions, enter total value specified on the 
+consolidated invoice, and before registration of the 
+customs declaration, provide the list of invoices or 
+equivalent evidencing documents by carrying out the HYS 
+service.   
+(3) If the terms of delivery, such as CFR, DDU, DDP, 
+DAP, DAF, etc., are applied, but total amount on the 
+invoice is divided into separate amounts, including total 
+
+amounts varying depending on EXW or FOB terms, 
+transportation or packing costs, etc.; each item has the 
+invoice value under EXW or FOB terms (exclusive of 
+transportation or packing costs, etc.), and in case of the 
+distribution of transportation or packing costs, etc. in the 
+value ratio, the data fields will be completed as follows:     
+- At the box “Terms of delivery”, specify EXW or FOB 
+relevant to total invoice value (adjustments have not yet 
+been added or subtracted). 
+- At the box “Total invoice value", enter total value specific 
+to EXW or FOB terms. 
+- Enter transportation costs into the box “Transportation 
+cost”; 
+- Enter packing costs and other adjustment amounts (if 
+any) into the box of adjustments; 
+- Enter the terms of delivery into the box “Value 
+declaration details”; 
+- At the box “Total value distribution factor”, enter total 
+invoice value under respective EXW or FOB terms 
+(adjustments have not yet been added or subtracted). 
+- At the box “Invoice value” of each item, enter the value of 
+each item specified on the invoice (adjustments have not 
+yet been added or subtracted).  
+(4) With respect to import of goods between an enterprise 
+at a non-tariff zone/ bonded warehouse and a domestic 
+enterprise: If the terms of delivery belong to the E or F 
+group, 
+- Enter CIF into the box "Terms of delivery”; 
+- Enter information according to instructions given in (1) 
+into the box “Total invoice value”. 
+(5) In case of the invoice containing both paid goods and 
+FOC/ promotional products, Enter total invoice value and 
+input information into the Detail field as follows: 
+- As for paid goods, enter information as normally 
+according to instructions (the system gives support in the 
+automatic distribution of dutiable values);  
+- As for FOC/ promotional products, enter total invoice 
+value and, at the box “Value declaration details”, specify 
+the ordinal number of product line in the Detail field as 
+FOC/ promotional products.  
++ Box “Invoice value”, box “invoice unit price” may be kept 
+blank; 
++ Box “dutiable value”: Enter the dutiable value of goods. 
+(6) If the entire shipment contains FOC/ promotional 
+products or goods without the commercial invoice: 
+- At the box “total invoice value”, enter total transportation 
+or insurance cost (if any) of the shipment; 
+
+- Box “Invoice value”, box “invoice unit price” may be kept 
+blank; 
+- At the box “dutiable value”, enter the dutiable value of 
+goods. 
+Note: In (5) and (6), the box “Tariff schedule codes of 
+imported goods”, select the appropriate schedule. In case 
+of goods not subject to duty, select B30 and enter 0% at 
+the box “Duty rate” and respective duty 
+exclusion/deduction/exemption codes. 
+(7) Enter as many as 04 numerals in the fractional parts if 
+the currency unit code is not [VND]. If the currency unit 
+code is [VND], entering the fractional parts in a decimal 
+number will not be permitted.  
+Note:  
+- If total invoice value exceeds the system’s limit, a paper 
+customs declaration will be needed. 
+- In case the commercial invoice is not available and the 
+customs declarant does not fill in the box “Invoice 
+number”, this data field will be skipped. 
+1.45 Value declaration classification 
+code 
+Enter one of the following codes: 
+“1”: Determining the dutiable value according to the 
+method for determination of the transaction value of 
+identical goods  
+“2”: Determining the dutiable value according to the 
+method for determination of the transaction value of 
+similar goods  
+“3”: Determining the dutiable value according to the 
+method for determination of the deductive value 
+“4”: Determining the dutiable value according to the 
+method for determination of the computed value 
+“6”: Applying the transaction value method 
+“7”: Applying the transaction value method if a special 
+relationship is established but causes no impact on the 
+transaction value 
+“8”: Applying the transaction value method, but manually 
+distributing adjustments to the dutiable value and typing 
+distributed amounts at the box indicating the dutiable 
+values of specific product lines.  
+“9”: Determining the customs value according to the 
+inference method. 
+“T”: Determining the customs value in certain special 
+cases 
+Note: 
+- If various valuation methods are applied to a shipment, 
+enter the representative code indicating the commonly 
+used method.  
+  
+
+- Codes “0”, “5” and “Z” are those relating to the 
+consolidated value declaration which are not applied until 
+detailed instructions are given. 
+- Enter the code “6” or “7” only if the shipment qualifies for 
+application of the transaction value method. 
+- Use the code “T” for cases prescribed in Article 17 of the 
+Circular No. 39/2015/TT-BTC and goods imported for 
+processing of products under contracts with foreign 
+tradespersons.  
+1.46 
+Number of receipt of the 
+consolidated value declaration 
+Box 1: Do not fill in this box until new instructions are 
+given 
+Box 2: Do not fill in this box until new instructions are 
+given 
+Box 3: Do not fill in this box until new instructions are 
+given 
+  
+1.47 
+Transportation cost 
+Box 1: Enter one of the following transportation cost 
+codes: 
+“A”: This code is used if the transport document specifies 
+total fee for transportation of all goods.  
+“B”: This code is used in the following cases: 
+- The shipment invoice contains the paid goods and FOC/ 
+promotional products; 
+- The costs of transportation of the paid goods and FOC/ 
+promotional products specified in the transport document 
+are separated. 
+Upon use of this code, at the box (box 3) indicating the 
+cost of transportation of the paid goods, the system will 
+automatically fill in information. With respect to FOC/ 
+promotional products, the customs declarant must, of their 
+own accord, total transportation fees for calculation of the 
+dutiable value and enter the total number into the box 
+indicating the dutiable values of FOC/ promotional 
+products. 
+“C”: This code is used if the customs declaration shows 
+that only a part of the goods contained in the shipment 
+specified in the transport document is imported.  
+“D”: Distributing transportation costs according to the 
+weight and capacity rate. When entering this code, the 
+customs declarant must submit the valuation declaration in 
+order to distribute dutiable value adjustments/ calculate 
+the dutiable value of each item, enter the result of 
+calculation of the dutiable value specified on the valuation 
+declaration into the respective box on the import 
+declaration in the VNACCS system. 
+“E”: This code is used if the value of invoice of the goods 
+includes transportation costs (example: CIF, C&F, CIP), 
+but the actual transportation cost exceeds the invoiced 
+one (other transportation costs may additionally arise from 
+  
+
+transporting goods to ports of entry owing to an increase 
+in the transportation cost due to increases in fuel prices, 
+currency fluctuations or port congestion, etc.). 
+“F”: This code is used if a transportation cost exceeds the 
+prescribed one and only a part of goods contained in a 
+shipment is imported. 
+Box 2: Enter the code of the currency unit of the 
+transportation cost. 
+Box 3: Enter the amount of the transportation cost: 
+(1) If the currency unit code is not “VND”, entering as 
+many as 4 numerals in the fractional parts may be 
+accepted. 
+(2) If the currency unit code is “VND”, entering numerals in 
+the fractional parts will not be accepted. 
+(3) If the code of the terms of the invoice price is “C&F” or 
+“CIF”, and the actual transportation cost is greater than the 
+transportation cost specified in the transportation cost 
+invoice, enter the transportation cost difference into this 
+box (equivalent to the code “E” at the box 2).  
+Note:  
+- In case the commercial invoice is not available and the 
+customs declarant does not fill in the box “Invoice 
+number”, this data field will be skipped. 
+1.48 
+Insurance cost 
+Box 1: Enter one of the following insurance cost codes: 
+Enter one of the following insurance cost codes: 
+“A”: Separate insurance 
+“D”: No insurance 
+If the data field indicating the terms of the invoice price 
+has been filled in by CIF, CIP, C&I, DDU, DDP, DAP, DAF 
+or DAT price, the data input herein will not be allowed.   
+Note:  The code “B” is the general insurance which is not 
+applied until new instructions are given. 
+Box 2: Enter the code of the currency unit of the insurance 
+cost in case of the separate insurance (code “A”). 
+Box 3: Enter the amount of the insurance cost in case of 
+the insurance code “A”. 
+(1) If the currency unit code is not “VND”, entering as 
+many as 4 numerals in the fractional parts may be 
+accepted. 
+(2) If the currency unit code is “VND”, entering numerals in 
+the fractional parts will not be accepted. 
+Box 4: Do not fill in this box until new instructions are 
+given 
+Note:  
+  
+
+- In case the commercial invoice is not available and the 
+customs declarant does not fill in the box “Invoice 
+number”, this data field will be skipped. 
+1.49 
+Adjustment code and name Box 1: Enter respective codes of the following 
+adjustments: 
+“A”: Sales commission and brokerage fee (AD). 
+“B”: Cost of packaging deemed as an integral part of an 
+exported good (AD). 
+“C”: Packing cost (AD). 
+“D”: Assistance amount (AD). 
+“E”: Copyright cost, licensing cost (AD). 
+“P”: Amounts that an importer has to pay from proceeds 
+gained after resale, disposal and use of imported goods 
+(AD). 
+“Q”: The buyer’s amounts payable which are not included 
+in the invoice price, including: advance or prepaid amount, 
+deposit amount (AD). 
+“K”: The buyer’s payment to the third party upon the 
+seller’s request (AD). 
+“M”: Amounts paid by the debt settlement (AD).  
+“U”: Costs incurred by activities arising after import of 
+goods, including construction, architecture, installation, 
+maintenance or technical assistance, consultancy, 
+supervisory and other equivalent costs (SB). 
+“V”: Transportation costs arising after transportation of 
+goods to the first port of entry (SB). 
+“H”: Insurance costs arising after transportation of goods 
+to the first port of entry (SB). 
+“T”: Taxes, fees or charges which have already been paid 
+in Vietnam and included in the purchase price of the 
+imported goods (SB).    
+“G”: Discounts (SB). 
+S: Costs relating to marketing of imported goods which are 
+incurred by the buyer  
+“L”: Interest calculated at the rate specified under the 
+buyer's financial agreement and relating to the purchase of 
+imported goods (SB).  
+“N": Others 
+Note:  
+- Do not enter the code “G” in this box in case of the 
+quantity discount. At the box “Value declaration details”, 
+clearly enter the goods eligible for the quantity discount 
+and the discounted value or the discount rate.   Upon 
+completion of import of the entire shipment, the discount 
+  
+
+may be considered in accordance with the Circular No. 
+205. 
+Box 2: Enter the respective code of value adjustment in 
+the following cases:  
+“AD”: Addition of the adjustment amount. 
+“SB”: Subtraction of the adjustment amount. 
+“IP”: The dutiable value which is the invoice price. 
+“DP”: Entering total dutiable price which is manually 
+calculated. 
+Box 3: Enter the code of the currency unit of the 
+adjustment amount. 
+Box 4: Enter the value of the adjustment amount 
+corresponding to the code of the adjustment name and the 
+code of the adjustment amount. 
+(1) Enter as many as 04 numerals in the fractional parts if 
+the code of the currency unit is not “VND”. 
+(2) If the code of the currency unit is “VND”, entering the 
+fractional parts will not be allowed. 
+Box 5: Enter total factor of distribution of adjustment 
+values. 
+(1) If the adjustment amount is distributed to the good 
+specified in at least 2 customs declarations, enter total 
+invoice price of products with adjustments distributed in all 
+of customs declarations. 
+(2) If adjustments are distributed to the goods of only one 
+customs declaration, this box may be skipped.  
+(3) Enter as many as 04 numerals in the fractional parts. 
+(4) Value of the column “Total factor of distribution of 
+adjustment amounts” ≤ the value of the column “Total 
+factor of distribution of dutiable values”.  
+Note:  
+- In case the commercial invoice is not available and the 
+customs declarant does not fill in the box “Invoice 
+number”, this data field will be skipped. 
+1.50 
+Value declaration details 
+1) Enter the transport document in the DDMMYYYY#& 
+format. 
+(2) Enter details of the value declaration. 
+Example: If the sales commission is equal to 5% of the 
+invoice value, calculate the commission amount, enter the 
+corresponding adjustment amount and write “the 
+commission equal to 5% of the invoice value” into this box. 
+(3) Enter notes and remarks relating to the value 
+declaration. 
+(4) Enter information according to instructions given at the 
+box "Total invoice value" and other relevant boxes. 
+  
+
+(5) If the customs declarant has not obtained adequate 
+information and documents on customs valuation, he/she 
+may request the customs authority to determine value as a 
+basis for release of goods. 
+(6) If imported or exported goods have not been officially 
+priced on the date of registration of the customs 
+declaration, the customs declarant will accept the 
+temporarily calculated price. 
+(7) Inform any discount in which subtraction is not 
+implemented. 
+(8) Enter the number of the sales contract (if any). 
+(9) In case of requesting the single customs consultation 
+and using the result of the multiple customs consultation, 
+the customs declarant enters contents of the "request for 
+the single customs consultation or use of the result of the 
+multiple customs consultation" and clarifies such 
+information as the ordinal number of goods, number/date 
+of the customs consultation report, code of the customs 
+department/subdepartment that carries out the customs 
+consultation).  
+1.51 
+Total factor of distribution of 
+the dutiable value 
+(1) Enter total invoice value before making adjustments. 
+(2) Enter as many as 04 numerals in the fractional parts. 
+(3) In case of one invoice – multiple customs declarations, 
+filling out this box is mandatory. 
+(4) In case this field is not filled in, the system will 
+automatically calculate the value input in this box by 
+summing up all invoice prices of products specified in the 
+customs declaration. 
+(5) The value of the column “Total factor of distribution of 
+dutiable values” ≥ the value of the column “Total factor of 
+distribution of adjustment amounts”.  
+Note:  
+- In case the commercial invoice is not available and the 
+customs declarant does not fill in the box “Invoice 
+number”, this data field will be skipped. 
+  
+1.52 
+Taxpayer  
+Enter one of the following codes: 
+“1”: Taxpayer who is an importer 
+“2”: Taxpayer who is a customs agent 
+  
+1.53 
+Codes of reasons for BP 
+request  
+- In case of requesting the release of goods under a 
+guarantee, the customs declarant must enter one of the 
+following codes: 
+“A”: Awaiting determination of HS codes 
+“B”: Awaiting determination of dutiable value 
+“C”: In other cases 
+  
+
+- In case of requesting the release of goods for tax 
+payment reasons, the customs declarant enter the request 
+for release of goods into the box “Value declaration 
+details”  
+1.54 Code of the bank mandated to 
+pay duties on behalf of 
+taxpayer 
+Enter the bank’s code granted by the State Bank (see the 
+chart of “Bank codes” on the website 
+www.customs.gov.vn). If the symbol and number of the 
+document evidencing the tax payment limit have been 
+registered, the system will check the following information: 
+(1) The user of the limit must be the importer or the limit is 
+granted to a customs agent itself.  
+(2) The date of implementation of this service must fall 
+within the validity period of the registered limit. 
+  
+1.55 
+Year of issuance of the limit Enter the year of issuance of the written document 
+evidencing the limit. Filling in this field is compulsory if the 
+customs declarant has input information in the field “Code 
+of the bank mandated to pay duties on behalf of taxpayer”. 
+  
+1.56 
+Symbol of the document 
+evidencing the limit 
+Enter the symbol of the document evidencing the limit 
+inscribed on the certificate of limit issued by the bank (10 
+characters at maximum). Filling in this field is compulsory 
+if the customs declarant has input information in the field 
+“Code of the bank mandated to pay duties on behalf of 
+taxpayer”.  
+  
+1.57 
+Number of the document 
+evidencing the limit 
+Enter the symbol of the document evidencing the limit 
+inscribed on the certificate of limit issued by the bank (10 
+characters at maximum). 
+Filling in this field is compulsory if the customs declarant 
+has input information in the field “Code of the bank 
+mandated to pay duties on behalf of taxpayer”.  
+  
+1.58 Code for determination of the 
+duty payment duration 
+Enter one of the following codes: 
+“A”: This code is used if the duty payment duration is 
+applied under a several guarantee. 
+“B”: This code is used if the duty payment duration is 
+applied under a joint and several guarantee. 
+“C”: This code is used if the duty payment duration is 
+applied under no guarantee. 
+“D”: This code is used in case of prompt duty payment. 
+Note:  Enter the code “D” in case of the supplementary 
+declaration submitted to apply for customs clearance after 
+implementation of the temporary release procedures.   
+  
+1.59 
+Code of the guarantor bank Enter the bank code issued by the State Bank (see the 
+chart of “Bank codes” on the website 
+www.customs.gov.vn). If the symbol and number of the 
+document evidencing the limit have been registered, the 
+system will check the following information:    
+X 
+
+(1) The user of the document evidencing the guarantee 
+must be the importer or that document is granted to a 
+customs agent itself.  
+(2) The date of implementation of this service must fall 
+within the validity period of the registered document 
+evidencing the guarantee. 
+(3) In case of use of the several guarantee, it must be 
+used at the Customs Subdepartment where the document 
+has been registered.  
+(4) Except in the case (1), the code of the person 
+authorized to use the document evidencing the guarantee 
+which has been registered in the database has to be 
+identical to the code of the person signing in for use of this 
+service.  
+(5) In case of registration of the document evidencing the 
+several guarantee before completed preparation of the 
+customs declaration based on the number of the transport 
+document and/or the invoice number, the transport 
+document number and/or the invoice number must exist in 
+the several guarantee database.    
+(6) The type code which has been registered in the 
+database of documents evidencing the several guarantee 
+must be identical to the declared type code. 
+(7) If the proposed date of declaration has been registered 
+in the database of documents evidencing the several 
+guarantee, it must be identical to the proposed date of 
+registration of the declaration. 
+(8) In case of registration of the document evidencing the 
+several guarantee completed after the system grants the 
+declaration number, the declaration number available in 
+the guarantee database must be identical to the 
+declaration number granted by the system.  
+1.60 
+Guarantee issuance year 
+Enter the year of issuance of the document evidencing the 
+guarantee (including 04 characters). 
+Filling in this field is compulsory if the customs declarant 
+has input information in the field “Code of the guarantor 
+bank”.  
+  
+1.61 
+Symbol of the document 
+evidencing the guarantee 
+Enter the symbol of the document evidencing the 
+guarantee which is issued by the bank on the certificate of 
+guarantee (10 characters at maximum). 
+Filling in this field is compulsory if the customs declarant 
+has input information in the field “Code of the guarantor 
+bank”.  
+  
+1.62 
+Number of the document 
+evidencing the guarantee 
+Enter the number of the document evidencing the 
+guarantee which is issued by the bank on the certificate of 
+guarantee (10 characters at maximum). 
+  
+
+Filling in this field is compulsory if the customs declarant 
+has input information in the field “Code of the guarantor 
+bank”.  
+1.63 
+Number of attachment to the 
+electronic declaration 
+Box 1: Enter the code for classification of the attachment 
+to the electronic declaration in case of use of the HYS 
+function. 
+(See the chart of codes of attachments to electronic 
+declarations on the website www.customs.gov.vn)  
+Box 2: Enter the attachment to the electronic declaration 
+granted by the system at the HYS function. 
+X 
+1.64 
+First date of warehousing 
+permission  
+Enter the warehousing date; If there are many days on 
+which goods are allowed for entry into storage facilities, 
+enter the first date. 
+If the customs declarant uses the type code A41, enter the 
+date of implementation of the IDC function. 
+  
+1.65 
+Date of commencement of 
+transportation 
+Enter the date of commencement of transportation of 
+goods under customs supervision in the dd/mm/yyyy 
+format. 
+Fill in this box only in case the declaration of the combined 
+transport is required.  
+  
+1.66 
+Intermediate transportation 
+information 
+Box 1: Enter the location of intermediate transportation 
+with respect to transport under tax suspension. 
+(See the chart of codes of proposed facilities of storage of 
+goods awaiting customs clearance, places for intermediate 
+transportation under tax suspension and places of 
+destination for transportation under tax suspension on the 
+website www.customs.gov.vn)    
+Box 2: Enter the date of arrival at the location of 
+intermediate transportation. 
+Box 3: Enter the date of exit from the location of 
+intermediate transportation. 
+X 
+1.67 
+Place of destination for 
+transportation under tax 
+suspension (consolidated 
+declaration) 
+Box 1: Enter the place of destination for transportation 
+under tax suspension (applicable in case of the 
+declaration of combined transport). 
+(See the chart of codes of proposed facilities of storage of 
+goods awaiting customs clearance, places for intermediate 
+transportation under tax suspension and places of 
+destination for transportation under tax suspension on the 
+website www.customs.gov.vn)   
+Box 2: Enter the proposed date of arrival at the place of 
+destination. 
+X 
+1.68 
+Notes 
+(1) In case the goods imported to serve the purposes of 
+manufacturing of exports, processing and the goods 
+eligible for investment incentives are brought into domestic 
+markets for consumption, enter the number of the import 
+declaration formatted in the following syntax: #&number of 
+the import declaration (11 initial characters).      
+  
+
+Ex: #&10000567897 
+(2) If a shipment obtains a C/O to be eligible for special tax 
+incentives, enter the number of C/O and issue date. 
+(3) If the declaration of combined transport is not 
+supported in the type code field, provide the following 
+information: time, route, port of exit and port of arrival, 
+code of place of destination for transportation under tax 
+suspension. 
+(4) Enter the number and date of the VAT invoice or the 
+sales invoice in case of trades between domestic 
+enterprises and export processing enterprises or 
+enterprises operating within the boundaries of non-tariff 
+zones. 
+(5) In case of converting purposes of imported goods or 
+bringing them into domestic consumption markets, the 
+customs declarant will declare the number of the previous 
+customs declaration in this box.  
+(6) In case the customs declarant is the owner of the 
+goods sent to bonded warehouses, the customs declarant 
+will specify “Imported goods in the customs declaration for 
+receipt of goods in the bonded warehouse No…dated…”.  
+Note:  
+- In case of exceeding the permitted limit (100 characters), 
+the subsequent information will be input in the box 
+“Numbers and symbols”, "Detailed value declaration" and 
+"Description". 
+- In case of excess of the character limit specified at the 
+aforesaid boxes, use the HYS function to attach further 
+information that needs to be declared. 
+- In case there are a lot of information that need to be 
+noted, each information must be separated by “;”  
+1.69 
+Enterprise’s internal 
+managerial number 
+- In case of the spot import, enter #&NKTC#&number of 
+the respective spot import declaration (11 initial 
+characters);  
+Example: #&NKTC#&30001234567 
+- In case a domestic enterprise agrees to provide 
+processing services for export processing enterprises or 
+hires processing services from processing service 
+providers, enter #&GCPTQ;  
+- As for other imported goods: 
++ If they are temporarily imported from individuals entitled 
+to the tax exemption policy adopted by the State of 
+Vietnam, type #&1; 
++ In case of the import of goods which are occupational 
+equipment and appliances used within a definite period of 
+time by an entity, organization or entering persons, type 
+#&2;  
+  
+
++ In case of the temporary import of other equipment 
+containing goods in the form of rotation (shelves, racks, 
+tanks, bottles, etc.), type #&3;   
++ In case the goods are gifts or presents sent by 
+organizations and individuals in Vietnam to overseas 
+organizations or individuals, type #&4;  
++ In case the goods are imported by diplomatic missions, 
+international organizations in Vietnam and employees 
+thereof, type #&5; 
++ In case of the goods used for humanitarian aid or non-
+refundable air purposes, type #&6; 
++ In case of the goods which are unpaid sample products, 
+type #&7;  
++ In case of the goods which are movable property of 
+organizations or individuals, type #&8; 
++ In case of the goods which are personal luggage of 
+entering persons which is carried under transport 
+documents, or the goods which are carry-on luggage of 
+entering persons exceeding the duty-free allowance, type 
+#&9.  
+1.70 
+Customs order classification (Section to be completed by the customs officer)  
+Enter the classification code of the notice issued by the 
+customs officer:   
+“A”: Giving revision instructions 
+“B”: Changing the import declaration 
+  
+1.71 
+Date  
+(Section to be completed by the customs officer)  
+Enter the date of the customs officer’s issuing the 
+notification to the customs declarant in the dd/mm/yyyy 
+format. 
+  
+1.72 
+Name 
+(Section to be completed by the customs officer)  
+Enter main contents of the notification. 
+  
+1.73 
+Contents  
+(Section to be completed by the customs officer)  
+Enter the contents of the notification issued by the 
+customs officer:   
+  
+B 
+Detailed information about goods 
+1.74 
+Goods code 
+(1) Enter full details of codes of goods according to the list 
+of exports and imports of Vietnam, preferential tariff 
+schedule and preferential and special import tariff issued 
+by the Ministry of Finance.  
+(2) With respect to the good classified into Chapter 98 of 
+the preferential import tariff, enter the HS code of the good 
+in 97 respective chapters in the list of exports and imports 
+of Vietnam and enter the code of the good in the chapter 
+98 into the box “Description”   
+  
+
+1.75 
+Particular management code Enter the ordinal number of the goods in the list of 
+synchronous machinery and equipment in the chapter 84, 
+85 or 90 or the ordinal number of other goods in the 
+reconciliation list which has already been registered with 
+the customs authority.  
+  
+1.76 
+Duty rate 
+The system automatically enters the import duty rate 
+corresponding to the code of the good and the available 
+tariff schedule code. 
+If the system ends a message of one of the following 
+errors: E1004, E1006, E1008 or E1009, the customs 
+declarant has to manually enter the export duty rate into 
+this box.   
+Enter “0” in case of entering the code B30 in the field 
+“Import tariff schedule” 
+  
+1.77 
+Absolute duty rate 
+Box 1: Enter the absolute duty rate: 
+The system automatically export the absolute duty rate 
+relevant to the code of application the given absolute duty 
+rate.  In case the system fails to do so, the customs 
+declarant may manually enter the absolute duty rate into 
+this box. In case of the manual entry of the absolute duty 
+rate, do not need to fill in the box "code of application of 
+the absolute duty rate” mentioned below. 
+Box 2: Enter the measurement unit of the absolute duty 
+rate: 
+(1) In case entry of the absolute duty rate has already 
+been completed, the respective measurement unit of the 
+absolute duty rate referred to in regulations laid down in 
+current documents must be input. 
+(2) Enter the code of the absolute duty rate (See the chart 
+of units of measurement of absolute duty rates  on the 
+website www.customs.gov.vn) 
+Box 3: Enter the code of the currency unit for calculation of 
+the absolute duty date. (see the chart of currency unit 
+codes on the website www.customs.gov.vn)  
+X 
+1.78 
+Goods description  
+(1) Clarify names, brands and properties, technical 
+parameters, ingredients, model, symbols or numbers, 
+qualities and functions of the goods as specified in 
+commercial agreements and other documents relating to 
+the shipment containing these goods.  
+In case the goods are plant varieties, names of plant 
+varieties must be clarified. 
+Note:  
+- Name of the goods is written in Vietnamese or English. 
+- In case of the imported goods which are raw materials, 
+supplies for processing and manufacturing of products for 
+export purposes, enter the code of raw materials, supplies, 
+components#&name of goods, qualities and 
+specifications. In case of the goods which are products 
+  
+
+processed by foreign processing partners, enter HS 
+code#&name of goods, specifications and qualities. 
+- In case of the consolidated declaration of HS code as 
+prescribed in clause 2 of Article 18 hereof, give a general 
+description of goods (specifying basic and general 
+characteristics of goods. Ex: motor vehicle components 
+and fabrics, etc.). 
+- In case of the imported good which is machinery or 
+equipment classified by its main parts, a machine 
+designed for performing main functions or falling to be 
+classified in the heading appropriate to its defined 
+functions or the unassembled or disassembled good 
+classified by the completely built-up standard, in addition 
+to the declaration prescribed in point (1), clarify the name 
+of components of each machinery/equipment, etc. in the 
+list of machinery or equipment which is a combination, line 
+or name of each part or component of the unassembled or 
+disassemble goods, corresponding to the HS codes of 
+main machines or completely built-up goods.   In case it is 
+impossible to separate value of each 
+machine/part/article/component/spare part, enclose the list 
+of names and quantity of 
+machines/parts/articles/components/spare parts by 
+implementing the HYS function. 
+(2) If the goods satisfy requirements for application of 
+preferential import tax rates in chapter 98, in addition to 
+lines of description of the goods, the customs declarant 
+must enter the HS code of the goods in chapter 98 of the 
+preferential import tariff into this box. 
+(3) In case of application of results of analysis and 
+classification of the shipment, enclosing goods name, 
+ingredients, physicochemical characteristics, functions or 
+effects, and which is imported from the manufacturer that 
+is the same as the manufacturer of the goods obtaining 
+the previous customs clearance, specify the number of the 
+notification of such results.  
+1.79 
+Code of the country of origin  Enter the code of the country or territory where the goods 
+are made (manufactured) according to the UN/LOCODE 
+code list (based on origin certification documents or other 
+materials relating to the shipment). 
+X 
+1.80 
+Import tariff schedule code Enter the tariff schedule code corresponding to the type of 
+import duty rate, specifically including one of the following 
+codes: 
+“B01”: Preferential import tariff (MFN duty rates) 
+“B02”: Chapter 98 (1) preferential import tariff 
+“B03”: Ordinary customs tariff schedule (equal to 150% of 
+the MFN duty rate) 
+“B04”: Specially preferential import tariff of Vietnam for 
+implementation of the ASEAN Trade In Goods Agreement 
+(ATIGA) 
+X 
+
+“B05”: Specially preferential import tariff of Vietnam for 
+implementation of ASEAN–China Free Trade Area 
+(ACFTA) 
+“B06”: Specially preferential import tariff of Vietnam for 
+implementation of ASEAN–South Korea Free Trade Area 
+“B07”: Specially preferential import tariff of Vietnam for 
+implementation of ASEAN – Australia – New Zealand Free 
+Trade Agreement 
+“B08”: Specially preferential import tariff of Vietnam for 
+implementation of the ASEAN – India Free Trade 
+Agreement 
+“B09”: Specially preferential import tariff of Vietnam for 
+implementation of the ASEAN – Japan Comprehensive 
+Economic Partnership Agreement 
+“B10”: Specially preferential import tariff of Vietnam for 
+implementation of the Vietnam – Japan Economic 
+Partnership Agreement 
+“B11”: Customs tariff schedule for goods eligible for 
+application of Vietnam – Laos preferential customs duty 
+rates. 
+“B12”: Customs tariff schedule for goods of Cambodian 
+origin 
+“B13”: Specially preferential import tariff of Vietnam for 
+implementation of the Vietnam - Chile Free Trade 
+Agreement 
+“B14”: Out-of-quota tariff schedule 
+“B15”: Absolute customs tariff schedule 
+“B16”: Joint customs tariff schedule 
+“B17”: Chapter 98 (2) preferential import tariff 
+“B30”: Goods not subject to customs duty   
+Note:  
+- In case the goods satisfy requirements for application of 
+preferential import tax rates in chapter 98, make 
+comparison with “Tariff schedule, chapter 98 – B02 and 
+B17” on the website (www.customs.gov.vn) to enter the 
+customs tariff schedule B02 or B17 corresponding to the 
+HS code in the chapter 98.  
+- With respect to the goods eligible for duty exemption, 
+declaring the import tariff schedule code as B30 is not 
+allowed but the tariff schedule code corresponding to the 
+classification type of import duty rate is accepted.  
+1.81 
+Out-of-quota code 
+If the importing enterprise applies the out-of-quota duty 
+rate, enter “X” into this box. 
+  
+1.82 
+Code of application of 
+absolute duty rate 
+In case the goods are subject to the absolute duty rate or 
+the mixed duty rate, enter the code of application of the 
+absolute duty rate corresponding to each line of product 
+X 

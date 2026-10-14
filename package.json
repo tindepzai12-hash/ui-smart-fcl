@@ -1,0 +1,28 @@
+{
+  "name": "ui-smart-local",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node ./node_modules/vite/bin/vite.js --host 127.0.0.1",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/frontend.test.mjs",
+    "e2e": "node tests/e2e.mjs",
+    "start": "node scripts/cloud-server.mjs",
+    "test:cloud": "node --test tests/cloud-gateway.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "playwright": "^1.51.0"
+  }
+}

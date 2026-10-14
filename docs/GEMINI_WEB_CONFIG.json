@@ -1,0 +1,76 @@
+{
+  "project": "U&I SMART",
+  "handoff_date": "2026-10-14",
+  "timezone": "Asia/Saigon",
+  "purpose": "Audit/redesign UI/UX and verify/fix the FCL import document workflow",
+  "original_project_root": "C:\\Users\\Windows\\Documents\\ChatGPT\\U&I Log\\ui-smart",
+  "path_note": "Use extracted project location in Gemini's execution environment; the original localhost is not remotely accessible.",
+  "local_url": "http://127.0.0.1:8765/",
+  "runtime": {
+    "frontend": "React 19 + TypeScript strict + Vite 6",
+    "backend": "FastAPI + Python 3.11+ (tested 3.12.14)",
+    "database": "SQLite sqlite3, WAL, foreign keys, migration 001/version 1",
+    "icons": "lucide-react",
+    "font": "@fontsource/inter: local Latin/Vietnamese",
+    "ocr": "Tesseract 5 + pytesseract, eng/vie",
+    "reader": ["PyMuPDF", "Pillow", "python-docx", "openpyxl", "xlrd"],
+    "ai": "Optional official OpenAI SDK; responses.parse/Pydantic; per-request consent",
+    "node": "20.19+ for build, tested Node 24",
+    "browser_test": "Playwright Chromium channel msedge"
+  },
+  "source": {
+    "app": "frontend/main.tsx",
+    "styles": "frontend/styles.css",
+    "api_client": "frontend/api.ts",
+    "template_ui": "frontend/TemplateCenter.tsx",
+    "backend_routes": "backend/app.py",
+    "reader": "backend/reader.py",
+    "extraction": "backend/extraction.py",
+    "normalize": "backend/normalize.py",
+    "checks": "backend/validation.py",
+    "fields": "backend/dictionary.py",
+    "excel": "backend/excel.py",
+    "templates": "backend/templates.py",
+    "ai": "backend/ai.py",
+    "database": "backend/db.py",
+    "schema": "backend/migrations/001.sql"
+  },
+  "server": {
+    "bind": "127.0.0.1",
+    "port": 8765,
+    "same_origin": true,
+    "api_base": "/api",
+    "mutation_header": {"X-UI-Smart": "local"},
+    "openapi": "/openapi.json",
+    "api_docs": "/docs",
+    "health": "/api/health",
+    "vite_dev_api_proxy_currently_configured": false
+  },
+  "commands": {
+    "setup": ".\\setup.ps1 -Python 'path-to-python.exe'",
+    "build": "node scripts/build.mjs",
+    "start": ".\\start-local.ps1",
+    "stop": ".\\stop-local.ps1",
+    "backend_tests_powershell": "$env:PYTHONPATH='vendor;.'\npython -m pytest tests -q --basetemp=tmp/pytest-gemini",
+    "frontend_tests": "node --test tests/frontend.test.mjs",
+    "e2e": "node tests/e2e.mjs",
+    "restart_backend_on_other_port": "python run.py --port 8766"
+  },
+  "environment_options": {
+    "UI_SMART_DATA": "Set an isolated test data directory before starting the backend; do not point at production data for QA.",
+    "TESSERACT_CMD": "Optional path to local Tesseract executable",
+    "TESSDATA_PREFIX": "reader sets project tools/tessdata when present",
+    "OPENAI_API_KEY": "Optional backend environment secret; no value included in this handoff",
+    "UI_SMART_URL": "E2E test base URL override; default localhost8765"
+  },
+  "palette": {
+    "primary": "#155EEF", "navy": "#102A43", "background": "#F8FAFC", "surface": "#FFFFFF", "border": "#E2E8F0", "text": "#172033", "muted": "#64748B"
+  },
+  "viewports": [1440, 1366, 768, 390],
+  "supported_files": [".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".xlsx", ".xls", ".csv", ".txt", ".docx"],
+  "limits": {"file_bytes": 26214400, "pages_per_file": 100, "files_per_upload": 30, "ai_chars_per_document": 90000},
+  "storage": ["data/smart.sqlite", "data/files", "data/exports", "data/templates", "data/backups"],
+  "sheets": ["TONG_QUAN_HO_SO", "THONG_TIN_KHAI_BAO", "CHI_TIET_HANG_HOA", "CONTAINER_VAN_CHUYEN", "DOI_CHIEU_CHUNG_TU", "THIEU_VA_CAN_XAC_MINH", "NGUON_VA_LICH_SU"],
+  "baseline_reported_not_new_verification": {"backend_passed": 18, "frontend_passed": 4, "browser_e2e": "passed; rerun after Gemini changes", "live_ai": "Not tested", "customs_software_import": "Not tested", "real_UI_customer_documents": "Not supplied"},
+  "data_policy": "Only synthetic fixtures are packaged. No customer DB, uploaded documents, API keys, vendor/node_modules or installed OCR executable. Do not call a paid/external provider without explicit authorization."
+}

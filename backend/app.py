@@ -1,0 +1,786 @@
+import hashlib, io, json, threading, time, zipfile, sqlite3, os
+from pathlib import Path
+from typing import Literal, Optional, List, Union, Dict, Any
+from urllib.parse import urlparse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi.responses import FileResponse, Response, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field
+try:
+    from pydantic import ConfigDict
+except ImportError:
+    ConfigDict = None
+from PIL import Image
+from openpyxl import load_workbook
+from . import db, reader, extraction, validation, ai, excel, templates
+from .dictionary import FIELDS, TYPES, default_requirements
+from .normalize import normalize
+
+db.migrate()
+app = FastAPI(title='U&I SMART local', version='1.0.0')
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
+JOBS = {}
+LOCK = threading.RLock()
+
+@app.middleware('http')
+async def local_guard(request: Request, call_next):
+    if request.method not in ['GET', 'HEAD', 'OPTIONS']:
+        origin = request.headers.get('origin')
+        if origin and (urlparse(origin).netloc != request.headers.get('host') or urlparse(origin).scheme not in ['http', 'https']):
+            return JSONResponse({'detail': 'Origin không được phép'}, 403)
+        if request.headers.get('x-ui-smart') != 'local':
+            return JSONResponse({'detail': 'Thiếu header bảo vệ thao tác local'}, 403)
+    response = await call_next(request)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; "
+        "frame-ancestors 'none'; object-src 'none'"
+    )
+    response.headers['Cache-Control'] = 'no-store' if request.url.path.startswith('/api/') else 'no-cache'
+    return response
+
+@app.exception_handler(ValueError)
+async def invalid(_request, exc):
+    return JSONResponse({'detail': str(exc)[:600]}, 422)
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(_request, exc):
+    # Do not echo raw validation inputs, especially API secrets.
+    return JSONResponse({'detail': [{'type': e['type'], 'loc': list(e['loc']), 'msg': e['msg']} for e in exc.errors()]}, 422)
+
+class Input(BaseModel):
+    if ConfigDict is not None:
+        model_config = ConfigDict(extra='forbid')
+    else:
+        class Config:
+            extra = 'forbid'
+
+    if not hasattr(BaseModel, 'model_dump'):
+        def model_dump(self):
+            return self.dict()
+
+class CaseInput(Input):
+    name: str = Field(min_length=1, max_length=160)
+    customer: str = Field(default='', max_length=160)
+    mode: Literal['FCL', 'AIR'] = 'FCL'
+
+class ProcessInput(Input):
+    mode: Literal['local', 'openai'] = 'local'
+    allow_external: bool = False
+
+class ClassInput(Input):
+    type: Literal[
+        'Invoice', 'Packing List', 'B/L', 'Sea Waybill', 'AWB', 'C/O',
+        'Arrival Notice', 'Delivery Order', 'Contract', 'Purchase Order',
+        'Insurance', 'Freight Invoice', 'Import Permit',
+        'Inspection Certificate', 'Phytosanitary Certificate', 'Other'
+    ]
+
+class EditInput(Input):
+    value: Union[str, Dict[str, Any]]
+    note: str = Field(default='', max_length=1000)
+    version: int = Field(ge=1)
+
+class VerifyInput(Input):
+    status: Literal['verified', 'rejected', 'pending']
+    note: str = Field(default='', max_length=1000)
+    version: int = Field(ge=1)
+
+class NewRecord(Input):
+    kind: Literal['field', 'item', 'container']
+    key: str
+    value: Union[str, Dict[str, Any]]
+    note: str = Field(min_length=3, max_length=1000)
+    document_id: Optional[str] = None
+    page: Optional[int] = Field(default=None, ge=1, le=100)
+
+class ResolveInput(Input):
+    note: str = Field(min_length=5, max_length=1000)
+
+class RequirementInput(Input):
+    required: bool
+    note: str = Field(min_length=3, max_length=1000)
+
+class ExportInput(Input):
+    mode: Literal['Draft', 'Reviewed'] = 'Draft'
+    workbook_type: Literal['A', 'B'] = 'A'
+    selected: Optional[List[str]] = None
+
+class AIInput(Input):
+    api_key: str = Field(default='', max_length=500)
+    model: str = Field(default='gpt-4.1-mini', max_length=100)
+
+class TemplateInput(Input):
+    case_id: str
+    mapping: List[Dict[str, Any]]
+
+def require_case(id):
+    case = db.one('SELECT * FROM cases WHERE id=?', (id,))
+    if not case:
+        raise HTTPException(404, 'Không tìm thấy hồ sơ')
+    return case
+
+def require_doc(id):
+    doc = db.one('SELECT * FROM documents WHERE id=?', (id,))
+    if not doc:
+        raise HTTPException(404, 'Không tìm thấy tài liệu')
+    return doc
+
+def require_record(id):
+    record = db.one('SELECT * FROM records WHERE id=?', (id,))
+    if not record:
+        raise HTTPException(404, 'Không tìm thấy dữ liệu')
+    return validation.unpack(record)
+
+def busy(case_id):
+    if any(j['case_id'] == case_id and j['status'] == 'running' for j in JOBS.values()):
+        raise HTTPException(409, 'Hồ sơ đang xử lý. Hủy/chờ hoàn tất trước khi chỉnh sửa.')
+
+def bundle(id):
+    case = require_case(id)
+    docs = db.rows('SELECT * FROM documents WHERE case_id=? ORDER BY rowid', (id,))
+    for d in docs:
+        d.pop('path')
+        d['pages'] = db.rows('SELECT number,method,quality,length(text) characters FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
+    records = [validation.unpack(r) for r in db.rows('SELECT * FROM records WHERE case_id=? ORDER BY rowid', (id,))]
+    checks = db.rows('SELECT * FROM checks WHERE case_id=? ORDER BY rowid', (id,))
+    for c in checks:
+        c['detail'] = json.loads(c.pop('detail_json'))
+        c['title'] = validation.human_check_label(c['key'], {d['id']: d for d in docs})
+    case['requirements'] = json.loads(case['requirements'])
+    return {
+        'case': case,
+        'documents': docs,
+        'records': records,
+        'checks': checks,
+        'blockers': validation.blockers(case, docs, records, checks),
+        'exports': db.rows('SELECT id,created_at,version,mode,workbook_type,case_revision FROM exports WHERE case_id=? ORDER BY version DESC', (id,)),
+    }
+
+def revalidate(c, id):
+    case = dict(c.execute('SELECT * FROM cases WHERE id=?', (id,)).fetchone())
+    docs = [dict(r) for r in c.execute('SELECT * FROM documents WHERE case_id=?', (id,))]
+    records = [validation.unpack(r) for r in c.execute('SELECT * FROM records WHERE case_id=?', (id,))]
+    return validation.persist_checks(c, case, docs, records)
+
+def add_record(c, case_id, document_id, r):
+    c.execute(
+        'INSERT INTO records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        (db.uid(), case_id, document_id, r['kind'], r['key'], db.encode(r['raw']), db.encode(r['value']), r['page'], r['evidence'], r['method'], 'pending', '', db.now(), 1),
+    )
+
+@app.get('/api/health')
+def health():
+    try:
+        db.one('SELECT version FROM schema_versions')
+        ready = True
+    except Exception:
+        ready = False
+    ocr = reader.ocr_status()
+    ocr.pop('cmd', None)
+    return {
+        'ok': ready,
+        'deployment': {'cloud': os.getenv('UI_SMART_CLOUD') == '1', 'ephemeral': os.getenv('UI_SMART_CLOUD') == '1'},
+        'database_ready': ready,
+        'service': 'U&I SMART',
+        'ocr': ocr,
+        'ai': ai.status(),
+        'supported': sorted(reader.SUPPORTED),
+        'max_bytes': reader.MAX_BYTES,
+    }
+
+@app.get('/api/dictionary')
+def dictionary():
+    return {'fields': FIELDS, 'document_types': TYPES}
+
+@app.get('/api/cases')
+def list_cases():
+    return db.rows(
+        "SELECT c.*,(SELECT count(*) FROM documents d WHERE d.case_id=c.id) document_count,"
+        "(SELECT count(*) FROM records r WHERE r.case_id=c.id AND r.status='pending') pending_count "
+        "FROM cases c ORDER BY updated_at DESC"
+    )
+
+@app.post('/api/cases', status_code=201)
+def new_case(body: CaseInput):
+    id = 'FCL-' + db.uid()[:12] if body.mode == 'FCL' else 'AIR-' + db.uid()[:12]
+    stamp = db.now()
+    with db.connect() as c:
+        c.execute(
+            'INSERT INTO cases VALUES (?,?,?,?,?,?,?,?,?,?)',
+            (id, body.name.strip(), body.customer.strip(), body.mode, 'Draft', stamp, stamp, None, 0, db.encode(default_requirements(body.mode))),
+        )
+        db.audit(c, id, 'Tạo hồ sơ', after=body.model_dump())
+    return bundle(id)
+
+@app.get('/api/cases/{id}')
+def get_case(id: str):
+    return bundle(id)
+
+@app.delete('/api/cases/{id}')
+def delete_case(id: str):
+    with LOCK:
+        busy(id)
+        require_case(id)
+        paths = db.rows('SELECT path FROM documents WHERE case_id=? UNION ALL SELECT path FROM exports WHERE case_id=?', (id, id))
+        with db.connect() as c:
+            c.execute('DELETE FROM cases WHERE id=?', (id,))
+            db.audit(c, id, 'Xóa hồ sơ', reason='Người dùng xác nhận xóa')
+        for r in paths:
+            p = Path(r['path']).resolve()
+            if p.is_relative_to(db.DATA):
+                p.unlink(missing_ok=True)
+    return {'ok': True}
+
+def validate_zip(path):
+    if path.suffix in ['.docx', '.xlsx']:
+        try:
+            with zipfile.ZipFile(path) as z:
+                if sum(i.file_size for i in z.infolist()) > 150 * 1024 * 1024:
+                    raise ValueError('File Office giải nén vượt giới hạn 150 MB')
+                if len(z.infolist()) > 10000:
+                    raise ValueError('File Office có quá nhiều mục')
+        except zipfile.BadZipFile:
+            raise ValueError('File Office không hợp lệ')
+
+@app.post('/api/cases/{id}/documents')
+async def upload(id: str, files: List[UploadFile] = File(...)):
+    require_case(id)
+    if len(files) > 30:
+        raise HTTPException(413, 'Tối đa 30 file mỗi lần')
+    results = []
+    for f in files:
+        path = None
+        try:
+            name = Path((f.filename or '').replace('\\', '/')).name[:180]
+            ext = Path(name).suffix.lower()
+            if ext not in reader.SUPPORTED:
+                raise ValueError('Định dạng chưa hỗ trợ: ' + ext)
+            data = await f.read(reader.MAX_BYTES + 1)
+            if len(data) > reader.MAX_BYTES:
+                raise ValueError('Tệp vượt giới hạn 25 MB')
+            if not data:
+                raise ValueError('Tệp rỗng')
+            digest = hashlib.sha256(data).hexdigest()
+            with LOCK:
+                busy(id)
+                if db.one('SELECT id FROM documents WHERE case_id=? AND hash=?', (id, digest)):
+                    results.append({'name': name, 'status': 'duplicate', 'error': 'Nội dung đã có trong hồ sơ'})
+                    continue
+                doc_id = db.uid()
+                path = db.DATA / 'files' / (doc_id + ext)
+                path.write_bytes(data)
+                validate_zip(path)
+                with db.connect() as c:
+                    c.execute('INSERT INTO documents(id,case_id,name,ext,size,hash,path) VALUES (?,?,?,?,?,?,?)', (doc_id, id, name, ext, len(data), digest, str(path)))
+                    db.touch(c, id)
+                    db.audit(c, id, 'Tải chứng từ', doc_id, after={'name': name, 'size': len(data), 'hash': digest})
+                    revalidate(c, id)
+                results.append({'id': doc_id, 'name': name, 'status': 'uploaded'})
+        except (ValueError, HTTPException) as exc:
+            if path:
+                path.unlink(missing_ok=True)
+            results.append({'name': f.filename, 'status': 'error', 'error': str(exc.detail) if isinstance(exc, HTTPException) else str(exc)})
+        finally:
+            await f.close()
+    return {'results': results, 'bundle': bundle(id)}
+
+@app.delete('/api/documents/{id}')
+def delete_doc(id: str):
+    with LOCK:
+        doc = require_doc(id)
+        busy(doc['case_id'])
+        with db.connect() as c:
+            c.execute('DELETE FROM documents WHERE id=?', (id,))
+            db.touch(c, doc['case_id'])
+            db.audit(c, doc['case_id'], 'Xóa tài liệu', id, before={'name': doc['name']})
+            revalidate(c, doc['case_id'])
+        Path(doc['path']).unlink(missing_ok=True)
+    return bundle(doc['case_id'])
+
+@app.patch('/api/documents/{id}/classification')
+def classification(id: str, body: ClassInput):
+    with LOCK:
+        doc = require_doc(id)
+        busy(doc['case_id'])
+        with db.connect() as c:
+            if doc['type'] != body.type:
+                # Classification change requires extraction to be rerun, retain edited/verified records for review.
+                c.execute("DELETE FROM records WHERE document_id=? AND status='pending' AND method NOT LIKE 'Manual%'", (id,))
+                c.execute("UPDATE records SET status='pending',version=version+1,updated_at=? WHERE document_id=? AND status!='rejected'", (db.now(), id))
+            c.execute('UPDATE documents SET type=?,type_verified=1 WHERE id=?', (body.type, id))
+            db.touch(c, doc['case_id'])
+            db.audit(c, doc['case_id'], 'Xác nhận loại tài liệu', id, before=doc['type'], after=body.type)
+            revalidate(c, doc['case_id'])
+    return bundle(doc['case_id'])
+
+@app.get('/api/documents/{id}/pages/{number}')
+def get_page(id: str, number: int):
+    require_doc(id)
+    page = db.one('SELECT number,text,method,quality,table_json FROM pages WHERE document_id=? AND number=?', (id, number))
+    if not page:
+        raise HTTPException(404, 'Trang chưa được đọc')
+    page['tables'] = json.loads(page.pop('table_json'))
+    return page
+
+@app.get('/api/documents/{id}/preview/{number}')
+def preview(id: str, number: int):
+    doc = require_doc(id)
+    if number < 1 or number > reader.MAX_PAGES:
+        raise HTTPException(404, 'Trang không hợp lệ')
+    if doc['ext'] == '.pdf':
+        try:
+            png_bytes = reader.render_pdf_page_png(doc['path'], number, scale=1.5)
+            return Response(png_bytes, media_type='image/png')
+        except ValueError as exc:
+            raise HTTPException(404, str(exc))
+    if doc['ext'] in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
+        with Image.open(doc['path']) as im:
+            if number > getattr(im, 'n_frames', 1):
+                raise HTTPException(404, 'Không có trang này')
+            im.seek(number - 1)
+            im.thumbnail((1800, 2200))
+            buf = io.BytesIO()
+            im.convert('RGB').save(buf, format='PNG')
+            return Response(buf.getvalue(), media_type='image/png')
+    raise HTTPException(404, 'Dùng xem văn bản/bảng cho định dạng này')
+
+def worker(job_id):
+    job = JOBS[job_id]
+    id = job['case_id']
+    mode = job['mode']
+    final_status = 'error'
+    try:
+        docs = db.rows('SELECT * FROM documents WHERE case_id=?', (id,))
+        for idx, d in enumerate(docs):
+            if job['cancel']:
+                raise InterruptedError()
+            job.update(document=d['name'], index=idx + 1, total=len(docs), stage='Đọc / OCR', pages=0)
+            started = time.monotonic()
+            try:
+                if d['status'] == 'read':
+                    pages = db.rows('SELECT number,text,method,quality,table_json FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
+                    for p in pages:
+                        p['tables'] = json.loads(p.pop('table_json'))
+                else:
+                    db.execute("UPDATE documents SET status='reading',error=NULL WHERE id=?", (d['id'],))
+                    pages = reader.read_document(d['path'], lambda n: job.update(pages=n), lambda: job['cancel'])
+                    with db.connect() as c:
+                        c.execute('DELETE FROM pages WHERE document_id=?', (d['id'],))
+                        for p in pages:
+                            c.execute('INSERT INTO pages VALUES (?,?,?,?,?,?,?)', (db.uid(), d['id'], p['number'], p['text'], p['method'], p['quality'], db.encode(p['tables'])))
+                        c.execute(
+                            "UPDATE documents SET status='read',reading_method=?,elapsed=? WHERE id=?",
+                            (', '.join(sorted({p['method'] for p in pages})), time.monotonic() - started, d['id']),
+                        )
+                job['stage'] = 'Phân loại / trích xuất ' + ('Local' if mode == 'local' else 'OpenAI')
+                if mode == 'openai':
+                    result, records, _ = ai.analyze(id, d, pages)
+                    kind = result.document_type
+                    evidence = result.classification_evidence
+                else:
+                    kind, evidence = extraction.classify(pages)
+                    if d['type_verified']:
+                        kind = d['type']
+                    records = extraction.extract(pages, kind)
+                if job['cancel']:
+                    raise InterruptedError()
+                with db.connect() as c:
+                    c.execute(
+                        'UPDATE documents SET type=?,classification_evidence=?,type_verified=? WHERE id=?',
+                        (kind, evidence, d['type_verified'] if kind == d['type'] else 0, d['id']),
+                    )
+                    protected = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE document_id=? AND (status!='pending' OR method LIKE 'Manual%')", (d['id'],))]
+                    c.execute("DELETE FROM records WHERE document_id=? AND status='pending' AND method NOT LIKE 'Manual%'", (d['id'],))
+                    for r in records:
+                        if any(p['kind'] == r['kind'] and p['key'] == r['key'] and p['page'] == r['page'] and p['raw'] == r['raw'] for p in protected):
+                            continue
+                        add_record(c, id, d['id'], r)
+                    c.execute('UPDATE documents SET error=NULL WHERE id=?', (d['id'],))
+                    db.audit(c, id, 'Đọc và trích xuất ' + mode, d['id'], after={'type': kind, 'pages': len(pages), 'records': len(records)})
+            except InterruptedError:
+                raise
+            except Exception as exc:
+                message = str(exc)[:600] if isinstance(exc, ValueError) else 'Không đọc/xử lý được tệp. Kiểm tra định dạng và thử lại.'
+                db.execute("UPDATE documents SET status='error',error=? WHERE id=?", (message, d['id']))
+                job['errors'].append({'document': d['name'], 'error': message})
+        final_status = 'completed'
+        if job['errors']:
+            job['stage'] = f"Hoàn tất có cảnh báo ({len(job['errors'])}/{len(docs)} tệp lỗi — xem chi tiết từng tệp)"
+        else:
+            job['stage'] = 'Chờ nhân viên xác minh'
+    except InterruptedError:
+        final_status = 'cancelled'
+        job['stage'] = 'Đã hủy'
+        db.execute("UPDATE documents SET status='error',error='Đã hủy xử lý. Chọn thử lại.' WHERE case_id=? AND status='reading'", (id,))
+    except Exception:
+        final_status = 'error'
+        job['stage'] = 'Lỗi xử lý; thử lại'
+    finally:
+        with db.connect() as c:
+            db.touch(c, id)
+            revalidate(c, id)
+        job['status'] = final_status
+        job['ended_at'] = db.now()
+
+@app.post('/api/cases/{id}/process')
+def process(id: str, body: ProcessInput):
+    with LOCK:
+        require_case(id)
+        busy(id)
+        if body.mode == 'openai' and not ai.key():
+            raise HTTPException(409, 'Chưa cấu hình OpenAI. Tiếp tục Local hoặc mở Cài đặt.')
+        if body.mode == 'openai' and not body.allow_external:
+            raise HTTPException(422, 'Cần chủ động đồng ý gửi nội dung chứng từ ra OpenAI cho yêu cầu này.')
+        if not db.one('SELECT id FROM documents WHERE case_id=?', (id,)):
+            raise HTTPException(422, 'Tải ít nhất một chứng từ')
+        job_id = db.uid()
+        JOBS[job_id] = {
+            'id': job_id,
+            'case_id': id,
+            'mode': body.mode,
+            'status': 'running',
+            'stage': 'Tiếp nhận',
+            'document': '',
+            'index': 0,
+            'total': 0,
+            'pages': 0,
+            'cancel': False,
+            'errors': [],
+            'started_at': db.now(),
+        }
+        db.execute("UPDATE cases SET status='Reading' WHERE id=?", (id,))
+        threading.Thread(target=worker, args=(job_id,), daemon=True).start()
+    return JOBS[job_id]
+
+@app.get('/api/jobs/{id}')
+def job_status(id: str):
+    if id not in JOBS:
+        raise HTTPException(404, 'Tác vụ không còn trong phiên hiện tại')
+    return JOBS[id]
+
+@app.get('/api/samples/{name}')
+def sample_document(name: str):
+    # Only synthetic fixtures explicitly shipped for the two UI demo sets.
+    if name not in {'invoice.txt', 'packing.txt', 'bl.txt', 'bl-conflict.txt'}:
+        raise HTTPException(404, 'Không có chứng từ mẫu này')
+    return FileResponse(db.ROOT / 'samples' / name, filename=name, media_type='text/plain')
+
+@app.post('/api/jobs/{id}/cancel')
+def cancel(id: str):
+    job = job_status(id)
+    job['cancel'] = True
+    return {'ok': True, 'detail': 'Dừng sau trang/yêu cầu hiện tại; OCR timeout tối đa 60 giây.'}
+
+def checked_value(kind, key, value):
+    if kind == 'field':
+        if key not in FIELDS or not isinstance(value, str):
+            raise ValueError('Field ID/giá trị không hợp lệ')
+        if not value.strip() or len(value) > 2000:
+            raise ValueError('Giá trị cần từ 1 đến 2000 ký tự; dùng Từ chối để bỏ bản ghi sai')
+        return normalize(value, FIELDS[key]['type'])
+    if not isinstance(value, dict):
+        raise ValueError('Dòng hàng/container cần object')
+    allowed = (set(extraction.ITEM_ALIASES) | {'scope', 'warning'}) if kind == 'item' else set(extraction.CONT_ALIASES) | {'warning'}
+    if set(value) - allowed:
+        raise ValueError('Có cột chưa hỗ trợ')
+    if any(not isinstance(v, (str, type(None))) or len(v or '') > 1000 for v in value.values()):
+        raise ValueError('Giá trị dòng quá dài/không hợp lệ')
+    if kind == 'item' and not value.get('description'):
+        raise ValueError('Cần mô tả hàng')
+    if kind == 'container':
+        import re
+        value = {**value, 'container_number': validation.container_number(value.get('container_number'))}
+        if not re.fullmatch('[A-Z]{4}[0-9]{7}', value.get('container_number', '')):
+            raise ValueError('Container cần 4 chữ + 7 số')
+    return value
+
+@app.post('/api/cases/{id}/records')
+def manual(id: str, body: NewRecord):
+    with LOCK:
+        require_case(id)
+        busy(id)
+        value = checked_value(body.kind, body.key, body.value)
+        if body.document_id:
+            d = require_doc(body.document_id)
+            if d['case_id'] != id:
+                raise HTTPException(422, 'Chứng từ thuộc hồ sơ khác')
+            if body.page and not db.one('SELECT id FROM pages WHERE document_id=? AND number=?', (body.document_id, body.page)):
+                raise HTTPException(422, 'Trang nguồn không tồn tại')
+        with db.connect() as c:
+            add_record(c, id, body.document_id, {'kind': body.kind, 'key': body.key, 'raw': body.value, 'value': value, 'page': body.page, 'evidence': body.note, 'method': 'Manual'})
+            db.touch(c, id)
+            db.audit(c, id, 'Thêm dữ liệu thủ công', after=body.model_dump())
+            revalidate(c, id)
+    return bundle(id)
+
+@app.patch('/api/records/{id}')
+def edit(id: str, body: EditInput):
+    with LOCK:
+        r = require_record(id)
+        busy(r['case_id'])
+        if r['version'] != body.version:
+            raise HTTPException(409, 'Dữ liệu đã thay đổi; tải lại trước khi sửa')
+        value = checked_value(r['kind'], r['key'], body.value)
+        with db.connect() as c:
+            c.execute('INSERT INTO revisions VALUES (?,?,?,?,?,?,?)', (db.uid(), id, db.encode(r['value']), db.encode(value), 'Nhân viên local', body.note, db.now()))
+            c.execute(
+                "UPDATE records SET value_json=?,status='pending',method='Manual edit',note=?,updated_at=?,version=version+1 WHERE id=?",
+                (db.encode(value), body.note, db.now(), id),
+            )
+            db.touch(c, r['case_id'])
+            db.audit(c, r['case_id'], 'Sửa dữ liệu', id, r['value'], value, body.note)
+            revalidate(c, r['case_id'])
+    return bundle(r['case_id'])
+
+@app.post('/api/records/{id}/verify')
+def verify(id: str, body: VerifyInput):
+    with LOCK:
+        r = require_record(id)
+        busy(r['case_id'])
+        if r['version'] != body.version:
+            raise HTTPException(409, 'Dữ liệu đã thay đổi; tải lại')
+        if body.status == 'verified':
+            if r['value'].get('warning'):
+                raise HTTPException(422, 'Cần sửa dữ liệu chưa rõ định dạng trước khi xác minh')
+            if not r['evidence'] and not body.note:
+                raise HTTPException(422, 'Cần bằng chứng/ghi chú xác minh')
+            if r['key'] in ['hs_code', 'tax_rate', 'customs_value'] and len(body.note) < 5:
+                raise HTTPException(422, 'Chỉ tiêu pháp lý cần ghi rõ căn cứ xác minh')
+            if r['kind'] == 'item':
+                from .normalize import decimal_text
+                v = r['value']
+                if decimal_text(v.get('quantity', '')) is None or not v.get('unit'):
+                    raise HTTPException(422, 'Dòng hàng cần số lượng và đơn vị rõ ràng')
+                if v.get('scope') != 'packing' and any(decimal_text(v.get(k, '')) is None for k in ['unit_price', 'line_amount']):
+                    raise HTTPException(422, 'Dòng Invoice cần đơn giá và thành tiền rõ ràng')
+        with db.connect() as c:
+            c.execute('UPDATE records SET status=?,note=?,updated_at=?,version=version+1 WHERE id=?', (body.status, body.note or r['note'], db.now(), id))
+            db.touch(c, r['case_id'])
+            db.audit(c, r['case_id'], 'Xác minh từng bản ghi', id, r['status'], body.status, body.note)
+            revalidate(c, r['case_id'])
+    return bundle(r['case_id'])
+
+@app.post('/api/records/{id}/undo')
+def undo(id: str):
+    with LOCK:
+        r = require_record(id)
+        busy(r['case_id'])
+        rev = db.one('SELECT * FROM revisions WHERE record_id=? ORDER BY rowid DESC LIMIT 1', (id,))
+        if not rev:
+            raise HTTPException(409, 'Không có chỉnh sửa để hoàn tác')
+        with db.connect() as c:
+            c.execute("UPDATE records SET value_json=?,status='pending',updated_at=?,version=version+1 WHERE id=?", (rev['before_json'], db.now(), id))
+            c.execute('DELETE FROM revisions WHERE id=?', (rev['id'],))
+            db.touch(c, r['case_id'])
+            db.audit(c, r['case_id'], 'Hoàn tác', id, r['value'], json.loads(rev['before_json']))
+            revalidate(c, r['case_id'])
+    return bundle(r['case_id'])
+
+@app.post('/api/checks/{id}/resolve')
+def resolve(id: str, body: ResolveInput):
+    body.note = body.note.strip()
+    if len(body.note) < 5:
+        raise HTTPException(422, 'Ghi lý do xử lý rõ ràng, tối thiểu 5 ký tự không tính khoảng trắng.')
+    with LOCK:
+        check = db.one('SELECT * FROM checks WHERE id=?', (id,))
+        if not check:
+            raise HTTPException(404, 'Cảnh báo không tồn tại')
+        busy(check['case_id'])
+        if check['result'] == 'Missing':
+            raise HTTPException(422, 'Bổ sung dữ liệu hoặc điều chỉnh checklist có lý do để xử lý mục thiếu')
+        if check['key'].startswith(('reading:', 'classification:')):
+            raise HTTPException(400, 'Cần đọc tài liệu và bấm Xác nhận loại chứng từ; ghi chú không thể bỏ qua bước này.')
+        with db.connect() as c:
+            c.execute('UPDATE checks SET resolution=? WHERE id=?', (body.note, id))
+            db.touch(c, check['case_id'])
+            db.audit(c, check['case_id'], 'Ghi nhận xử lý đối chiếu', id, check['resolution'], body.note, body.note)
+    return bundle(check['case_id'])
+
+@app.patch('/api/cases/{id}/requirements/{kind:path}')
+def requirement(id: str, kind: str, body: RequirementInput):
+    body.note = body.note.strip()
+    if len(body.note) < 3:
+        raise HTTPException(422, 'Checklist cần lý do rõ ràng, tối thiểu 3 ký tự không tính khoảng trắng.')
+    with LOCK:
+        case = require_case(id)
+        busy(id)
+        rules = json.loads(case['requirements'])
+        if kind not in rules:
+            raise HTTPException(422, 'Checklist không hỗ trợ loại này')
+        before = rules[kind]
+        rules[kind] = body.model_dump()
+        with db.connect() as c:
+            c.execute('UPDATE cases SET requirements=? WHERE id=?', (db.encode(rules), id))
+            db.touch(c, id)
+            db.audit(c, id, 'Đổi điều kiện checklist', kind, before, rules[kind], body.note)
+            revalidate(c, id)
+    return bundle(id)
+
+@app.post('/api/cases/{id}/review')
+def review(id: str):
+    with LOCK:
+        busy(id)
+        b = bundle(id)
+        if b['blockers']:
+            raise HTTPException(409, {'message': 'Chưa đủ điều kiện Reviewed', 'blockers': b['blockers']})
+        with db.connect() as c:
+            c.execute("UPDATE cases SET status='Reviewed',reviewed_at=?,updated_at=? WHERE id=?", (db.now(), db.now(), id))
+            db.audit(c, id, 'Hoàn thành kiểm tra hồ sơ')
+    return bundle(id)
+
+@app.get('/api/cases/{id}/audit')
+def history(id: str):
+    return db.rows('SELECT * FROM audit WHERE case_id=? ORDER BY rowid DESC', (id,))
+
+@app.get('/api/audit')
+def all_history():
+    return db.rows('SELECT * FROM audit ORDER BY rowid DESC LIMIT 200')
+
+@app.post('/api/cases/{id}/export')
+def export(id: str, body: ExportInput):
+    with LOCK:
+        busy(id)
+        b = bundle(id)
+        if body.selected and (len(body.selected) > 100 or set(body.selected) - set(FIELDS)):
+            raise HTTPException(422, 'Field xuất không hợp lệ')
+        if body.mode == 'Reviewed' and (b['blockers'] or not b['case']['reviewed_at']):
+            raise HTTPException(409, 'Cần kiểm tra từng trường và hoàn thành duyệt hồ sơ trước khi xuất Reviewed')
+        if not b['records']:
+            raise HTTPException(422, 'Chưa có dữ liệu để xuất; bạn có thể nhập thủ công')
+        n = (db.one('SELECT max(version) n FROM exports WHERE case_id=?', (id,))['n'] or 0) + 1
+        export_id = db.uid()
+        path = db.DATA / 'exports' / (export_id + '.xlsx')
+        stats = excel.build(path, b['case'], b['documents'], b['records'], b['checks'], history(id), body.mode, body.workbook_type, body.selected, n)
+        with db.connect() as c:
+            c.execute('INSERT INTO exports VALUES (?,?,?,?,?,?,?,?)', (export_id, id, db.now(), n, body.mode, body.workbook_type, str(path), b['case']['revision']))
+            db.audit(c, id, 'Xuất Excel', export_id, after={'mode': body.mode, 'version': n, 'stats': stats})
+            if body.mode == 'Reviewed':
+                c.execute("UPDATE cases SET status='Exported',updated_at=? WHERE id=?", (db.now(), id))
+    return {'id': export_id, 'download': '/api/exports/' + export_id, 'stats': stats}
+
+@app.get('/api/exports/{id}')
+def download(id: str):
+    r = db.one('SELECT * FROM exports WHERE id=?', (id,))
+    if not r:
+        raise HTTPException(404, 'Không có phiên bản xuất này')
+    return FileResponse(r['path'], filename=f"UI_SMART_{r['case_id']}_{r['mode']}_v{r['version']}.xlsx")
+
+@app.get('/api/ai/status')
+def ai_status():
+    return ai.status()
+
+@app.post('/api/ai/configure')
+def configure(body: AIInput):
+    ai.configure(body.api_key, body.model)
+    return ai.status()
+
+@app.post('/api/ai/test')
+def test_ai():
+    try:
+        return ai.test_connection()
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise HTTPException(422, ai.safe_error(exc)) from None
+
+@app.delete('/api/ai/configure')
+def remove_key():
+    ai.remove()
+    return ai.status()
+
+@app.post('/api/backup')
+def backup():
+    with LOCK:
+        if any(j['status'] == 'running' for j in JOBS.values()):
+            raise HTTPException(409, 'Chờ tác vụ hoàn tất trước khi backup')
+        id = db.uid()
+        folder = db.DATA / 'backups'
+        snapshot = folder / (id + '.sqlite')
+        archive = folder / (id + '.zip')
+        with db.connect() as source:
+            target = sqlite3.connect(snapshot)
+            source.backup(target)
+            target.close()
+        with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.write(snapshot, 'smart.sqlite')
+            for sub in ['files', 'exports', 'templates']:
+                for p in (db.DATA / sub).glob('*'):
+                    if p.is_file():
+                        z.write(p, sub + '/' + p.name)
+        snapshot.unlink()
+        return {'id': id, 'download': '/api/backups/' + id}
+
+@app.get('/api/backups/{id}')
+def get_backup(id: str):
+    import re
+    if not re.fullmatch('[a-f0-9]{32}', id):
+        raise HTTPException(404)
+    p = db.DATA / 'backups' / (id + '.zip')
+    if not p.exists():
+        raise HTTPException(404)
+    return FileResponse(p, filename='UI_SMART_backup_' + id + '.zip')
+
+# Experimental generic template mapper, explicitly internal and not a customs software import certification.
+@app.post('/api/templates')
+async def template_upload(file: UploadFile = File(...)):
+    data = await file.read(reader.MAX_BYTES + 1)
+    await file.close()
+    if len(data) > reader.MAX_BYTES or Path(file.filename or '').suffix.lower() != '.xlsx':
+        raise HTTPException(422, 'Template cần là XLSX dưới 25 MB')
+    id = db.uid()
+    p = db.DATA / 'templates' / (id + '.xlsx')
+    p.write_bytes(data)
+    try:
+        validate_zip(p)
+        wb = load_workbook(p)
+        sheets = {
+            s.title: [
+                {'cell': cell.coordinate, 'header': str(cell.value)}
+                for row in s.iter_rows(min_row=1, max_row=min(10, s.max_row), max_col=min(50, s.max_column))
+                for cell in row
+                if cell.value is not None
+            ]
+            for s in wb
+        }
+        wb.close()
+        db.execute('INSERT INTO templates VALUES (?,?,?,?,?)', (id, Path(file.filename).name, str(p), db.encode(sheets), '[]'))
+    except Exception:
+        p.unlink(missing_ok=True)
+        raise ValueError('Không đọc được template XLSX')
+    return {'id': id, 'name': Path(file.filename).name, 'sheets': sheets, 'scope': 'Mapping nội bộ; chưa xác minh tương thích phần mềm khai báo'}
+
+@app.get('/api/templates')
+def list_templates():
+    rows = db.rows('SELECT id,name,sheets_json,mapping_json FROM templates')
+    for r in rows:
+        r['sheets'] = json.loads(r.pop('sheets_json'))
+        r['mapping'] = json.loads(r.pop('mapping_json'))
+    return rows
+
+@app.post('/api/templates/{id}/export')
+def template_export(id: str, body: TemplateInput):
+    with LOCK:
+        busy(body.case_id)
+        case = require_case(body.case_id)
+        template = db.one('SELECT * FROM templates WHERE id=?', (id,))
+        if not template:
+            raise HTTPException(404, 'Không tìm thấy template')
+        if not body.mapping:
+            raise HTTPException(422, 'Chọn ít nhất một mapping cụ thể')
+        export_id = db.uid()
+        p = db.DATA / 'exports' / (export_id + '.xlsx')
+        count = templates.build(template, body.mapping, body.case_id, p)
+        n = (db.one('SELECT max(version) n FROM exports WHERE case_id=?', (body.case_id,))['n'] or 0) + 1
+        with db.connect() as c:
+            c.execute('UPDATE templates SET mapping_json=? WHERE id=?', (db.encode(body.mapping), id))
+            c.execute('INSERT INTO exports VALUES (?,?,?,?,?,?,?,?)', (export_id, body.case_id, db.now(), n, 'Draft', 'Template-internal', str(p), case['revision']))
+            db.audit(c, body.case_id, 'Xuất theo mapping nội bộ', export_id, after={'template': id, 'cells': count})
+    return {'id': export_id, 'download': '/api/exports/' + export_id, 'scope': 'Bản mapping nội bộ; chưa kiểm thử nhập phần mềm bên ngoài'}
+
+if (db.ROOT / 'dist').exists():
+    app.mount('/', StaticFiles(directory=db.ROOT / 'dist', html=True), name='frontend')
