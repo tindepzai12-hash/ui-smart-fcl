@@ -223,3 +223,11 @@ def test_currency_field_can_use_an_unambiguous_printed_header_and_positive_sign_
     grounded=ai.ground_source_format(candidate,pages)
     records,rejected=ai.validated_subset(grounded,pages)
     assert not rejected and records[0]['raw']=='USD' and records[0]['evidence']=='Amount(USD'
+
+
+def test_contract_quantity_header_requests_a_missing_document_quantity_even_when_item_fails():
+    pages=[{'number':1,'text':'SALES CONTRACT\nContract No: SC-9\nQTY (MT)\nBLUE BOLTS 21.0 960.00 20,160.00'}]
+    candidate=output('Contract','SALES CONTRACT',[field('contract_number','SC-9','Contract No: SC-9')])
+    records,rejected=ai.validated_subset(candidate,pages)
+    targets=ai.repair_targets(candidate,records,rejected,pages)
+    assert 'goods_quantity' in targets['fields'] and targets['items']

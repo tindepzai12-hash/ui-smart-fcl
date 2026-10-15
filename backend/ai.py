@@ -501,6 +501,8 @@ def repair_targets(result, records, rejected, pages):
     # Re-read missing units only when a quantity header exists; the model must quote it.
     quantity_header = bool(re.search(r'(?is)\b(?:quantity|qty)\b.{0,180}?(?<![A-Za-z])(?:KGS?|KGM|MT|PCS|SETS?|BAGS?)\b', text))
     if quantity_header:
+        if result.document_type in FIELDS['goods_quantity']['documents']:
+            fields.update({'goods_quantity'} - found)
         fields.update(r['key'] for r in records if r['key']=='goods_quantity' and not r['value'].get('unit'))
     items = any(reason.startswith('items[') for reason in rejected)
     if result.document_type in ['Invoice','Invoice & Packing List','Packing List','Contract','Purchase Order'] and re.search(r'(?i)\b(?:quantity|qty)\b', text):
@@ -611,7 +613,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v16-packing-role-evidence|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v17-missing-printed-quantity|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
