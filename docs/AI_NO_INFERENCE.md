@@ -23,3 +23,8 @@ Packing List, Booking, Invoice, C/O (nếu có), Hợp đồng/Sales Contract (P
 
 Shipper, Consignee và Notify Party phải thuộc đúng ô có nhãn tương ứng. Không lấy tên đại lý ở cột bên cạnh chỉ vì văn bản OCR/PDF xen kẽ các cột. Bằng chứng có tên công ty chưa đủ chứng minh vai trò. Nếu bố cục không rõ, để thiếu/cần kiểm tra, không tự gán.
 
+## Không thay thế các chỉ tiêu gần nhau
+
+- Booking: ETA phải gắn với cảng dỡ, không lấy ETA cảng xếp/nơi giao cuối. Số container không phải số kiện. Cargo Weight không tự trở thành Gross Weight.
+- Packing List: No. nằm trực tiếp dưới tiêu đề có thể là số riêng; Invoice No. không phải số Packing List. Số này vẫn tùy chọn. Tách số kiện, net/gross weight theo đúng cột. Không đưa container/seal vào mô tả hàng.
+- C/O: dùng Reference/Certificate No., không dùng serial/barcode không nhãn. Ngày C/O thuộc Certification/Issue Date, không lấy ngày Invoice hay khởi hành. Tiêu chí xuất xứ phải là mã dòng hàng, không lấy câu hướng dẫn RVC criterion. Issued in Country không phải cơ quan cấp. Khai báo sản phẩm được sản xuất tại một nước có thể chứng minh xuất xứ; địa chỉ nhà xuất khẩu không chứng minh xuất xứ. Ký tự/số/ngày bị OCR đọc mờ phải để cần kiểm tra, không tự đoán để hoàn thiện.

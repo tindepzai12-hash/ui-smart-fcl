@@ -25,7 +25,7 @@ _model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
 _tested = False
 _checked_at = None
 DISCHARGE_LABEL = r'(?i)\b(?:port\s+of\s+discharge|discharge\s+port)\s*[:：]?'
-ORIGIN_LABEL = r'(?i)\b(?:country\s+of\s+(?:origin|manufacture)|origin\s+of\s+(?:goods|products)|made\s+in|origin\s*[:：])|(?:nước\s+)?xuất\s*xứ'
+ORIGIN_LABEL = r'(?i)\b(?:country\s+of\s+(?:origin|manufacture)|origin\s+of\s+(?:goods|products)|made\s+in|all\s+the\s+products\s+were\s+produced\s+in|origin\s*[:：])|(?:nước\s+)?xuất\s*xứ'
 
 def origin_supported(value, quote):
     # Require the country in the same labelled source span, never a party address.
@@ -321,7 +321,11 @@ def validate_result(result, pages):
             raise ValueError('Ký mã hiệu thiếu nhãn gắn trực tiếp với giá trị; không dùng mô tả hàng ở cột bên cạnh')
         if f.field_id == 'consignee' and result.document_type=='Packing List' and not any(re.search(CONSIGNEE_LABEL,p['text']) for p in pages if p['number']==f.source_page):
             raise ValueError('Packing List chưa ghi rõ vai trò người nhận hàng; For Account & Risk không chứng minh Consignee')
-        if f.field_id == 'packing_number' and not any(evidence_ok(f.raw_value, field_evidence[m.end():m.end()+160], f.source_page, pages) for m in re.finditer(PACKING_NUMBER_LABEL,field_evidence)):
+        packing_heading = r'(?i)\bP\s*A\s*C\s*K\s*I\s*N\s*G\s+L\s*I\s*S\s*T\b'
+        own_packing_no = (result.document_type=='Packing List' and any(
+            re.search(r'(?im)^\s*No\.?\s*[:：]\s*'+re.escape(f.raw_value)+r'(?![A-Za-z0-9/_.-])',source_page.get('text','')[m.end():m.end()+200])
+            for m in re.finditer(packing_heading,source_page.get('text',''))))
+        if f.field_id == 'packing_number' and not own_packing_no and not any(evidence_ok(f.raw_value, field_evidence[m.end():m.end()+160], f.source_page, pages) for m in re.finditer(PACKING_NUMBER_LABEL,field_evidence)):
             raise ValueError('Số Packing List thiếu nhãn số chứng từ; không dùng số kiện hoặc số Invoice thay thế')
         if f.field_id == 'origin' and not origin_supported(f.raw_value, field_evidence):
             raise ValueError('Xuất xứ thiếu nhãn nguồn; không suy ra từ địa chỉ người bán/cảng đi')
@@ -345,6 +349,7 @@ def validate_result(result, pages):
         if f.field_id == 'port_discharge':
             source = next((p['text'] for p in pages if p['number']==f.source_page),'')
             norm = lambda s: re.sub(r'\s+',' ',s).casefold().strip()
+            source = norm(source)
             labels=DISCHARGE_LABEL
             if not any(norm(f.raw_value) in norm(source[m.end():m.end()+160]) for m in re.finditer(labels,source)):
                 raise ValueError('Cảng dỡ thiếu nhãn chứng minh vai trò; không dùng cảng xếp/nơi phát hành thay thế')
@@ -359,6 +364,25 @@ def validate_result(result, pages):
             norm = lambda s: re.sub(r'\s+',' ',s).casefold().strip()
             if not any(norm(f.raw_value) in norm(source[m.end():m.end()+80]) for m in re.finditer(labels,source)):
                 raise ValueError('Ngày đến dự kiến thiếu nhãn ETA/Estimated Arrival; không dùng ngày phát hành hoặc xếp tàu')
+            if result.document_type=='Booking':
+                port_sections=re.findall(r'(?is)port\s+of\s+discharge\s*:(.*?)(?:final\s+destination\s*:|\[PDF content-order|$)',source)
+                if port_sections and not any(norm(f.raw_value) in norm(s[m.end():m.end()+80]) for s in port_sections for m in re.finditer(labels,s)):
+                    raise ValueError('ETA trên Booking phải thuộc cảng dỡ; không dùng ETA nơi giao cuối hoặc cảng xếp')
+        if f.field_id=='packages' and re.search(r'(?i)\b(?:container|hi.cube|reefer|20GP|40GP|40HC)\b',f.raw_value):
+            raise ValueError('Số lượng thiết bị/container không phải số kiện hàng')
+        if f.field_id=='gross_weight' and result.document_type=='Booking' and not re.search(r'(?i)gross\s*(?:weight|wt)|g\.?w\.?',source_page.get('text','')):
+            raise ValueError('Cargo Weight trên Booking chưa chứng minh Gross Weight; không tự đổi vai trò trọng lượng')
+        if result.document_type=='C/O':
+            if f.field_id=='co_number' and not any(evidence_ok(f.raw_value,source_page.get('text','')[m.end():m.end()+80],f.source_page,pages) for m in re.finditer(r'(?i)(?:reference|certificate|c/o)\s*(?:no\.?|number)\s*[:：]?',source_page.get('text',''))):
+                raise ValueError('Số C/O cần nhãn Reference/Certificate No; không lấy số serial/barcode cuối trang')
+            if f.field_id=='co_date':
+                sections=re.findall(r'(?is)(?:12\s*[.]?\s*Certification|(?:certificate\s+)?issue\s*date\s*[:：])(.*?)(?:13\s*[.,]|\[OCR|$)',source_page.get('text',''))
+                if not any(evidence_ok(f.raw_value,s,f.source_page,pages) for s in sections):
+                    raise ValueError('Ngày C/O thiếu căn cứ trong phần chứng nhận/ngày phát hành; không lấy ngày Invoice/ngày khởi hành')
+            if f.field_id=='origin_criteria' and re.search(r'(?i)criterion|criteria|notes|applied|weight|value',f.raw_value):
+                raise ValueError('Tiêu chí xuất xứ phải là giá trị của dòng hàng; không lấy hướng dẫn mẫu RVC criterion')
+            if f.field_id=='co_issuer' and not re.search(r'(?i)customs|chamber|council|ministry|authority|department|bureau|committee|agency|phòng\s*thương\s*mại|hải\s*quan',f.raw_value):
+                raise ValueError('Cơ quan cấp C/O cần tên tổ chức; Issued in Country không phải cơ quan cấp')
         if f.field_id == 'arrival_date':
             source = next((p['text'] for p in pages if p['number']==f.source_page),'')
             labels = r'(?im)^\s*(?:actual\s+)?arrival\s*date\s*[:：]?'
@@ -401,6 +425,8 @@ def validate_result(result, pages):
                     raise ValueError('AI trả dòng hàng/container thiếu bằng chứng cho ' + k)
             if kind == 'item' and v.get('origin') and not origin_supported(v['origin'], quotes.get('origin',evidence)):
                 raise ValueError('Xuất xứ dòng hàng thiếu nhãn nguồn; không suy ra từ địa chỉ người bán/cảng đi')
+            if kind=='item' and re.search(r'(?i)\bCONT\s*/\s*SEAL\b|\b[A-Z]{4}\d{7}\b',v.get('description','')):
+                raise ValueError('Mô tả hàng đang lẫn container/seal; chỉ lấy đoạn mô tả hàng có bằng chứng riêng')
             if not evidence_ok(evidence,evidence,page,pages):
                 raise ValueError('Dòng thiếu trích dẫn nguồn')
             if kind == 'container' and not re.fullmatch(r'[A-Z]{4}\d{7}', v['container_number']):
@@ -539,6 +565,10 @@ def repair_targets(result, records, rejected, pages):
         fields.update({'invoice_total', 'currency'} - found)
     if result.document_type in ['B/L', 'Invoice & Packing List', 'Packing List'] and re.search(r'(?i)\b(?:gross\s+weight|GW|KGM|KGS)\b', text):
         fields.update({'gross_weight'} - found)
+    if result.document_type in ['Packing List','Invoice & Packing List']:
+        if re.search(NET_WEIGHT_LABEL,text): fields.update({'net_weight'} - found)
+        if re.search(r'(?i)\b(?:cartons|number\s+of\s+packages|total\s+packages)\b',text): fields.update({'packages'} - found)
+    if result.document_type=='C/O' and re.search(ORIGIN_LABEL,text): fields.update({'origin'} - found)
     fields = {k for k in fields if result.document_type in FIELDS[k]['documents']}
     if result.document_type in ['Contract','Purchase Order'] and re.search(r'(?i)\b(?:total|amount)\b',text):
         fields.update({'contract_total','currency'} - found if result.document_type=='Contract' else {'currency'} - found)
@@ -659,7 +689,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v21-party-cell-role|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v22-role-bound-references|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -696,6 +726,9 @@ def analyze(case_id, document, pages):
         'Quantity units must be read from the actual quantity column/header (including Quantity followed by a separate line such as (KGS)), using exact unit_line or cell_evidence. Do not leave a unit null when that applicable header is readable; do not substitute packing weight, net/gross weight or price unit for quantity. '
         'incoterms contains a printed trade term such as CIF or FOB, never TT, LC or a payment sentence. Put payment conditions in payment_terms. Do not infer net_weight from quantity without a net-weight label. '
         'Arrival Notice: extract only the allowed header and shipment-summary fields; items=[] and containers=[]. Freight charges and equipment rows are not Invoice amounts or commercial items. A referenced B/L number is bl_number, never booking. '
+        'Booking: eta is the ETA at Port of Discharge, not ETA at Port of Loading, final delivery or cargo availability. Equipment counts are not packages; generic Cargo Weight is not gross_weight unless explicitly labelled Gross. '
+        'Packing List: re-read the NUMBER OF CARTONS/packages and NET WEIGHT columns as separate header fields even if the item quantity uses cartons. Do not include CONT/SEAL labels, numbers or bank information in item descriptions. A standalone No.: directly under the Packing List title can be its own packing_number; an Invoice No. cannot. '
+        'C/O: co_number is the labelled Reference/Certificate No, not an unlabelled serial or barcode. co_date belongs to Certification/Issue Date, not the Invoice date in box 10 or Departure date. origin_criteria is the actual row code in box 8, not the form instructions RVC criterion. co_issuer must be the named certifying organization, not the Issued in country. The exporter declaration that all products were produced in a named country can support origin; an exporter address cannot. If a stamp or OCR makes the code/date/reference unreadable, omit it and never repair a character by guessing. '
         'Return independent line items. For the commercial document review profile, containers MUST be an empty array: do not extract container numbers, seals or per-container cargo. Every nonempty value must occur literally in its evidence on its source page. '
         'Copy raw_value EXACTLY as written, including spaces, punctuation, date format and separators. Never normalize a number/date/unit in raw_value. '
         'Evidence must be one contiguous quote from the page text (line breaks may become spaces), not a concatenation of separate cells. '

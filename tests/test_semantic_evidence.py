@@ -29,6 +29,46 @@ def test_party_cell_guard_does_not_invent_layout_when_no_cells_exist():
     assert ai.party_cell_support('notify_party', 'BUYER LTD', {'tables': [[['Notify Party', 'BUYER LTD']]]}) is None
 
 
+@pytest.mark.parametrize('key,value', [('co_number','9999999'),('co_date','JUN. 03, 2025'),('origin_criteria','RVC criterion'),('co_issuer',"THE PEOPLE'S REPUBLIC OF CHINA")])
+def test_co_form_roles_cannot_use_invoice_date_serial_or_country(key,value):
+    text="CERTIFICATE OF ORIGIN\nReference No. E12345\nIssued in THE PEOPLE'S REPUBLIC OF CHINA\n10. Number, date of Invoices\nJUN. 03, 2025\nwhen RVC criterion is applied\n12. Certification\nSHANTOU CUSTOMS\nJUN. 09, 2025\n13. Remarks\n9999999"
+    pages=[{'number':1,'text':text,'tables':[]}]
+    result=document('C/O','CERTIFICATE OF ORIGIN')
+    result.fields=[ai.FieldResult(field_id=key,raw_value=value,source_page=1,evidence_text=text)]
+    with pytest.raises(ValueError): ai.validate_result(result,pages)
+    good={'co_number':'E12345','co_date':'JUN. 09, 2025','co_issuer':'SHANTOU CUSTOMS'}
+    if key in good:
+        result.fields[0].raw_value=good[key]
+        assert ai.validate_result(result,pages)
+
+
+def test_exporter_declaration_can_prove_origin_but_issued_in_cannot():
+    assert ai.origin_supported('CHINA','all the products were produced in\nCHINA')
+    assert not ai.origin_supported('CHINA','Issued in CHINA')
+
+
+def test_booking_eta_belongs_to_discharge_and_equipment_is_not_packages():
+    text="BOOKING CONFIRMATION\nPORT OF DISCHARGE: New York ETA: 27 Oct 2026\nFINAL DESTINATION: New York ETA: 30 Oct 2026\n1 X 40 Hi-Cube Refrigerated Container\nCARGO WEIGHT: 20000 KG"
+    pages=[{'number':1,'text':text,'tables':[]}]
+    result=document('Booking','BOOKING CONFIRMATION')
+    for key,value in [('eta','30 Oct 2026'),('packages','1 X 40 Hi-Cube Refrigerated Container'),('gross_weight','20000')]:
+        result.fields=[ai.FieldResult(field_id=key,raw_value=value,source_page=1,evidence_text=text)]
+        with pytest.raises(ValueError): ai.validate_result(result,pages)
+    result.fields=[ai.FieldResult(field_id='eta',raw_value='27 Oct 2026',source_page=1,evidence_text=text)]
+    assert ai.validate_result(result,pages)
+
+
+def test_standalone_number_under_packing_title_is_optional_own_reference():
+    text='PACKING LIST\nNo.: PL-123\nInvoice No.: INV-123\nNumber of cartons: 1134\nNet Weight (KGS): 13608'
+    pages=[{'number':1,'text':text,'tables':[]}]
+    result=document('Packing List','PACKING LIST')
+    result.fields=[ai.FieldResult(field_id='packing_number',raw_value='PL-123',source_page=1,evidence_text='No.: PL-123')]
+    assert ai.validate_result(result,pages)
+    result.fields[0].raw_value='INV-123';result.fields[0].evidence_text='Invoice No.: INV-123'
+    with pytest.raises(ValueError): ai.validate_result(result,pages)
+    assert {'packages','net_weight'} <= set(ai.repair_targets(result,[],[],pages)['fields'])
+
+
 def test_titles_outweigh_references_and_misleading_filename():
     assert extraction.classify([{'text':'SALES CONTRACT\nARTICLE 4: DOCUMENTS REQUIRED\n1. CLEAN SHIPPED ON BOARD OCEAN BILL OF LADING\n2. ORIGINAL SIGNED COMMERCIAL INVOICE'}])[0]=='Contract'
     assert extraction.classify([{'text':'ACME DELIVERY ORDER\nArrival Date: MAR 05 2025\nB/L No: X-01'}])[0]=='Delivery Order'
