@@ -27,7 +27,7 @@ def classify(pages):
         return 'Arrival Notice',arrival.group(0).strip()
     # Some carrier forms have no standalone title: the printed number heading and
     # carriage terms jointly identify a bill. A B/L reference alone is insufficient.
-    bill_heading=re.search(r'(?im)^\s*BILL\s+OF\s+LADING\s+(?:NO\.?|NUMBER)\s*[:：]?\s*$',text)
+    bill_heading=re.search(r'(?im)\bBILL\s+OF\s+LADING\s+(?:NO\.?|NUMBER)\s*[:：]?\s*$',text)
     if bill_heading and re.search(r'(?i)FOR\s+COMBINED\s+TRANSPORT\s+SHIPMENT',text) and re.search(r'(?i)IN\s+WITNESS|RECEIVED\s+by\s+the\s+Carrier',text):
         return 'B/L',bill_heading.group(0).strip()
     return 'Other','Không có tiêu đề đủ rõ; chọn loại chứng từ thủ công.'

@@ -25,7 +25,7 @@ def test_classification_cannot_use_valid_but_unrelated_quote():
 
 
 def test_carrier_bill_number_heading_needs_carriage_terms_not_just_a_reference():
-    bill='HEDE SHIPPING\nBILL OF LADING NO.\nXYZ-123\nFOR COMBINED TRANSPORT SHIPMENT OR PORT TO PORT SHIPMENT\nRECEIVED by the Carrier from the Shipper in apparent good order'
+    bill='ACME SHIPPING\n1. SHIPPER Insert Name, Address and Phone       BILL OF LADING NO.\nXYZ-123\nFOR COMBINED TRANSPORT SHIPMENT OR PORT TO PORT SHIPMENT\nRECEIVED by the Carrier from the Shipper in apparent good order'
     assert extraction.classify([{'text':bill}])==('B/L','BILL OF LADING NO.')
     assert extraction.classify([{'text':'BILL OF LADING NO.\nXYZ-123\nInternal payment note'}])[0]=='Other'
     assert extraction.classify([{'text':'ARRIVAL NOTICE\n'+bill}])[0]=='Arrival Notice'
