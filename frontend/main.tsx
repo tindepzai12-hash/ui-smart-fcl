@@ -1620,7 +1620,7 @@ function App() {
                         </div>
                       )}
 
-                      {activeDoc?.error && <div className="alert bad">{activeDoc.error}</div>}
+                      {activeDoc?.error && <div className={`alert ${activeDoc.status === 'error' ? 'bad' : 'warn'}`} role="status">{activeDoc.error}</div>}
                       {pageData?.quality && <div className="reading-note">{pageData.quality}</div>}
 
                       {activeDoc && (
