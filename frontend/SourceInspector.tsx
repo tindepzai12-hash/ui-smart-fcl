@@ -69,7 +69,7 @@ export function SourceInspector({record,title,reason,busy,onClose,onVerify,onNex
       {showText || !['.pdf','.jpg','.jpeg','.png','.tif','.tiff'].includes(data.ext)?<div className="source-canvas">
           <div className="source-text"><strong>Câu trích dẫn máy dùng</strong><blockquote>{data.evidence||'Chưa có câu trích dẫn.'}</blockquote><SourceText text={data.text} raw={data.raw} evidence={data.evidence}/></div>
         </div>:<SourceImageViewer key={data.document_id+':'+data.page} src={`/api/documents/${data.document_id}/preview/${data.page}`} alt={`Bản gốc ${data.name}, trang ${data.page}, có đánh dấu nguồn`} boxes={data.boxes}/>}
-      <p className="source-legend">Khung xanh: chữ khớp nguồn · Cam: OCR có điểm nhận chữ thấp. Khung đánh dấu không tự xác nhận đúng/sai nghiệp vụ.</p>
+      <p className="source-legend">Khung xanh: chữ khớp nguồn · Xanh nét đứt: OCR đọc chưa chắc. Khung đánh dấu không tự xác nhận đúng/sai nghiệp vụ.</p>
       <details className="source-quote"><summary>Câu trích dẫn và chất lượng đọc</summary><blockquote>{data.evidence||'Chưa có trích dẫn.'}</blockquote><p>{data.quality||'Lớp chữ PDF; vẫn cần đối chiếu nội dung.'}</p></details>
     </>}
     <footer className="source-review-actions"><button className="btn small" disabled={saving||busy} onClick={()=>{

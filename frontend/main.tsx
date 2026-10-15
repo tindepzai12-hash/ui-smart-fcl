@@ -335,7 +335,7 @@ function App() {
       if (recordFilter === 'blocked') return r.status !== 'rejected' && (!['verified','auto_accepted'].includes(r.status) || (!!r.value?.warning&&r.status!=='auto_accepted') || blockedByCheck);
       if (recordFilter === 'pending') return r.status === 'pending';
       if (recordFilter === 'edited') return r.method?.startsWith('Manual');
-      if (recordFilter === 'warning') return r.status !== 'rejected' && (!!r.value?.warning || blockedByCheck);
+      if (recordFilter === 'warning') return r.status !== 'rejected' && ((!['verified','auto_accepted'].includes(r.status)&&!!r.value?.warning) || blockedByCheck);
       if (recordFilter === 'verified') return ['verified','auto_accepted'].includes(r.status);
       return true;
     });
@@ -591,7 +591,7 @@ function App() {
         id={'card-' + r.id}
         className={
           'field-card ' +
-          (r.status === 'verified' ? 'is-verified ' : '') +
+          (['verified','auto_accepted'].includes(r.status) ? 'is-verified ' : '') +
           (hasConflict ? 'is-conflict ' : '') +
           (activeRecordId === r.id ? 'is-focused' : '')
         }
@@ -645,7 +645,7 @@ function App() {
             )}
           </div>
         )}
-        {r.value.warning && <p className="warning-text">{r.value.warning}</p>}
+        {!['verified','auto_accepted'].includes(r.status)&&r.value.warning && <p className="warning-text">{r.value.warning}</p>}
         <details>
           <summary>Bằng chứng và giá trị gốc</summary>
           <blockquote>{r.evidence || 'Chưa có bằng chứng'}</blockquote>
@@ -754,7 +754,7 @@ function App() {
                     </td>
                     <td>
                       <span className="badge neutral">{r.method.startsWith('Manual')?'Đã hiệu chỉnh':'Máy đã đọc'}</span>
-                      {r.value.warning && <small className="warning-text">{r.value.warning}</small>}
+                      {!['verified','auto_accepted'].includes(r.status)&&r.value.warning && <small className="warning-text">{r.value.warning}</small>}
                     </td>
                     <td>
                       <div className="row">
@@ -1310,7 +1310,7 @@ function App() {
 
                     <section className="preview-pane">
                       {sourceRecord ? <SourceInspector exceptionMode record={sourceRecord} title={dict.fields[sourceRecord.key]?.label || (sourceRecord.kind==='item'?'Dòng hàng cần kiểm tra':'Container cần kiểm tra')}
-                        reason={sourceRecord.value?.warning || sourceConflict?.detail.reason} busy={loading || job?.status==='running' || saveStates[sourceRecord.id]?.status==='saving'}
+                        reason={(!['verified','auto_accepted'].includes(sourceRecord.status)&&sourceRecord.value?.warning) || sourceConflict?.detail.reason} busy={loading || job?.status==='running' || saveStates[sourceRecord.id]?.status==='saving'}
                         onClose={()=>setSourceRecordId('')} onVerify={(r:Any)=>verifyAndNext(r,true)} onSave={editRecord} onNext={()=>jumpToNextPending()} onEdit={()=>focusRecordEditor(sourceRecord)}/> : <>
                       <div className="preview-toolbar">
                         <strong>{activeDoc?.name || 'Xem trước chứng từ'}</strong>
@@ -1573,7 +1573,7 @@ function App() {
                                       ? `${r.value.quantity || '—'} ${r.value.unit || ''} × ${r.value.unit_price || '—'} = ${r.value.line_amount || '—'} ${r.value.currency || ''}`
                                       : `Seal: ${r.value.seal_number || '—'} · Loại: ${r.value.container_type || '—'}`}
                                   </p>
-                                  {r.value.warning && <p className="warning-text">{r.value.warning}</p>}
+                                  {!['verified','auto_accepted'].includes(r.status)&&r.value.warning && <p className="warning-text">{r.value.warning}</p>}
                                   <div className="field-actions">
                                     <button className="text-btn" onClick={() => chooseSource(r)}>
                                       <Eye size={14} />
