@@ -55,3 +55,40 @@ def test_each_accepted_source_part_has_independent_original_highlight(monkeypatc
                                   record,{'number':1,'method':'PDF text','quality':'','text':TEXT})
     assert {b['attribute'] for b in located['boxes']}=={'description_part_1','description_part_2'}
     assert not any('600'==b['text'] or '3918'==b['text'] for b in located['boxes'])
+
+def test_multiline_price_currency_is_bound_to_printed_table_header_only():
+    header='UNIT PRICE\nFOB EXAMPLE\nUSD'
+    page={'number':1,'text':'INVOICE\n'+header+'\nPART-A BLUE STEEL CARRIER 600 PCS 6.53 3918.00',
+          'tables':[[['Item No.','Description','Quantity','Unit',header,'Amount'],
+                     ['PART-A','BLUE STEEL CARRIER','600','PCS','6.53','3918.00']]]}
+    candidate=ai.DocumentResult(document_type='Invoice',classification_evidence='INVOICE',containers=[],
+        fields=[ai.FieldResult(field_id='currency',raw_value='USD',source_page=1,evidence_text='wrong pointer')],
+        items=[ai.ItemResult(line_number='1',product_code='PART-A',description='BLUE STEEL CARRIER',quantity='600',
+                            unit='PCS',unit_price='6.53',line_amount='3918.00',currency='USD',source_page=1,evidence_text='INVOICE')])
+    rows,rejected=ai.validated_subset(ai.ground_source_format(candidate,[page]),[page])
+    assert not rejected and len(rows)==2 and all('USD' in r['evidence'] for r in rows)
+    for bad in [{**page,'text':page['text'].replace(header,'USD\nSeller address')},
+                {**page,'text':page['text']+'\nAlternative EUR'}]:
+        grounded=ai.ground_source_format(candidate,[bad])
+        with pytest.raises(ValueError,match='bằng chứng'):
+            ai.validate_result(grounded,[bad])
+
+def test_quantity_unit_pointer_can_use_unit_next_to_same_printed_total():
+    page={'number':1,'text':'PACKING LIST\nSAY TOTAL: (1,200) PCS IN 56 CARTONS\nCARTON'}
+    candidate=ai.DocumentResult(document_type='Packing List',classification_evidence='PACKING LIST',items=[],containers=[],
+        fields=[ai.FieldResult(field_id='goods_quantity',raw_value='1,200',unit='PCS',source_page=1,
+                              evidence_text='SAY TOTAL: (1,200) PCS IN 56 CARTONS',unit_evidence='CARTON')])
+    grounded=ai.ground_source_format(candidate,[page]);rows=ai.validate_result(grounded,[page])
+    assert rows[0]['value']['number']=='1200' and rows[0]['value']['unit']=='PCS'
+    candidate.fields[0].unit='CTN'
+    with pytest.raises(ValueError,match='Đơn vị'):
+        ai.validate_result(ai.ground_source_format(candidate,[page]),[page])
+
+def test_warehouse_unprinted_unit_is_omitted_without_losing_literal_number():
+    page={'number':1,'text':'YÊU CẦU NHẬP KHO\nWeight Volume\n515.080 7.380'}
+    candidate=ai.DocumentResult(document_type='Warehouse Receipt',classification_evidence='YÊU CẦU NHẬP KHO',items=[],containers=[],
+        fields=[ai.FieldResult(field_id=k,raw_value=v,unit=u,source_page=1,evidence_text='515.080 7.380',unit_evidence='Weight Volume')
+                for k,v,u in [('cargo_weight','515.080','KGS'),('volume','7.380','CBM')]])
+    rows=ai.validate_result(ai.ground_source_format(candidate,[page]),[page])
+    assert len(rows)==2 and all(r['value']['unit'] is None and r['value']['warning'] for r in rows)
+    assert candidate.fields[0].unit=='KGS'  # Original model candidate is not mutated.

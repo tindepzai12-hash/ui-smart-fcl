@@ -584,12 +584,18 @@ def ground_source_format(result, pages):
                         break
     currencies = {'USD','EUR','GBP','CNY','RMB','JPY','VND','AUD','CAD','SGD','HKD','CHF','THB','KRW','INR','MYR','IDR','TWD','PHP'}
     def explicit_currency(page, value):
-        text=next((p['text'] for p in pages if p['number']==page),'')
+        source_page=next((p for p in pages if p['number']==page),{})
+        text=source_page.get('text','')
         headers=[]
         for line in text.splitlines():
             for match in re.finditer(r'(?i)\b(?:amount|currency|unit[- ]?price)\s*[:(（]?\s*([A-Z]{3})\b',line):
                 code=match.group(1).upper()
                 if code in currencies: headers.append((code,match.group(0)))
+        for table in source_page.get('tables',[]):
+            for cell in table[0] if table else []:
+                if not isinstance(cell,str) or not re.search(r'(?i)amount|currency|unit\s*price',cell):continue
+                codes={m.group(0).upper() for m in re.finditer(r'(?i)\b[A-Z]{3}\b',cell)} & currencies
+                if codes=={value} and evidence_ok(cell,cell,page,pages):headers.append((value,cell))
         # A second currency anywhere prevents choosing a global header automatically.
         printed={m.group(0).upper() for m in re.finditer(r'(?i)\b[A-Z]{3}\b',text)} & currencies
         return next((quote for code,quote in headers if code==value),None) if printed=={value} else None
@@ -623,6 +629,21 @@ def ground_source_format(result, pages):
             if not evidence_ok(f.unit,unit_quote,f.source_page,pages):
                 header=explicit_currency(f.source_page,f.unit)
                 if header: f.unit_evidence=header;f.unit_line=None
+        elif f.unit and FIELDS[f.field_id]['type'] in ['quantity','weight','number']:
+            try: unit_quote=source_quote(f.source_page,f.unit_evidence,f.unit_line,None,pages)
+            except ValueError: unit_quote=''
+            if not evidence_ok(f.unit,unit_quote,f.source_page,pages):
+                # Only a unit directly following this literal number can repair
+                # a missing pointer; an unrelated unit elsewhere is not evidence.
+                adjacent=re.search(r'(?<![\d.,])'+re.escape(f.raw_value)+r'\s*\)?\s*'+re.escape(f.unit)+r'(?!\w)',quote,re.I)
+                if adjacent and evidence_ok(f.raw_value,quote,f.source_page,pages) and evidence_ok(f.unit,quote,f.source_page,pages):
+                    f.unit_evidence=quote;f.unit_line=None
+                elif grounded.document_type=='Warehouse Receipt' and f.field_id in ['cargo_weight','volume'] and evidence_ok(f.raw_value,quote,f.source_page,pages):
+                    source=next((p['text'] for p in pages if p['number']==f.source_page),'')
+                    if not re.search(r'(?i)\b(?:KG|KGS|KGM|MT|LB|LBS|CBM|M3|CUM)\b|m³',source):
+                        # Retain the readable number, discard the invented unit.
+                        # Normalization keeps the missing-unit/separator warning.
+                        f.unit=None;f.unit_evidence=None;f.unit_line=None
     for item in grounded.items:
         # Recover a bad model line pointer from a uniquely identified table row.
         # The layout binds columns; every cell quote must still exist literally
