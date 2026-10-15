@@ -279,7 +279,7 @@ def safe_error(exc):
 def evidence_ok(value, evidence, page, pages):
     source = next((p['text'] for p in pages if p['number'] == page), '')
     norm = lambda s: re.sub(r'\s+', ' ', str(s)).casefold().strip()
-    if not evidence.strip() or norm(evidence) not in norm(source): return False
+    if not norm(value) or not evidence.strip() or norm(evidence) not in norm(source): return False
     literal=norm(value); quote=norm(evidence)
     if re.fullmatch(r'[+-]?\d[\d., ]*',literal):
         return bool(re.search(r'(?<![\d.,+-])'+re.escape(literal)+r'(?![\d.,])',quote))
@@ -373,7 +373,7 @@ def validate_result(result, pages):
         if f.field_id=='gross_weight' and result.document_type=='Booking' and not re.search(r'(?i)gross\s*(?:weight|wt)|g\.?w\.?',source_page.get('text','')):
             raise ValueError('Cargo Weight trên Booking chưa chứng minh Gross Weight; không tự đổi vai trò trọng lượng')
         if result.document_type=='C/O':
-            if f.field_id=='co_number' and not any(evidence_ok(f.raw_value,source_page.get('text','')[m.end():m.end()+80],f.source_page,pages) for m in re.finditer(r'(?i)(?:reference|certificate|c/o)\s*(?:no\.?|number)\s*[:：]?',source_page.get('text',''))):
+            if f.field_id=='co_number' and not any(f.raw_value == m.group(1).rstrip('.') for m in re.finditer(r'(?i)(?:reference|certificate|c/o)\s*(?:no\.?|number)\s*[:：]?\s*([^\s,;]+)',source_page.get('text',''))):
                 raise ValueError('Số C/O cần nhãn Reference/Certificate No; không lấy số serial/barcode cuối trang')
             if f.field_id=='co_date':
                 sections=re.findall(r'(?is)(?:12\s*[.]?\s*Certification|(?:certificate\s+)?issue\s*date\s*[:：])(.*?)(?:13\s*[.,]|\[OCR|$)',source_page.get('text',''))
@@ -381,7 +381,7 @@ def validate_result(result, pages):
                     raise ValueError('Ngày C/O thiếu căn cứ trong phần chứng nhận/ngày phát hành; không lấy ngày Invoice/ngày khởi hành')
             if f.field_id=='origin_criteria' and re.search(r'(?i)criterion|criteria|notes|applied|weight|value',f.raw_value):
                 raise ValueError('Tiêu chí xuất xứ phải là giá trị của dòng hàng; không lấy hướng dẫn mẫu RVC criterion')
-            if f.field_id=='co_issuer' and not re.search(r'(?i)customs|chamber|council|ministry|authority|department|bureau|committee|agency|phòng\s*thương\s*mại|hải\s*quan',f.raw_value):
+            if f.field_id=='co_issuer' and (re.search(r'(?i)verification|https?://|www\.|\.gov\.|\.com\b',f.raw_value) or not re.search(r'(?i)customs|chamber|council|ministry|authority|department|bureau|committee|agency|phòng\s*thương\s*mại|hải\s*quan',f.raw_value)):
                 raise ValueError('Cơ quan cấp C/O cần tên tổ chức; Issued in Country không phải cơ quan cấp')
         if f.field_id == 'arrival_date':
             source = next((p['text'] for p in pages if p['number']==f.source_page),'')
@@ -454,6 +454,56 @@ def ground_source_format(result, pages):
     """Ground formatting and explicit price-header terms in literal source evidence."""
     from .normalize import decimal_text
     grounded = DocumentResult.model_validate(result.model_dump())
+    # Recover only explicitly labelled, unique TOTAL cells. The printed raw value
+    # and header unit must also exist literally in this page's text. This does not
+    # reconstruct rows, guess separators, or mark any value verified.
+    if grounded.document_type in ['Packing List','Invoice & Packing List']:
+        recovered={}
+        for page in pages:
+            for table in page.get('tables',[]):
+                if not table: continue
+                columns={}
+                for i,header in enumerate(table[0]):
+                    header=header or '';label=re.sub(r'\s+',' ',header).casefold()
+                    key=('net_weight' if re.search(r'net\s*(?:weight|wt)',label) else
+                         'gross_weight' if re.search(r'gross\s*(?:weight|wt)',label) else
+                         'packages' if re.search(r'number of (?:cartons|packages)|total packages',label) else None)
+                    if key: columns[i]=(key,header)
+                for row in table[1:]:
+                    if not row or not any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*',cell or '') for cell in row): continue
+                    for i,(key,header) in columns.items():
+                        raw=row[i] if i<len(row) else None
+                        if not isinstance(raw,str) or not re.fullmatch(r'\s*\d[\d., ]*\s*',raw): continue
+                        unit_match=re.search(r'(?i)\b(KGS?|KGM|MT|LBS?|CTNS?|CARTONS?|PACKAGES?|PKGS?)\b',header)
+                        if not unit_match: continue
+                        unit=unit_match.group(0)
+                        if not evidence_ok(raw,raw,page['number'],pages) or not evidence_ok(unit,unit,page['number'],pages): continue
+                        recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw.strip(),unit=unit,unit_evidence=unit,source_page=page['number'],evidence_text=raw))
+        base={**grounded.model_dump(),'fields':[],'items':[],'containers':[]}
+        for key,candidates in recovered.items():
+            if len({(f.raw_value,f.unit) for f in candidates})!=1: continue
+            existing=[f for f in grounded.fields if f.field_id==key]
+            def accepted(f):
+                try:
+                    validate_result(DocumentResult.model_validate({**base,'fields':[f.model_dump()]}),pages)
+                    return True
+                except ValueError: return False
+            if any(accepted(f) for f in existing): continue
+            candidate=candidates[0]
+            if accepted(candidate):
+                grounded.fields=[f for f in grounded.fields if f.field_id!=key]+[candidate]
+    # A C/O declaration can bind an already-read country to its actual role;
+    # an address/issuer country never supplies that evidence.
+    if grounded.document_type=='C/O':
+        for f in grounded.fields:
+            if f.field_id!='origin': continue
+            for page in pages:
+                if page['number']!=f.source_page: continue
+                for label in re.finditer(ORIGIN_LABEL,page['text']):
+                    quote=page['text'][label.start():label.end()+160]
+                    if origin_supported(f.raw_value,quote) and evidence_ok(f.raw_value,quote,f.source_page,pages):
+                        f.evidence_text=quote;f.evidence_start_line=None;f.evidence_end_line=None
+                        break
     currencies = {'USD','EUR','GBP','CNY','RMB','JPY','VND','AUD','CAD','SGD','HKD','CHF','THB','KRW','INR','MYR','IDR','TWD','PHP'}
     def explicit_currency(page, value):
         text=next((p['text'] for p in pages if p['number']==page),'')
@@ -689,7 +739,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v22-role-bound-references|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v23-explicit-total-cells|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])

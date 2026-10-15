@@ -69,6 +69,30 @@ def test_standalone_number_under_packing_title_is_optional_own_reference():
     assert {'packages','net_weight'} <= set(ai.repair_targets(result,[],[],pages)['fields'])
 
 
+def test_empty_field_and_partial_ocr_reference_never_persist():
+    assert not ai.evidence_ok('', 'PACKING LIST', 1, [{'number':1,'text':'PACKING LIST'}])
+    text='CERTIFICATE OF ORIGIN\nReference No. £256997368890021\nVerification: origin.customs.gov.cn'
+    result=document('C/O','CERTIFICATE OF ORIGIN')
+    for key,value in [('co_number','256997368890021'),('co_issuer','Verification: origin.customs.gov.cn')]:
+        result.fields=[ai.FieldResult(field_id=key,raw_value=value,source_page=1,evidence_text=text)]
+        with pytest.raises(ValueError):ai.validate_result(result,[{'number':1,'text':text}])
+
+
+def test_only_unique_literal_labelled_total_cells_recover_packing_fields():
+    text='PACKING LIST\nNUMBER OF CARTONS (CTNS)\nNET WEIGHT (KGS)\nGROSS WEIGHT (KGS)\nTOTAL 1,134 13,608.0 17,350.2'
+    table=[['DESCRIPTION','NUMBER OF CARTONS (CTNS)','NET WEIGHT (KGS)','GROSS WEIGHT (KGS)'],['TOTAL','1,134','13,608.0','17,350.2']]
+    pages=[{'number':1,'text':text,'tables':[table]}]
+    result=document('Packing List','PACKING LIST')
+    grounded=ai.ground_source_format(result,pages)
+    records=ai.validate_result(grounded,pages)
+    assert {r['key']:r['raw'] for r in records}=={'packages':'1,134','net_weight':'13,608.0','gross_weight':'17,350.2'}
+    assert next(r for r in records if r['key']=='packages')['value']['warning']
+    assert next(r for r in records if r['key']=='gross_weight')['value']['number']=='17350.2'
+    pages[0]['tables'].append([table[0],['TOTAL','1,135','13,609.0','17,351.2']])
+    pages[0]['text']+='\nTOTAL 1,135 13,609.0 17,351.2'
+    assert not ai.ground_source_format(result,pages).fields
+
+
 def test_titles_outweigh_references_and_misleading_filename():
     assert extraction.classify([{'text':'SALES CONTRACT\nARTICLE 4: DOCUMENTS REQUIRED\n1. CLEAN SHIPPED ON BOARD OCEAN BILL OF LADING\n2. ORIGINAL SIGNED COMMERCIAL INVOICE'}])[0]=='Contract'
     assert extraction.classify([{'text':'ACME DELIVERY ORDER\nArrival Date: MAR 05 2025\nB/L No: X-01'}])[0]=='Delivery Order'
