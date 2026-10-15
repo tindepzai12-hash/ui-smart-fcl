@@ -111,3 +111,37 @@ def test_ai_cannot_invent_sources_mix_weight_roles_or_merge_different_item_codes
     assert len(saved)==1
     assert [s['id'] for s in saved[0]['detail']['sources']]==['a','b']
     assert saved[0]['detail']['sources'][0]['value']==rows[0]['value']
+
+def test_declaration_line_quantities_not_allowed_as_shipment_total():
+    from backend.dictionary import FIELDS
+    assert 'Customs Declaration' not in FIELDS['goods_quantity']['documents']
+    assert normalize('515.08 Kilogam','weight')['unit']=='KG'
+    assert normalize('515.08 unknown','weight')['warning']
+
+def test_combined_packing_rows_do_not_enter_invoice_arithmetic():
+    docs=[document('combined','Invoice & Packing List')]
+    rows=[record('pl','combined','goods_item',{'description':'CARRIER','quantity':'600','unit':'PCS','scope':'packing'},'item'),
+          record('inv','combined','goods_item',{'description':'CARRIER','quantity':'600','unit':'PCS','unit_price':'6.53','line_amount':'3918.00'},'item'),
+          record('total','combined','invoice_total',normalize('3918.00 USD','number'))]
+    cs=checks(docs,rows)
+    assert not any(c['key']=='arithmetic:pl' for c in cs)
+    assert next(c for c in cs if c['key']=='total:combined')['result']=='Matched'
+
+def test_different_item_readings_on_two_pages_of_one_pdf_are_compared():
+    docs=[document('two-pl')]
+    a=record('a','two-pl','goods_item',{'product_code':'A1','quantity':'600','unit':'PCS','scope':'packing'},'item')
+    b=record('b','two-pl','goods_item',{'product_code':'A1','quantity':'601','unit':'PCS','scope':'packing'},'item');b['page']=2
+    assert consistency.additional_checks(docs,[a,b])[0]['result']=='Mismatch'
+
+def test_printed_packing_footer_recovers_aligned_net_and_package_totals():
+    from backend import ai
+    text='PACKING LIST\nCTN\nDescription\nNet Wt. (kgs)\nGross Wt. (kgs)\nCARRIER 360.00 450.00\n56 391.20 489.00\nTare Weight (kgs):\nTotal (kgs): 489.00'
+    pages=[{'number':1,'text':text,'tables':[[['CTN','Description','Net Wt. (kgs)','Gross Wt. (kgs)'],
+            ['50','CARRIER','360.00','450.00'],['56','','391.20','489.00'],['Tare Weight (kgs):','','',''],['Total (kgs):','','','489.00']]]}]
+    result=ai.DocumentResult.model_validate({'document_type':'Packing List','classification_evidence':'PACKING LIST','fields':[],'items':[],'containers':[]})
+    grounded=ai.ground_source_format(result,pages)
+    fields={f.field_id:f for f in grounded.fields}
+    assert fields['net_weight'].raw_value=='391.20' and fields['gross_weight'].raw_value=='489.00'
+    assert fields['packages'].raw_value=='56' and fields['packages'].unit=='CTN'
+    pages[0]['tables'][0][2][1]='Another product'
+    assert not ai.ground_source_format(result,pages).fields

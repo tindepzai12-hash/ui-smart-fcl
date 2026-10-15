@@ -191,13 +191,16 @@ def build_checks(case, documents, records):
                       'Các nguồn cùng trường/role khớp sau chuẩn hóa dấu câu/khoảng trắng; giữ nguyên bản gốc.'
                       if any(key==x or key==x+'_address' for x in ['seller','buyer','shipper','consignee','notify_party','exporter','importer']) else
                       'Các nguồn cùng trường/role khớp sau chuẩn hóa.')
+        if result=='Mismatch' and key in ['gross_weight','net_weight'] and all(isinstance(v,tuple) and v[1]=='KG' for v in values):
+            delta=max(v[0] for v in values)-min(v[0] for v in values)
+            reason+=f" Chênh lệch lớn nhất giữa các nguồn: {format(delta,'f')} KG."
         add('field:' + key, result, reason, sources)
 
     # Invoice arithmetic is per document, never across all invoices.
     for d in documents:
         if not supports(d['type'],'Invoice'):
             continue
-        items = [r for r in active if r['kind'] == 'item' and r['document_id'] == d['id']]
+        items = [r for r in active if r['kind'] == 'item' and r['document_id'] == d['id'] and r['value'].get('scope','invoice')=='invoice']
         totals = [r for r in fields.get('invoice_total', []) if r['document_id'] == d['id']]
         for r in items:
             v = r['value']

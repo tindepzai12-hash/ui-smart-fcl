@@ -334,6 +334,7 @@ function App() {
       const blockedByCheck = current?.checks.some((c: Any) => ['Missing', 'Mismatch', 'Needs Verification'].includes(c.result) && !c.resolution && c.detail.sources?.some((s: Any) => s.id === r.id));
       if (recordFilter === 'blocked') return r.status !== 'rejected' && (r.status !== 'verified' || !!r.value?.warning || blockedByCheck);
       if (recordFilter === 'pending') return r.status === 'pending';
+      if (recordFilter === 'edited') return r.method?.startsWith('Manual');
       if (recordFilter === 'warning') return r.status !== 'rejected' && (!!r.value?.warning || blockedByCheck);
       if (recordFilter === 'verified') return r.status === 'verified';
       return true;
@@ -959,7 +960,7 @@ function App() {
                       ['Tổng hồ sơ', cases.length, FolderOpen],
                       ['Đã đọc · xem kết quả', cases.filter((c) => c.status === 'Needs verification').length, AlertTriangle],
                       ['Đã có báo cáo', cases.filter((c) => c.export_count > 0).length, ShieldCheck],
-                      ['Đã xuất Reviewed', cases.filter((c) => c.status === 'Exported').length, FileSpreadsheet],
+                      ['Đang đọc / đối chiếu', cases.filter((c) => c.status === 'Reading').length, FileSpreadsheet],
                     ].map(([title, n, Icon]: Any) => (
                       <div className="metric" key={title}>
                         <div className="metric-icon">
@@ -1266,7 +1267,7 @@ function App() {
                             <div>
                               <strong>{d.name}</strong>
                               <small>
-                                {d.type} · {Math.ceil(d.size / 1024)} KB
+                                {dict.document_labels?.[d.type] || d.type} · {Math.ceil(d.size / 1024)} KB
                               </small>
                               <small>{d.reading_method || 'Chưa đọc'}{d.pages?.some((p: Any) => p.quality) ? ' · Có ghi chú chất lượng đọc' : ''}</small>
                               {d.source && <small>Gốc: {d.source.name} · trang {d.source.start_page}–{d.source.end_page}</small>}
@@ -1274,11 +1275,11 @@ function App() {
                                 <Badge status={d.status} />
                                 {d.status === 'read' && (
                                   <span className={'badge ' + (d.type_verified ? 'good' : 'warn')}>
-                                    {d.type_verified ? 'Đã xác nhận loại' : 'Chờ xác nhận loại'}
+                                    {d.type_verified ? 'Loại do nhân viên chọn' : 'Máy nhận diện'}
                                   </span>
                                 )}
                                 {docPending > 0 && (
-                                  <span className="badge neutral">{docPending} chờ duyệt</span>
+                                  <span className="badge neutral">{docPending} giá trị đã đọc</span>
                                 )}
                               </div>
                             </div>
@@ -1524,9 +1525,8 @@ function App() {
                       <div className="filter-pills">
                         {[
                           ['all', 'Tất cả'],
-                          ['blocked', 'Chặn xuất'],
-                          ['warning', 'Cần kiểm'],
-                          ['verified', 'Đã duyệt'],
+                          ['warning', 'Cần làm rõ'],
+                          ['edited', 'Đã hiệu chỉnh'],
                         ].map(([fid, flabel]) => (
                           <button
                             key={fid}
@@ -1597,105 +1597,6 @@ function App() {
                       </div>
                     </aside>
                   </div>
-                </>
-              )}
-
-              {tab === 'review' && (
-                <>
-                  <div className="review-banner">
-                    <ShieldCheck size={24} />
-                    <div>
-                      <h2>{pending} bản ghi cần xác minh</h2>
-                      <p>
-                        Không xác nhận hàng loạt. Kiểm tra giá trị và bằng chứng gốc của từng bản ghi trước khi duyệt hồ sơ.
-                      </p>
-                    </div>
-                    <div className="row">
-                      {false && (
-                        <button className="btn" onClick={() => jumpToNextPending()}>
-                          Đi tới mục chờ tiếp theo
-                        </button>
-                      )}
-                      <button
-                        className="btn primary"
-                        disabled={loading || current.blockers.length > 0}
-                        onClick={() =>
-                          update(() => post('/cases/' + current.case.id + '/review'), 'Đã hoàn thành kiểm tra hồ sơ')
-                        }
-                      >
-                        Hoàn thành kiểm tra
-                      </button>
-                    </div>
-                  </div>
-
-                  {current.blockers.length > 0 && (
-                    <section className="surface padded blockers-panel">
-                      <div className="section-title">
-                        <div>
-                          <h2>Điều kiện cần xử lý trước khi duyệt Reviewed ({current.blockers.length})</h2>
-                          <p className="muted">
-                            Bấm vào từng mục bên dưới để đi thẳng tới nơi cần xác nhận hoặc đối chiếu.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="blocker-list">
-                        {current.blockers.map((s: string) => (
-                          <div className="blocker-item" key={s}>
-                            <span>{s}</span>
-                            <button className="btn small" onClick={() => handleBlockerAction(s)}>
-                              Đi tới xử lý <ArrowRight size={13} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-
-                  <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-                    <div className="segments standalone" style={{ margin: 0 }}>
-                      {[
-                        ['field', `Trường dữ liệu (${current.records.filter((r: Any) => r.kind === 'field').length})`],
-                        ['item', `Dòng hàng (${current.records.filter((r: Any) => r.kind === 'item').length})`],
-                      ].map(([id, t]) => (
-                        <button
-                          key={id}
-                          className={recordGroup === id ? 'active' : ''}
-                          onClick={() => setRecordGroup(id)}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="filter-pills">
-                      {[
-                        ['all', 'Tất cả'],
-                        ['pending', 'Chờ xác minh'],
-                        ['warning', 'Cảnh báo'],
-                        ['verified', 'Đã xác minh'],
-                      ].map(([fid, flabel]) => (
-                        <button
-                          key={fid}
-                          className={'pill-btn ' + (recordFilter === fid ? 'active' : '')}
-                          onClick={() => setRecordFilter(fid)}
-                        >
-                          {flabel}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {recordGroup === 'field' ? (
-                    <div className="review-grid">
-                      {reviewRecords.map(recordCard)}
-                      {!reviewRecords.length && (
-                        <div className="empty">
-                          Không có bản ghi trường dữ liệu nào khớp bộ lọc hiện tại.
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    recordTable(recordGroup)
-                  )}
                 </>
               )}
 

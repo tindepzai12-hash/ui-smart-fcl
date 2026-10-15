@@ -98,7 +98,8 @@ def extract(pages,doc_type):
         if not tables:
             lines=[re.split(r'\s*\|\s*',l) for l in text.splitlines() if '|' in l]
             if lines:tables=[lines]
-        for table in tables:out.extend(extract_tables(table,doc_type,number))
+        page_type=classify([p])[0] if doc_type=='Invoice & Packing List' else doc_type
+        for table in tables:out.extend(extract_tables(table,page_type,number))
         if not any(o['kind']=='container' and o['page']==number for o in out):
             for m in re.finditer(r'(?im)^.*(?:container(?: no\.?| number)?\s*[:：]\s*)([A-Z]{4}\s*\d{7})[^\n]*',text):
                 line=m.group(0);seal=re.search(r'seal(?: no\.?| number)?\s*[:：]\s*([A-Z0-9/-]+)',line,re.I)

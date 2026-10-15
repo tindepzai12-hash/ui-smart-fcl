@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 UNITS = {
-    'KGS': 'KG', 'KGM': 'KG', 'KILOGRAMS': 'KG', 'KILOGRAM': 'KG', 'KG': 'KG',
+    'KGS': 'KG', 'KGM': 'KG', 'KILOGRAMS': 'KG', 'KILOGRAM': 'KG', 'KILOGAM':'KG', 'KG': 'KG',
     'MT': 'MT', 'TONNES': 'MT', 'TONNE': 'MT',
     'LBS': 'LB', 'LB': 'LB',
     'PCS': 'PCS', 'PIECES': 'PCS', 'PIECE': 'PCS',
@@ -67,6 +67,8 @@ def normalize(raw, kind='text'):
             result['warning'] = 'Dấu phân cách số chưa rõ. Nhập số không có dấu nhóm nghìn để xác minh.'
         elif kind in ['weight', 'quantity'] and unit is None:
             result['warning'] = 'Thiếu đơn vị; chưa thể so sánh chắc chắn.'
+        elif kind=='weight' and unit!='KG':
+            result['warning']='Đơn vị khối lượng chưa hỗ trợ; giữ nguyên, chưa thể đối chiếu chắc chắn.'
     elif kind == 'currency':
         result['text'] = raw.upper()
     elif kind == 'date':

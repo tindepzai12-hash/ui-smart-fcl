@@ -33,10 +33,10 @@ def additional_checks(documents,records):
             items.setdefault(re.sub(r'\s+','',r['value']['product_code']).upper(),[]).append(r)
     from .normalize import normalize,comparable
     for code,group in items.items():
-        if len({r['document_id'] for r in group})<2:continue
+        if len({(r['document_id'],r['page']) for r in group})<2:continue
         for key in ['quantity','unit_price','line_amount','currency']:
             present=[r for r in group if r['value'].get(key)]
-            if len({r['document_id'] for r in present})<2:continue
+            if len({(r['document_id'],r['page']) for r in present})<2:continue
             if len({r['value'].get('scope','invoice') for r in present})>1 and key in ['unit_price','line_amount']:continue
             if key in ['unit_price','line_amount'] and (any(not r['value'].get('currency') for r in present) or len({r['value']['currency'] for r in present})>1):continue
             values=[comparable(normalize(str(r['value'][key])+(' '+r['value'].get('unit','') if key=='quantity' else ''),'quantity' if key=='quantity' else 'number' if key in ['unit_price','line_amount'] else 'currency')) for r in present]
@@ -44,8 +44,9 @@ def additional_checks(documents,records):
             if key=='quantity' and len({v[1] for v in values})>1:continue
             if len(set(values))>1:
                 contract=any(r['value'].get('scope')=='contract' for r in present)
-                add('item:'+code+':'+key,'Needs Verification' if contract else 'Mismatch',
-                    f'Mã hàng {code}: {key} khác nhau giữa các nguồn. '+('Hợp đồng có thể giao nhiều đợt; kiểm điều khoản và phạm vi trước khi kết luận.' if contract else 'Các dòng được ghép bằng mã hàng in trên nguồn, không ghép theo thứ tự.'),present)
+                ambiguous=len({(r['document_id'],r['page'],r['value'].get('scope','invoice')) for r in present})<len(present)
+                add('item:'+code+':'+key,'Needs Verification' if contract or ambiguous else 'Mismatch',
+                    f'Mã hàng {code}: {key} khác nhau giữa các nguồn. '+('Hợp đồng có thể giao nhiều đợt; kiểm điều khoản và phạm vi trước khi kết luận.' if contract else 'Mã hàng lặp trên cùng trang; cần xác định quan hệ các dòng trước khi kết luận.' if ambiguous else 'Các dòng được ghép bằng mã hàng in trên nguồn, không ghép theo thứ tự.'),present)
     return out
 
 def ai_checks(case_id,documents,records):
