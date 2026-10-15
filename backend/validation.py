@@ -2,7 +2,7 @@
 import json
 import re
 from decimal import Decimal
-from .dictionary import FIELDS, supports
+from .dictionary import FIELDS, supports, commercial_profile, REVIEW_GROUPS, REVIEW_FIELDS, DOCUMENT_LABELS
 from .normalize import comparable, decimal_text, normalize
 from .db import uid, encode
 
@@ -33,6 +33,9 @@ def build_checks(case, documents, records):
         })
 
     requirements = json.loads(case['requirements']) if isinstance(case['requirements'], str) else case['requirements']
+    commercial = commercial_profile(requirements, case['mode'])
+    if commercial:
+        active = [r for r in active if r['kind'] != 'container' and (r['kind'] != 'field' or r['key'] in REVIEW_FIELDS)]
     for kind, rule in requirements.items():
         matching_docs = [d for d in documents if supports(d['type'],kind) or (kind == 'B/L' and d['type'] == 'Sea Waybill')]
         found = len(matching_docs) > 0
@@ -70,13 +73,29 @@ def build_checks(case, documents, records):
     transport_rule = requirements.get(transport_kind, {'required': True, 'note': ''})
 
     # Core working data: distinguish document checklist exemption from working field requirement.
-    core_specs = [
+    core_specs = [] if commercial else [
         ('invoice_number', 'Invoice', inv_rule),
         ('invoice_date', 'Invoice', inv_rule),
         ('currency', 'Invoice', inv_rule),
         ('invoice_total', 'Invoice', inv_rule),
         ('awb_number' if case['mode'] == 'AIR' else 'bl_number', transport_kind, transport_rule),
     ]
+    if commercial:
+        for group in REVIEW_GROUPS:
+            kind = group['type']
+            matching = [d for d in documents if supports(d['type'], kind)]
+            rule = requirements.get(kind, {'required': False, 'note': 'Ngoài phạm vi'})
+            if kind == 'C/O' and not matching:
+                continue
+            keys = list(group['required_fields'])
+            if kind == 'Contract':
+                keys = (['contract_number'] if not matching or any(d['type']=='Contract' for d in matching) else []) + (['po_number'] if any(d['type']=='Purchase Order' for d in matching) else [])
+            for key in keys:
+                field_docs = [d for d in matching if kind != 'Contract' or d['type'] == ('Purchase Order' if key == 'po_number' else 'Contract')]
+                missing_docs=[d for d in field_docs if not any(r['document_id']==d['id'] for r in fields.get(key,[]))]
+                if not field_docs or missing_docs:
+                    add('missing:' + key, 'Missing' if required(rule) or matching else 'Needs Verification',
+                        f"Chưa có {FIELDS[key]['label']} có nguồn từ {group['label']}" + (': '+', '.join(d['name'] for d in missing_docs) if missing_docs else '') + '. Kiểm bản gốc và bổ sung; không tự đoán.', severity='error')
     for key, doc_kind, rule in core_specs:
         if not fields.get(key):
             if required(rule):
@@ -100,7 +119,7 @@ def build_checks(case, documents, records):
         else:
             add('missing:items', 'Needs Verification', 'Chưa có dòng hàng độc lập (Invoice & Packing List đều đang đặt Không bắt buộc). Thêm dòng hàng hoặc ghi nhận lý do.', severity='warning')
 
-    if case['mode'] == 'FCL' and not any(r['kind'] == 'container' for r in active):
+    if case['mode'] == 'FCL' and not commercial and not any(r['kind'] == 'container' for r in active):
         if required(transport_rule) or required(pl_rule):
             add('missing:containers', 'Missing', 'Chưa có container. Bổ sung theo chứng từ vận tải.', severity='error')
         else:
@@ -124,7 +143,13 @@ def build_checks(case, documents, records):
         elif len(set(values)) > 1:
             # Same field across multiple independent invoices cannot automatically be a conflict.
             doc_types = [s['type'] for s in sources]
-            if key.startswith('invoice_') and doc_types.count('Invoice') > 1:
+            if commercial and 'Booking' in doc_types:
+                result = 'Needs Verification'
+                reason = 'Booking là kế hoạch đặt chỗ. Giá trị khác nguồn thương mại/đóng gói cần kiểm phạm vi và phiên bản; chưa kết luận chứng từ sai.'
+            elif commercial and any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight']:
+                result = 'Needs Verification'
+                reason = 'Hợp đồng/PO có thể bao gồm nhiều đợt giao. Kiểm phạm vi lô trước khi so với Invoice/Packing List.'
+            elif key.startswith('invoice_') and doc_types.count('Invoice') > 1:
                 result = 'Needs Verification'
                 reason = 'Nhiều hóa đơn; xác minh quan hệ chứng từ trước khi đối chiếu.'
             elif key in ['gross_weight', 'packages'] and (doc_types.count('Packing List') > 1 or doc_types.count('B/L') > 1):
@@ -220,7 +245,8 @@ def persist_checks(c, case, docs, records):
 def human_check_label(key, docs_map=None):
     docs_map = docs_map or {}
     if key.startswith('document:'):
-        return 'Checklist chứng từ · ' + key.split(':', 1)[1]
+        sub=key.split(':',1)[1]
+        return 'Checklist chứng từ · ' + ('Hợp đồng / Đơn đặt hàng' if sub=='Contract' else DOCUMENT_LABELS.get(sub,sub))
     if key.startswith('reading:'):
         doc_id = key.split(':', 1)[1]
         return 'Đọc tài liệu · ' + docs_map.get(doc_id, {}).get('name', doc_id)

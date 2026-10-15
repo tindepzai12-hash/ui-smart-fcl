@@ -1,0 +1,11 @@
+SYNTHETIC TEST DOCUMENT — NOT FOR COMMERCIAL USE
+SALES CONTRACT
+Contract No: SC-001
+Contract Date: 2026-09-20
+Seller: Demo Seller Ltd
+Buyer: Công ty Mẫu Việt Nam
+Currency: USD
+Incoterms: CIF Cat Lai Incoterms 2020
+Payment Terms: T/T
+Total Quantity: 15 PCS
+Contract Total: 1750.25

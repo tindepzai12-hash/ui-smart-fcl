@@ -54,7 +54,7 @@ export function HighlightedText({ text, query }: Any) {
 export function StepTracker({ current, onSelectTab }: Any) {
   const steps = computeStepStates(current);
   return (
-    <div className="steps" aria-label="Quy trình tám bước">
+    <div className="steps" aria-label="Quy trình kiểm tra chứng từ">
       {steps.map((s: Any) => (
         <button
           type="button"
@@ -371,7 +371,7 @@ function App() {
       return;
     }
     const files = await run(async () => {
-      const names = ['invoice.txt', 'packing.txt', conflict ? 'bl-conflict.txt' : 'bl.txt'];
+      const names = ['invoice.txt', conflict ? 'packing-conflict.txt' : 'packing.txt', 'booking.txt', 'contract.txt', 'co.txt'];
       return Promise.all(names.map(async (name) => {
         const response = await fetch('/api/samples/' + name);
         if (!response.ok) throw new Error('Không tải được bộ mẫu local.');
@@ -515,8 +515,8 @@ function App() {
       return (
         <div className="next-action-bar">
           <div>
-            <span className="badge info">Việc cần làm tiếp theo · Bước 2</span>
-            <strong>Tải bộ chứng từ FCL (Invoice, Packing List, B/L) vào hồ sơ</strong>
+            <span className="badge info">Việc cần làm tiếp theo</span>
+            <strong>Tải Packing List, Booking, Invoice và Hợp đồng hoặc PO; thêm C/O nếu có</strong>
             <p>Kéo thả hoặc chọn tệp từ máy tính để bắt đầu đọc và trích xuất dữ liệu local.</p>
           </div>
           <label className="btn primary upload-btn">
@@ -539,13 +539,13 @@ function App() {
     if (unreadDocs.length > 0) {
       const mixed = docs.find((d: Any) => d.mixed_pdf);
       if (mixed) return <div className="next-action-bar">
-        <div><span className="badge warn">Bước 3 · PDF gồm nhiều chứng từ</span><strong>Tách {mixed.name} theo trang trước khi đối chiếu</strong><p>Đã đọc {mixed.pages.length} trang. Kiểm tra gợi ý phân nhóm, tách thành Invoice, Packing List, B/L và các chứng từ khác. File gốc được giữ lại.</p></div>
+        <div><span className="badge warn">PDF gồm nhiều chứng từ</span><strong>Tách {mixed.name} theo trang trước khi đối chiếu</strong><p>Đã đọc {mixed.pages.length} trang. Kiểm tra gợi ý phân nhóm, tách thành Packing List, Booking, Invoice, Hợp đồng/PO và C/O nếu có. File gốc được giữ lại.</p></div>
         <button className="btn primary" disabled={loading || job?.status === 'running'} onClick={() => { setError(''); setDialog({ kind: 'split-pdf', document: mixed }); }}>Tách bộ PDF</button>
       </div>;
       return (
         <div className="next-action-bar">
           <div>
-            <span className="badge warn">Việc cần làm tiếp theo · Bước 3</span>
+            <span className="badge warn">Việc cần làm tiếp theo</span>
             <strong>
               Còn {unreadDocs.length}/{docs.length} tệp chưa đọc hoặc đọc lỗi ({unreadDocs.map((d: Any) => d.name).join(', ')})
             </strong>
@@ -577,7 +577,7 @@ function App() {
       return (
         <div className="next-action-bar">
           <div>
-            <span className="badge warn">Việc cần làm tiếp theo · Bước 3</span>
+            <span className="badge warn">Việc cần làm tiếp theo</span>
             <strong>
               Xác nhận loại chứng từ cho {unverifiedDocs.length} tệp ({unverifiedDocs.map((d: Any) => `${d.name} → ${d.type}`).join(', ')})
             </strong>
@@ -616,7 +616,7 @@ function App() {
       return (
         <div className="next-action-bar">
           <div>
-            <span className="badge warn">Việc cần làm tiếp theo · Bước 4</span>
+            <span className="badge warn">Việc cần làm tiếp theo</span>
             <strong>Có {warningRecords.length} bản ghi có định dạng số / ngày / đơn vị mơ hồ cần chỉnh rõ</strong>
             <p>{firstWarn.value?.warning}</p>
           </div>
@@ -636,7 +636,7 @@ function App() {
       return (
         <div className="next-action-bar">
           <div>
-            <span className="badge bad">Việc cần làm tiếp theo · Bước 5</span>
+            <span className="badge bad">Việc cần làm tiếp theo</span>
             <strong>Còn {unresolved.length} mục đối chiếu / thiếu dữ liệu chưa xử lý</strong>
             <p>Kiểm tra các mục Sai lệch, Thiếu hoặc Cần kiểm tra trong bảng Đối chiếu trước khi duyệt hồ sơ.</p>
           </div>
@@ -656,7 +656,7 @@ function App() {
       return (
         <div className="next-action-bar">
           <div>
-            <span className="badge warn">Việc cần làm tiếp theo · Bước 4</span>
+            <span className="badge warn">Việc cần làm tiếp theo</span>
             <strong>Còn {pending} bản ghi ở trạng thái Chờ xác minh</strong>
             <p>Đối chiếu từng giá trị với bằng chứng gốc rồi bấm “Xác minh” (không duyệt tự động hàng loạt).</p>
           </div>
@@ -675,7 +675,7 @@ function App() {
       return (
         <div className="next-action-bar ready">
           <div>
-            <span className="badge good">Sẵn sàng duyệt · Bước 7</span>
+            <span className="badge good">Sẵn sàng duyệt</span>
             <strong>Tất cả chứng từ, bản ghi và đối chiếu đã được xác minh đầy đủ</strong>
             <p>Bạn có thể bấm “Hoàn thành kiểm tra” để chuyển hồ sơ sang trạng thái Đã kiểm tra (Reviewed).</p>
           </div>
@@ -692,14 +692,14 @@ function App() {
     }
     if (current.blockers.length) return (
       <div className="next-action-bar">
-        <div><span className="badge warn">Kiểm tra xuất file · Bước 7</span><strong>Còn {current.blockers.length} điều kiện cần xử lý</strong><p>Mở danh sách để kiểm tra dữ liệu và điều kiện duyệt hồ sơ.</p></div>
+        <div><span className="badge warn">Kiểm tra xuất file</span><strong>Còn {current.blockers.length} điều kiện cần xử lý</strong><p>Mở danh sách để kiểm tra dữ liệu và điều kiện duyệt hồ sơ.</p></div>
         <button className="btn primary" onClick={() => setTab('review')}>Mở kiểm tra hồ sơ</button>
       </div>
     );
     return (
       <div className="next-action-bar ready">
         <div>
-          <span className="badge good">Đã duyệt Reviewed · Bước 8</span>
+          <span className="badge good">Đã duyệt Reviewed</span>
           <strong>
             Hồ sơ đã hoàn thành kiểm tra lúc {current.case.reviewed_at ? date(current.case.reviewed_at) : 'hiện tại'}
           </strong>
@@ -1041,7 +1041,7 @@ function App() {
     ['documents', 'Chứng từ'],
     ['review', 'Xác minh'],
     ['comparison', 'Đối chiếu'],
-    ['customs', 'Chuẩn bị khai báo'],
+    ['customs', 'Checklist & trường kiểm tra'],
     ['export', 'Xuất Excel'],
     ['case-history', 'Lịch sử'],
   ];
@@ -1200,7 +1200,7 @@ function App() {
                     <div>
                       <h2>Bàn làm việc chứng từ nhập khẩu FCL · Nguồn dữ liệu minh bạch</h2>
                       <p>
-                        Tiếp nhận → Đọc file & OCR local → Phân loại (nhân viên xác nhận) → Trích xuất → Chuẩn hóa → Đối chiếu → Nhân viên xác minh → Xuất Excel 7 sheet.
+                        Tải & nhận diện → Kiểm trường → Đối chiếu → Checklist → Xuất Excel. OpenAI hỗ trợ đọc chứng từ; nhân viên kiểm bản gốc trước khi xác nhận.
                       </p>
                     </div>
                     <span className="badge neutral">Không cần API key cho Local</span>
@@ -1249,7 +1249,7 @@ function App() {
               <div className="help-inline">
                 <ShieldCheck size={16} />
                 <span>
-                  Excel xuất ra là hồ sơ làm việc nội bộ của bộ phận chứng từ. Mã HS, thuế suất, trị giá hải quan và tính hợp lệ C/O cần căn cứ xác minh riêng.
+                  Checklist gồm 5 nhóm chứng từ thương mại. PO và Sales Contract được nhận diện riêng; C/O có thì kiểm, thiếu thì không chặn. Excel phục vụ kiểm tra nội bộ.
                 </span>
               </div>
             </>
@@ -1286,9 +1286,8 @@ function App() {
               </div>
 
               <>
-                <details className="workflow-details"><summary>Quy trình & tổng hợp container · {current.documents.length} chứng từ · {pending} bản ghi chờ kiểm</summary>
+                <details className="workflow-details"><summary>Quy trình kiểm tra · {current.documents.length} chứng từ · {pending} bản ghi chờ kiểm</summary>
                   <StepTracker current={current} onSelectTab={(t: string) => setTab(t)} />
-                  <ContainerSummaryBanner records={current.records} documents={current.documents} checks={current.checks} />
                 </details>
                 {!(sourceRecord && tab === 'documents') && renderNextActionBanner()}
               </>
@@ -1465,8 +1464,6 @@ function App() {
                       <div className="sample-loader">
                         <details><summary>Chứng từ để kiểm thử</summary>
                         <small>Cùng một lô FCL giả lập · 6 chứng từ/PDF. Tải lên hai hồ sơ riêng, đọc rồi tách bộ PDF để so sánh.</small>
-                        <a className="btn small" href="/api/samples/fcl-text.pdf" download>Tải bộ PDF rõ nét</a>
-                        <a className="btn small" href="/api/samples/fcl-scan.pdf" download>Tải bộ PDF scan</a>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false)}>Bộ mẫu chuẩn</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(true)}>Bộ mẫu sai lệch</button>
                         </details>
@@ -1586,8 +1583,8 @@ function App() {
                               disabled={loading || job?.status==='running'}
                               onChange={(e) => setDocumentTypes(previous=>({...previous,[activeDoc.id]:e.target.value}))}
                             >
-                              {dict.document_types.map((t: string) => (
-                                <option key={t}>{t}</option>
+                              {Array.from(new Set([...dict.document_types, documentTypes[activeDoc.id] || activeDoc.type])).map((t: any) => (
+                                <option key={t} value={t}>{dict.document_labels?.[t] || t}</option>
                               ))}
                             </select>
                           </label>
@@ -1735,10 +1732,6 @@ function App() {
                         {[
                           ['field', `Trường (${current.records.filter((r: Any) => r.kind === 'field').length})`],
                           ['item', `Hàng (${current.records.filter((r: Any) => r.kind === 'item').length})`],
-                          [
-                            'container',
-                            `Cont (${containerStats.physicalCount} VL/${containerStats.sourceRecordCount} nguồn)`,
-                          ],
                         ].map(([id, t]) => (
                           <button
                             key={id}
@@ -1770,16 +1763,6 @@ function App() {
                         <input aria-label="Tìm trường hoặc giá trị" placeholder="Tìm tên trường, giá trị…" value={recordSearch} onChange={(e) => setRecordSearch(e.target.value)} />
                       </label>
                       <div className="fields-scroll">
-                        {recordGroup === 'container' && (
-                          <div className="pane-container-note">
-                            <strong>
-                              {containerStats.physicalCount} container vật lý · {containerStats.sourceRecordCount} bản ghi nguồn
-                            </strong>
-                            <small>
-                              Mỗi bản ghi ứng với 1 chứng từ nguồn (Packing List / B/L).
-                            </small>
-                          </div>
-                        )}
                         {job?.status !== 'running' && recordGroup === 'field' && recordFilter !== 'verified' && current.checks.filter((c: Any) => c.key.startsWith('missing:') && !['missing:items', 'missing:containers'].includes(c.key) && !c.resolution && (!recordSearch || (dict.fields[c.key.slice(8)]?.label || '').toLocaleLowerCase('vi').includes(recordSearch.toLocaleLowerCase('vi')))).map((c: Any) => (
                           <article className="field-card is-conflict" key={c.id}>
                             <strong>{dict.fields[c.key.slice(8)]?.label || 'Dữ liệu thiếu'}</strong>
@@ -1901,10 +1884,6 @@ function App() {
                       {[
                         ['field', `Trường dữ liệu (${current.records.filter((r: Any) => r.kind === 'field').length})`],
                         ['item', `Dòng hàng (${current.records.filter((r: Any) => r.kind === 'item').length})`],
-                        [
-                          'container',
-                          `Container (${containerStats.physicalCount} vật lý / ${containerStats.sourceRecordCount} nguồn)`,
-                        ],
                       ].map(([id, t]) => (
                         <button
                           key={id}
@@ -2145,116 +2124,23 @@ function App() {
               )}
 
               {tab === 'customs' && (
-                <>
-                  <div className="alert info">
-                    <ShieldCheck size={20} />
-                    <div>
-                      <strong>Chuẩn bị dữ liệu nghiệp vụ & phân biệt miễn chứng từ với dữ liệu cốt lõi</strong>
-                      <p>
-                        Checklist bên dưới quản lý yêu cầu có mặt <strong>tệp chứng từ</strong> trong bộ hồ sơ FCL. Nếu tắt một chứng từ sang “Không bắt buộc” kèm lý do, các chỉ tiêu cốt lõi thuộc chứng từ đó sẽ chuyển sang “Cần kiểm tra” để bạn nhập từ nguồn thay thế hoặc xác nhận miễn áp dụng. Mã HS, loại hình, mã địa điểm, thuế suất và trị giá hải quan cần nhân viên có nghiệp vụ tra cứu và ghi rõ căn cứ.
-                      </p>
-                    </div>
-                  </div>
-                  <section className="surface padded">
-                    <h2>Checklist theo điều kiện hồ sơ</h2>
-                    <div className="requirements">
-                      {Object.entries(current.case.requirements).map(([kind, rule]: Any) => (
-                        <div className="requirement" key={kind}>
-                          <div>
-                            <div className="row" style={{ gap: 8 }}>
-                              <strong>{kind}</strong>
-                              <span className={'badge ' + (rule.required ? 'info' : 'neutral')}>
-                                {rule.required ? 'Bắt buộc trong checklist' : 'Đã miễn có lý do'}
-                              </span>
-                            </div>
-                            <small>{rule.note}</small>
-                          </div>
-                          <button
-                            className="btn small"
-                            onClick={() =>
-                              setDialog({
-                                kind: 'requirement',
-                                documentType: kind,
-                                required: !rule.required,
-                                note: '',
-                              })
-                            }
-                          >
-                            {rule.required ? 'Đang yêu cầu' : 'Không bắt buộc'}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                  <section className="surface padded">
-                    <div className="section-title">
-                      <h2>Chỉ tiêu cần nhập / tra cứu</h2>
-                      <button
-                        className="btn"
-                        onClick={() => setDialog({ kind: 'record', recordKind: 'field', defaultKey: 'hs_code', value: '', note: '' })}
-                      >
-                        <Plus size={16} />
-                        Bổ sung chỉ tiêu
-                      </button>
-                    </div>
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Chỉ tiêu</th>
-                            <th>Nhóm</th>
-                            <th>Tình trạng</th>
-                            <th>Hướng xử lý</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.values(dict.fields)
-                            .filter((f: Any) => ['C', 'D'].includes(f.class))
-                            .map((f: Any) => (
-                              <tr key={f.id}>
-                                <td>
-                                  <strong>{f.label}</strong>
-                                  <small>{f.id}</small>
-                                </td>
-                                <td>{f.class === 'C' ? 'Nhóm C · Danh mục mã' : 'Nhóm D · Quyết định chuyên môn'}</td>
-                                <td>
-                                  {current.records
-                                    .filter((r: Any) => r.key === f.id)
-                                    .map((r: Any) => (
-                                      <div key={r.id}>
-                                        {textValue(r.value)} <Badge status={r.status} />
-                                      </div>
-                                    ))}
-                                  {!current.records.some((r: Any) => r.key === f.id) && (
-                                    <Badge status="Missing" />
-                                  )}
-                                </td>
-                                <td>
-                                  <div className="row" style={{ justifyContent: 'space-between' }}>
-                                    <span>Tra cứu nguồn chính thức và ghi căn cứ áp dụng.</span>
-                                    <button
-                                      className="btn small"
-                                      onClick={() =>
-                                        setDialog({
-                                          kind: 'record',
-                                          recordKind: 'field',
-                                          defaultKey: f.id,
-                                          value: '',
-                                          note: '',
-                                        })
-                                      }
-                                    >
-                                      Nhập {f.label}
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                </>
+                <section className="surface padded commercial-checklist">
+                  <div className="section-title"><div><h2>5 nhóm chứng từ cần kiểm</h2><p className="muted">Hợp đồng và PO được nhận diện riêng. Có một trong hai là đủ nhóm này. C/O không bắt buộc; có tải lên thì kiểm nội dung.</p></div></div>
+                  {(dict.review_groups || []).map((group: Any) => {
+                    const matches = current.documents.filter((d: Any) => d.type === group.type || (group.type === 'Contract' && d.type === 'Purchase Order') || (['Invoice','Packing List'].includes(group.type) && d.type === 'Invoice & Packing List'));
+                    const rule = current.case.requirements[group.type] || {required:false};
+                    return <details className="document-check-group" key={group.type}>
+                      <summary><span><strong>{group.type === 'Contract' ? 'Hợp đồng / Đơn đặt hàng' : group.label}</strong><small>{matches.length ? matches.map((d: Any) => d.type + ' · ' + d.name).join(' | ') : group.type === 'C/O' ? 'Chưa có C/O — không chặn hồ sơ' : 'Chưa có chứng từ trong nhóm này'}</small></span><span className={'badge '+(matches.length ? 'good' : rule.required ? 'bad' : 'neutral')}>{matches.length ? `${matches.length} tệp` : rule.required ? 'Cần bổ sung' : 'Nếu có'}</span></summary>
+                      <div className="document-check-body"><p className="muted">{group.type === 'Booking' ? 'Đây là dữ liệu kế hoạch. Khác số lượng/khối lượng thực tế cần kiểm lại phạm vi, không tự kết luận chứng từ sai.' : group.type === 'Contract' ? 'Giữ riêng số và ngày PO/Sales Contract. Số lượng có thể thuộc nhiều đợt giao; kiểm đúng lô trước khi đối chiếu.' : group.type === 'C/O' ? 'Đọc số C/O, xuất xứ và dữ liệu liên quan. Kết quả đọc không xác thực tính hợp lệ của giấy.' : 'Bấm Xem nguồn để kiểm trên chứng từ gốc. Các trường chỉ có trên một số mẫu không mặc nhiên là bắt buộc.'}</p>
+                      <div className="table-wrap"><table><thead><tr><th>Trường kiểm tra</th><th>Dữ liệu & nguồn</th><th>Thao tác</th></tr></thead><tbody>{group.fields.map((key: string) => {
+                        const rows = current.records.filter((r: Any) => r.kind === 'field' && r.key === key && matches.some((d: Any) => d.id === r.document_id) && r.status !== 'rejected');
+                        const needed = group.required_fields.includes(key) || (group.type === 'Contract' && ((key === 'po_number' && matches.some((d: Any)=>d.type==='Purchase Order')) || (key === 'contract_number' && matches.some((d: Any)=>d.type==='Contract'))));
+                        return <tr key={key}><td><strong>{dict.fields[key]?.label || key}</strong><small>{needed ? 'Cần kiểm khi có chứng từ' : 'Có ghi thì kiểm'}</small></td><td>{rows.length ? rows.map((r: Any) => <div className="check-source-value" key={r.id}>{textValue(r.value)} <Badge status={r.status}/><button className="btn small" onClick={()=>chooseSource(r)}>Xem nguồn</button></div>) : <span className="muted">{!matches.length ? 'Chưa tải chứng từ' : needed ? 'Chưa đọc được — kiểm bản gốc' : 'Chưa ghi nhận'}</span>}</td><td><button className="btn small" disabled={!matches.length} onClick={()=>setDialog({kind:'record',recordKind:'field',defaultKey:key,documentId:matches.length===1?matches[0].id:'',value:'',note:''})}>Bổ sung từ nguồn</button></td></tr>;
+                      })}</tbody></table></div>
+                      {group.type !== 'C/O' && <button className="btn small" onClick={()=>setDialog({kind:'requirement',documentType:group.type,required:!rule.required,note:''})}>{rule.required ? 'Ghi lý do không yêu cầu nhóm này' : 'Yêu cầu lại nhóm này'}</button>}
+                      </div></details>;
+                  })}
+                </section>
               )}
 
               {tab === 'export' && (
@@ -2266,7 +2152,7 @@ function App() {
                       </div>
                       <h2>Xuất hồ sơ làm việc</h2>
                       <p className="muted">
-                        7 sheet tiêu chuẩn, giữ nguyên mọi nguồn, số zero đầu và trạng thái xác minh. Không tự ghi đè nguồn đang xung đột.
+                        6 sheet tiêu chuẩn, giữ nguyên mọi nguồn, số zero đầu và trạng thái xác minh. Không tự ghi đè nguồn đang xung đột.
                       </p>
                       <label className="form-label">
                         Loại workbook
@@ -2276,7 +2162,7 @@ function App() {
                           onChange={(e) => setWorkbookType(e.target.value)}
                         >
                           <option value="A">A · Workbook kiểm tra nội bộ</option>
-                          <option value="B">B · Chuẩn bị dữ liệu khai báo</option>
+                          <option value="B">B · Workbook chọn trường chứng từ</option>
                         </select>
                       </label>
                       <label className="form-label">
@@ -2299,7 +2185,7 @@ function App() {
                           </strong>
                           <p>
                             {exportMode === 'Draft'
-                              ? 'Draft cho phép xuất ngay cả khi còn dữ liệu chờ xác minh hoặc cảnh báo sai lệch để nhân viên trao đổi nội bộ. Trạng thái từng nguồn được giữ rõ trong 7 sheet.'
+                              ? 'Draft cho phép xuất ngay cả khi còn dữ liệu chờ xác minh hoặc cảnh báo sai lệch để nhân viên trao đổi nội bộ. Trạng thái từng nguồn được giữ rõ trong 6 sheet.'
                               : 'Reviewed chỉ xuất được sau khi toàn bộ tài liệu đã xác nhận loại, mọi bản ghi đã xác minh, không còn cảnh báo chặn và hồ sơ đã bấm Hoàn thành kiểm tra.'}
                           </p>
                         </div>
@@ -2307,7 +2193,7 @@ function App() {
                       <details>
                         <summary>Chọn trường cấp hồ sơ (mặc định tất cả)</summary>
                         <div className="field-choices">
-                          {Object.values(dict.fields).map((f: Any) => (
+                          {Object.values(dict.fields).filter((f: Any) => !dict.review_fields || dict.review_fields.includes(f.id) || f.id === dialog?.record?.key).map((f: Any) => (
                             <label className="check-label" key={f.id}>
                               <input
                                 type="checkbox"
@@ -2365,19 +2251,13 @@ function App() {
                           </strong>
                           <span>Dòng hàng độc lập</span>
                         </div>
-                        <div>
-                          <strong>
-                            {containerStats.physicalCount} <small style={{ display: 'inline', fontSize: 14 }}>vật lý</small>
-                          </strong>
-                          <span>Container ({containerStats.sourceRecordCount} bản ghi nguồn)</span>
-                        </div>
+
                       </div>
                       <div className="workbook-sheets">
                         {[
                           'Tổng quan hồ sơ',
-                          'Thông tin khai báo',
+                          'Thông tin chứng từ',
                           'Chi tiết hàng hóa',
-                          'Container vận chuyển',
                           'Đối chiếu chứng từ',
                           'Thiếu và cần xác minh',
                           'Nguồn và lịch sử',
@@ -2701,12 +2581,12 @@ function DialogContent({ dialog, dict, current, loading, submit }: Any) {
     dialog.record?.kind === 'field' ? textValue(dialog.record.value) : dialog.value || {}
   );
   const [note, setNote] = useState(dialog.note || '');
-  const [source, setSource] = useState('');
+  const [source, setSource] = useState(dialog.documentId || '');
   const [page, setPage] = useState('1');
   const kind = dialog.kind;
   const item = dialog.recordKind === 'item';
   const properties = item
-    ? ['line_number', 'product_code', 'description', 'quantity', 'unit', 'unit_price', 'line_amount', 'currency', 'origin', 'hs_code']
+    ? ['line_number', 'product_code', 'description', 'quantity', 'unit', 'unit_price', 'line_amount', 'currency', 'origin']
     : ['container_number', 'seal_number', 'container_type', 'packages', 'gross_weight', 'cbm', 'bl_number'];
   const titles: Any = {
     line_number: 'STT',
@@ -2755,7 +2635,7 @@ function DialogContent({ dialog, dict, current, loading, submit }: Any) {
       </h2>
       {kind === 'case' ? (
         <>
-          <p className="muted">Một hồ sơ lưu nhiều tài liệu, dòng hàng và container.</p>
+          <p className="muted">Một hồ sơ gồm Packing List, Booking, Invoice, Hợp đồng/PO và C/O nếu có.</p>
           <label className="form-label">
             Tên hồ sơ
             <input
@@ -2787,7 +2667,7 @@ function DialogContent({ dialog, dict, current, loading, submit }: Any) {
                   value={dialog.record?.key || fieldKey}
                   onChange={(e) => setFieldKey(e.target.value)}
                 >
-                  {Object.values(dict.fields).map((f: Any) => (
+                  {Object.values(dict.fields).filter((f: Any) => !dict.review_fields || dict.review_fields.includes(f.id) || f.id === dialog?.record?.key).map((f: Any) => (
                     <option key={f.id} value={f.id}>
                       {f.label}
                     </option>
@@ -2821,8 +2701,8 @@ function DialogContent({ dialog, dict, current, loading, submit }: Any) {
             <div className="form-grid">
               <label className="form-label">
                 Chứng từ nguồn
-                <select value={source} onChange={(e) => setSource(e.target.value)}>
-                  <option value="">Nhập tay · ghi căn cứ</option>
+                <select required={!!current.case.requirements.Booking} value={source} onChange={(e) => setSource(e.target.value)}>
+                  <option value="">{current.case.requirements.Booking ? 'Chọn chứng từ chứa giá trị' : 'Nhập tay · ghi căn cứ'}</option>
                   {current.documents.map((d: Any) => (
                     <option key={d.id} value={d.id}>
                       {d.name}

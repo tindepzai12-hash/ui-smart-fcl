@@ -1,0 +1,15 @@
+SYNTHETIC TEST DOCUMENT — NOT FOR COMMERCIAL USE
+BOOKING CONFIRMATION
+Booking No: BK-001
+Booking Date: 2026-09-28
+Carrier: Demo Shipping Line
+Shipper: Demo Seller Ltd
+Consignee: Công ty Mẫu Việt Nam
+Port of Loading: LAEM CHABANG
+Port of Discharge: CAT LAI
+Vessel: DEMO OCEAN
+Voyage: 001E
+ETD: 2026-10-02
+ETA: 2026-10-05
+Total Packages: 100 CTNS
+Gross Weight: 1000 KGS

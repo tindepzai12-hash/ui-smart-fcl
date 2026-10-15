@@ -34,7 +34,7 @@ export function PdfSplit({ document: doc, types, loading, submit }: any) {
           <div className="split-range">
             <label>Từ trang<input aria-label={`Chứng từ ${i+1} từ trang`} type="number" min="1" max={total} required value={g.start || ''} onChange={e => edit(i, { start: Number(e.target.value) })} /></label>
             <label>Đến trang<input aria-label={`Chứng từ ${i+1} đến trang`} type="number" min="1" max={total} required value={g.end || ''} onChange={e => edit(i, { end: Number(e.target.value) })} /></label>
-            <label>Loại chứng từ<select aria-label={`Chứng từ ${i+1} loại`} value={g.type} onChange={e => edit(i, { type: e.target.value })}>{types.map((t: string) => <option key={t}>{t}</option>)}</select></label>
+            <label>Loại chứng từ<select aria-label={`Chứng từ ${i+1} loại`} value={g.type} onChange={e => edit(i, { type: e.target.value })}>{Array.from(new Set([...types, 'Invoice & Packing List', 'Other', g.type])).map((t: any) => <option key={t}>{t}</option>)}</select></label>
           </div>
           <button className="text-btn danger" type="button" disabled={groups.length <= 2} onClick={() => setGroups(previous => previous.filter((_, n) => n !== i))}>Bỏ nhóm trang này</button>
         </fieldset>)}

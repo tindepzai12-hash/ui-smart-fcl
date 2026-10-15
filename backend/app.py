@@ -15,7 +15,7 @@ except ImportError:
 from PIL import Image, ImageOps
 from openpyxl import load_workbook
 from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle, source_locator
-from .dictionary import FIELDS, TYPES, default_requirements
+from .dictionary import FIELDS, TYPES, default_requirements, commercial_profile, REVIEW_GROUPS, REVIEW_FIELDS, PROFILE_TYPES, DOCUMENT_LABELS
 from .normalize import normalize
 
 db.migrate()
@@ -74,7 +74,7 @@ class ProcessInput(Input):
 
 class ClassInput(Input):
     type: Literal[
-        'Invoice', 'Invoice & Packing List', 'Packing List', 'B/L', 'Sea Waybill', 'AWB', 'C/O',
+        'Invoice', 'Invoice & Packing List', 'Packing List', 'Booking', 'B/L', 'Sea Waybill', 'AWB', 'C/O',
         'Arrival Notice', 'Delivery Order', 'Contract', 'Purchase Order',
         'Insurance', 'Freight Invoice', 'Import Permit',
         'Inspection Certificate', 'Phytosanitary Certificate', 'Other'
@@ -156,7 +156,9 @@ def require_working_doc(id):
     return doc
 
 def working_records(id):
-    return [validation.unpack(r) for r in db.rows("SELECT * FROM records WHERE case_id=? AND (document_id IS NULL OR document_id IN (SELECT id FROM documents WHERE collection='document')) ORDER BY rowid", (id,))]
+    records = [validation.unpack(r) for r in db.rows("SELECT * FROM records WHERE case_id=? AND (document_id IS NULL OR document_id IN (SELECT id FROM documents WHERE collection='document')) ORDER BY rowid", (id,))]
+    case = require_case(id)
+    return [r for r in records if r['kind'] != 'container' and (r['kind'] != 'field' or r['key'] in REVIEW_FIELDS)] if commercial_profile(json.loads(case['requirements']),case['mode']) else records
 
 def busy(case_id):
     if any(j['case_id'] == case_id and j['status'] == 'running' for j in JOBS.values()):
@@ -198,6 +200,9 @@ def revalidate(c, id):
     return validation.persist_checks(c, case, docs, records)
 
 def add_record(c, case_id, document_id, r):
+    case = dict(c.execute('SELECT * FROM cases WHERE id=?',(case_id,)).fetchone())
+    if (r['kind'] == 'container' or (r['kind'] == 'field' and r['key'] not in REVIEW_FIELDS)) and commercial_profile(json.loads(case['requirements']),case['mode']):
+        return
     c.execute(
         'INSERT INTO records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         (db.uid(), case_id, document_id, r['kind'], r['key'], db.encode(r['raw']), db.encode(r['value']), r['page'], r['evidence'], r['method'], 'pending', '', db.now(), 1),
@@ -226,7 +231,7 @@ def health():
 
 @app.get('/api/dictionary')
 def dictionary():
-    return {'fields': FIELDS, 'document_types': TYPES}
+    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES}
 
 @app.get('/api/cases')
 def list_cases():
@@ -653,7 +658,7 @@ def job_status(id: str):
 @app.get('/api/samples/{name}')
 def sample_document(name: str):
     # Only synthetic fixtures explicitly shipped for the two UI demo sets.
-    if name not in {'invoice.txt', 'packing.txt', 'bl.txt', 'bl-conflict.txt', 'fcl-text.pdf', 'fcl-scan.pdf'}:
+    if name not in {'invoice.txt', 'packing.txt', 'packing-conflict.txt', 'booking.txt', 'contract.txt', 'po.txt', 'co.txt'}:
         raise HTTPException(404, 'Không có chứng từ mẫu này')
     return FileResponse(db.ROOT / 'samples' / name, filename=name, media_type='application/pdf' if name.endswith('.pdf') else 'text/plain')
 
@@ -699,8 +704,12 @@ def checked_value(kind, key, value):
 @app.post('/api/cases/{id}/records')
 def manual(id: str, body: NewRecord):
     with LOCK:
-        require_case(id)
+        case=require_case(id)
         busy(id)
+        if commercial_profile(json.loads(case['requirements']),case['mode']) and (body.kind == 'container' or (body.kind == 'field' and body.key not in REVIEW_FIELDS)):
+            raise HTTPException(422, 'Chỉ thêm trường chứng từ hoặc dòng hàng trong phạm vi checklist hiện tại')
+        if commercial_profile(json.loads(case['requirements']),case['mode']) and (not body.document_id or not body.page):
+            raise HTTPException(422, 'Chọn chứng từ và trang nguồn chứa giá trị cần bổ sung')
         value = checked_value(body.kind, body.key, body.value)
         if body.document_id:
             d = require_working_doc(body.document_id)
@@ -978,6 +987,25 @@ def template_export(id: str, body: TemplateInput):
             c.execute('INSERT INTO exports VALUES (?,?,?,?,?,?,?,?)', (export_id, body.case_id, db.now(), n, 'Draft', 'Template-internal', str(p), case['revision']))
             db.audit(c, body.case_id, 'Xuất theo mapping nội bộ', export_id, after={'template': id, 'cells': count})
     return {'id': export_id, 'download': '/api/exports/' + export_id, 'scope': 'Bản mapping nội bộ; chưa kiểm thử nhập phần mềm bên ngoài'}
+
+def upgrade_commercial_checklists():
+    """Apply the requested scope once; preserve files, review evidence and shared waivers."""
+    with db.connect() as c:
+        if c.execute('SELECT 1 FROM schema_versions WHERE version=2').fetchone():
+            return
+        for row in c.execute("SELECT * FROM cases WHERE mode='FCL'").fetchall():
+            old=json.loads(row['requirements'])
+            rules=default_requirements('FCL')
+            for key in ['Invoice','Packing List']:
+                if key in old:
+                    rules[key]=old[key]
+            c.execute('UPDATE cases SET requirements=? WHERE id=?',(db.encode(rules),row['id']))
+            db.touch(c,row['id'])
+            db.audit(c,row['id'],'Áp dụng checklist chứng từ thương mại',before=old,after=rules,reason='Bỏ yêu cầu B/L, container và khai báo; giữ chứng từ gốc')
+            revalidate(c,row['id'])
+        c.execute('INSERT INTO schema_versions VALUES(2,?)',(db.now(),))
+
+upgrade_commercial_checklists()
 
 if (db.ROOT / 'dist').exists():
     app.mount('/', StaticFiles(directory=db.ROOT / 'dist', html=True), name='frontend')

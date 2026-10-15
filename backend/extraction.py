@@ -2,7 +2,7 @@ import re
 from .dictionary import FIELDS, supports
 from .normalize import normalize,decimal_text
 
-CLASS_RULES=[('Packing List',r'packing\s+list'),('Sea Waybill',r'sea\s+waybill'),('B/L',r'bill\s+of\s+lading'),('AWB',r'air\s+waybill'),('C/O',r'certificate\s+of\s+origin'),('Arrival Notice',r'arrival\s+notice|notice of arrival'),('Delivery Order',r'delivery\s+order'),('Freight Invoice',r'freight\s+invoice'),('Invoice',r'commercial\s+invoice|^invoice$'),('Purchase Order',r'purchase\s+order'),('Contract',r'sales\s+contract|sales agreement'),('Insurance',r'insurance\s+certificate'),('Import Permit',r'import\s+permit|import license'),('Phytosanitary Certificate',r'phytosanitary\s+certificate'),('Inspection Certificate',r'inspection\s+certificate')]
+CLASS_RULES=[('Booking',r'booking\s+(?:confirmation|confirm|note|acknowledge?ment)|^booking$|xác nhận đặt chỗ'),('Packing List',r'packing\s+list'),('Sea Waybill',r'sea\s+waybill'),('B/L',r'bill\s+of\s+lading'),('AWB',r'air\s+waybill'),('C/O',r'certificate\s+of\s+origin'),('Arrival Notice',r'arrival\s+notice|notice of arrival'),('Delivery Order',r'delivery\s+order'),('Freight Invoice',r'freight\s+invoice'),('Invoice',r'commercial\s+invoice|^invoice$'),('Purchase Order',r'purchase\s+order'),('Contract',r'sales?\s+contract|(?:sales?|purchase)\s+agreement|^contract$|hợp\s+đồng(?:\s+mua\s+bán)?'),('Insurance',r'insurance\s+certificate'),('Import Permit',r'import\s+permit|import license'),('Phytosanitary Certificate',r'phytosanitary\s+certificate'),('Inspection Certificate',r'inspection\s+certificate')]
 
 def classify(pages):
     # Only document headings, never a contract's list of required attachments or a B/L reference label.
@@ -51,7 +51,7 @@ def extract_tables(table,doc_type,page):
                             n=decimal_text(values[k])
                             if n is not None:values[k]=n
                             else:values['warning']='Có số chưa rõ định dạng; cần sửa trước khi xác minh.'
-                    if not supports(doc_type,'Invoice'): values['scope']='packing'
+                    if not supports(doc_type,'Invoice'): values['scope']='booking' if doc_type=='Booking' else 'contract' if doc_type in ['Contract','Purchase Order'] else 'origin' if doc_type=='C/O' else 'packing'
                     output.append({'kind':'item','key':'goods_item','value':values,'raw':{key:cells[idx] if idx<len(cells) else '' for idx,key in mapping.items()},'page':page,'evidence':' | '.join(cells),'method':'Rules/table'})
                 elif mode=='container' and re.fullmatch(r'[A-Z]{4}\d{7}',re.sub(r'\s','',values.get('container_number','')).upper()):
                     values['container_number']=re.sub(r'\s','',values['container_number']).upper()

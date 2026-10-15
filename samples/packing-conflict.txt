@@ -1,0 +1,12 @@
+SYNTHETIC TEST DOCUMENT — NOT FOR COMMERCIAL USE
+PACKING LIST
+Packing List No: PK-001
+Packing List Date: 2026-10-01
+Invoice Reference: 000999-X
+Contract No: SC-001
+Shipper: Demo Seller Ltd
+Consignee: Công ty Mẫu Việt Nam
+Total Quantity: 15 PCS
+Total Packages: 100 CTNS
+Gross Weight: 1000 KGS
+Net Weight: 900 KG

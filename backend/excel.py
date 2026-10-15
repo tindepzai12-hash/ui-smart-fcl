@@ -4,7 +4,7 @@ from decimal import Decimal
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.datavalidation import DataValidation
-from .dictionary import FIELDS, LEGAL
+from .dictionary import FIELDS, LEGAL, REVIEW_FIELDS, commercial_profile
 from .validation import human_check_label, container_number
 from .db import now
 
@@ -95,10 +95,15 @@ def numeric(raw, verified):
         return str(raw)
 
 def build(path, case, documents, records, checks, audit, mode='Draft', workbook_type='A', selected=None, version=1):
+    requirements=json.loads(case['requirements']) if isinstance(case['requirements'],str) else case['requirements']
+    commercial=commercial_profile(requirements,case['mode'])
+    names=list(SHEETS)
+    if commercial: names[1]='THONG_TIN_CHUNG_TU'
+    expected=[n for i,n in enumerate(names) if not (commercial and i==3)]
     wb = Workbook()
     wb.remove(wb.active)
     docs = {d['id']: d for d in documents}
-    active = [r for r in records if r['status'] != 'rejected']
+    active = [r for r in records if r['status'] != 'rejected' and (not commercial or (r['kind'] != 'container' and (r['kind'] != 'field' or r['key'] in REVIEW_FIELDS)))]
     fields = [r for r in active if r['kind'] == 'field' and (not selected or r['key'] in selected)]
     warnings = [c for c in checks if c['result'] in ['Mismatch', 'Missing', 'Needs Verification'] and not c.get('resolution')]
     resolved_conflicts = [c for c in checks if c['result'] in ['Mismatch', 'Needs Verification'] and c.get('resolution')]
@@ -107,7 +112,7 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
 
     sheet(
         wb,
-        SHEETS[0],
+        names[0],
         ['Chỉ tiêu', 'Giá trị'],
         [
             ['Case ID', case['id']],
@@ -115,7 +120,8 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
             ['Khách hàng', case['customer']],
             ['Nghiệp vụ', case['mode']],
             ['Số chứng từ', len(documents)],
-            ['Container vật lý (duy nhất)', f"{len(unique_containers)} container vật lý ({', '.join(unique_containers) or 'Chưa có'}) / {len(cont_records)} bản ghi nguồn"],
+            *([] if commercial else [['Container vật lý (duy nhất)', f"{len(unique_containers)} container vật lý / {len(cont_records)} bản ghi nguồn"]]),
+            *([['Checklist', 'Packing List · Booking · Invoice · Hợp đồng/PO · C/O (nếu có)']] if commercial else []),
             ['Phương pháp', 'Local / OpenAI theo từng nguồn'],
             ['Tạo lúc', case['created_at']],
             ['Duyệt lúc', case.get('reviewed_at') or 'Chưa hoàn thành duyệt Reviewed'],
@@ -134,7 +140,8 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
     for r in fields:
         grouped.setdefault(r['key'], []).append(r)
     data = []
-    for key in (selected or list(FIELDS)):
+    for key in (selected or (REVIEW_FIELDS if commercial else list(FIELDS))):
+        if key not in FIELDS or (commercial and key not in REVIEW_FIELDS): continue
         group = grouped.get(key, [])
         if group:
             for r in group:
@@ -155,11 +162,11 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
                 '',
                 '',
                 '',
-                'Missing',
+                ('Missing' if any(c['key']=='missing:'+key for c in warnings) else 'Not Applicable') if commercial else 'Missing',
                 '',
-                'Nhập/xác minh theo căn cứ chính thức' if key in LEGAL else 'Chưa trích xuất',
+                'Nhập/xác minh theo căn cứ chính thức' if key in LEGAL else ('Chưa ghi nhận; chỉ kiểm nếu chứng từ có trường này' if commercial else 'Chưa trích xuất'),
             ])
-    ws = sheet(wb, SHEETS[1], ['Field ID', 'Tên chỉ tiêu', 'Giá trị', 'Đơn vị', 'Nguồn', 'Trạng thái', 'Phương pháp', 'Ghi chú'], data)
+    ws = sheet(wb, names[1], ['Field ID', 'Tên chỉ tiêu', 'Giá trị', 'Đơn vị', 'Nguồn', 'Trạng thái', 'Phương pháp', 'Ghi chú'], data)
     dv = DataValidation(type='list', formula1='"pending,verified,rejected,Missing"')
     ws.add_data_validation(dv)
     dv.add(f'F2:F{max(2, ws.max_row)}')
@@ -178,7 +185,7 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
         )
     ws = sheet(
         wb,
-        SHEETS[2],
+        names[2],
         ['STT', 'Mã hàng', 'Mô tả', 'Số lượng', 'Đơn vị', 'Đơn giá', 'Thành tiền', 'Tiền tệ', 'Xuất xứ', 'Mã HS', 'Trạng thái', 'Nguồn', 'Trang', 'Phạm vi'],
         items,
     )
@@ -194,18 +201,18 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
                 [v.get(k, '') for k in ['container_number', 'seal_number', 'container_type', 'packages', 'gross_weight', 'cbm', 'bl_number']]
                 + [docs.get(r['document_id'], {}).get('name', 'Nhập tay'), r['status'], r['page']]
             )
-    sheet(wb, SHEETS[3], ['Container', 'Seal', 'Loại container', 'Số kiện', 'Gross Weight', 'CBM', 'B/L', 'Nguồn', 'Trạng thái', 'Trang'], containers)
+    if not commercial: sheet(wb, names[3], ['Container', 'Seal', 'Loại container', 'Số kiện', 'Gross Weight', 'CBM', 'B/L', 'Nguồn', 'Trạng thái', 'Trang'], containers)
     sheet(
         wb,
-        SHEETS[4],
+        names[4],
         ['Quy tắc', 'Nguồn và giá trị', 'Kết quả', 'Mức độ', 'Lý do', 'Ghi chú xử lý'],
         [[f"{c['key']} ({human_check_label(c['key'], docs)})", format_sources(c['detail'].get('sources', [])), c['result'], c['severity'], c['detail']['reason'], c['resolution']] for c in checks],
     )
     missing = [[c['key'], 'Checklist nội bộ', c['detail']['reason'], format_sources(c['detail'].get('sources', [])) if c['detail'].get('sources') else 'Theo chứng từ', c['severity'], c['result'], c['resolution'] or 'Kiểm tra/bổ sung'] for c in warnings]
-    for key in LEGAL:
+    for key in ([] if commercial else LEGAL):
         if not grouped.get(key):
             missing.append([key, 'Chuẩn bị khai báo', 'Không tự suy đoán mã/thuế/trị giá', 'Nguồn chính thức', 'Cần nhân viên nghiệp vụ', 'Missing', 'Tra cứu và xác minh; không phải mọi chỉ tiêu đều áp dụng'])
-    sheet(wb, SHEETS[5], ['Thiếu/cần kiểm tra', 'Phục vụ', 'Lý do', 'Nguồn dự kiến', 'Ưu tiên', 'Trạng thái', 'Thao tác'], missing)
+    sheet(wb, names[5], ['Thiếu/cần kiểm tra', 'Phục vụ', 'Lý do', 'Nguồn dự kiến', 'Ưu tiên', 'Trạng thái', 'Thao tác'], missing)
     history = [
         [
             r['key'],
@@ -219,7 +226,7 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
             r['raw'] if isinstance(r['raw'], str) else value_text(r['raw']),
             r['note'],
         ]
-        for r in records
+        for r in records if not commercial or (r['kind']!='container' and (r['kind']!='field' or r['key'] in REVIEW_FIELDS))
     ]
     history += [[a['action'], a.get('after_json', ''), '', '', '', a['actor'], '', a['created_at'], a.get('before_json', ''), a['reason']] for a in audit]
     for doc in documents:
@@ -228,13 +235,13 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
             history.append(['Nguồn PDF gốc', doc['name'], source['name'], f"{source['start_page']}-{source['end_page']}", 'SHA-256: ' + source['hash'], 'Tách PDF / giữ bản gốc', 'Chờ xác minh theo từng bản ghi', '', '', 'Khoảng trang trên PDF gốc; trang chứng từ con bắt đầu từ 1.'])
     sheet(
         wb,
-        SHEETS[6],
+        names[6],
         ['Trường/thao tác', 'Giá trị hiện tại/sau', 'Nguồn', 'Trang', 'Bằng chứng', 'Phương pháp/người sửa', 'Trạng thái', 'Thời gian', 'Giá trị gốc/trước', 'Ghi chú'],
         history,
     )
     wb.save(path)
     reopened = load_workbook(path)
-    assert reopened.sheetnames == SHEETS
+    assert reopened.sheetnames == expected
     assert not any(c.data_type == 'f' for s in reopened for row in s for c in row)
     reopened.close()
-    return {'sheets': SHEETS, 'fields': len(fields), 'items': len(items), 'containers': len(containers), 'physical_containers': len(unique_containers), 'warnings': len(warnings)}
+    return {'sheets': expected, 'fields': len(fields), 'items': len(items), 'containers': len(containers), 'physical_containers': len(unique_containers), 'warnings': len(warnings)}

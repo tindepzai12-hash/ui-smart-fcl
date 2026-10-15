@@ -45,4 +45,4 @@ document='<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewp
 out=root.parent/'output';out.mkdir(exist_ok=True)
 (out/'HUONG_DAN_UI_SMART.html').write_text(document,encoding='utf-8')
 (root/'docs/USER_GUIDE.md').write_text(md,encoding='utf-8')
-print('Generated staff guide: 8 steps, durian scenario, 3 worked examples and external responsibilities.')
+print(f'Generated staff guide: {len(g["steps"])} steps, {len(g["examples"])} worked examples.')

@@ -1,8 +1,9 @@
 """Stable field IDs and document-specific semantics; legal codes are never inferred."""
-TYPES=['Invoice','Invoice & Packing List','Packing List','B/L','Sea Waybill','AWB','C/O','Arrival Notice','Delivery Order','Contract','Purchase Order','Insurance','Freight Invoice','Import Permit','Inspection Certificate','Phytosanitary Certificate','Other']
+TYPES=['Packing List','Booking','Invoice','Invoice & Packing List','Contract','Purchase Order','C/O','B/L','Sea Waybill','AWB','Arrival Notice','Delivery Order','Insurance','Freight Invoice','Import Permit','Inspection Certificate','Phytosanitary Certificate','Other']
+DOCUMENT_LABELS={'Contract':'Hợp đồng / Sales Contract','Purchase Order':'Đơn đặt hàng / Purchase Order','C/O':'C/O · nếu có','Booking':'Booking / Booking Confirmation'}
 
 def supports(document_type, kind):
-    return document_type == kind or (document_type == 'Invoice & Packing List' and kind in ['Invoice', 'Packing List'])
+    return document_type == kind or (document_type == 'Invoice & Packing List' and kind in ['Invoice', 'Packing List']) or (kind == 'Contract' and document_type == 'Purchase Order')
 # id, Vietnamese label, aliases, type, applicable documents, business class
 SPECS=[
 ('invoice_number','Số hóa đơn',['invoice no','invoice number','commercial invoice no','invoice reference','số hóa đơn'],'text',['Invoice','Packing List','C/O','Contract','Purchase Order'],'A'),
@@ -93,5 +94,58 @@ for field in ['shipper','consignee','notify_party','vessel','voyage','packages',
 FIELDS['do_number']['aliases'] += ['ma nhan container (so lenh)', 'mã nhận container (số lệnh)']
 LEGAL=[s[0] for s in SPECS if s[5] in ['C','D']]
 
+# Commercial document review. Booking describes a plan, not proof of loading or clearance.
+for key, label, aliases, value_type, kinds in [
+    ('packing_date','Ngày Packing List',['packing list date','packing date'],'date',['Packing List']),
+    ('booking_date','Ngày booking',['booking date','booking confirmation date','ngày booking'],'date',['Booking']),
+    ('carrier','Hãng tàu / đơn vị xác nhận booking',['carrier','shipping line','ocean carrier'],'text',['Booking','B/L','Sea Waybill']),
+    ('etd','Ngày đi dự kiến (ETD)',['etd','estimated time of departure','estimated departure date'],'date',['Booking','B/L','Sea Waybill']),
+    ('cut_off','Thời hạn cut-off ghi trên booking',['cargo cut-off','cargo cut off','cy cut-off','cy cut off','cut-off'],'text',['Booking']),
+    ('contract_date','Ngày hợp đồng / thỏa thuận',['contract date','sales contract date','agreement date','ngày hợp đồng'],'date',['Contract']),
+    ('contract_total','Tổng trị giá hợp đồng',['contract total','total contract value','contract amount'],'number',['Contract']),
+    ('po_date','Ngày đơn đặt hàng',['po date','purchase order date'],'date',['Purchase Order']),
+]:
+    FIELDS[key]={'id':key,'label':label,'aliases':aliases,'type':value_type,'documents':kinds,'class':'A','level':'document','human_review':True,'sheet':'THONG_TIN_KHAI_BAO','official_mapping':'Nội bộ — kiểm tra theo chứng từ nguồn'}
+for key in ['booking','shipper','consignee','notify_party','vessel','voyage','port_loading','port_discharge','place_receipt','place_delivery','eta','packages','gross_weight','volume','cargo_description','shipper_address','consignee_address','freight_terms']:
+    FIELDS[key]['documents']=list(dict.fromkeys([*FIELDS[key]['documents'],'Booking']))
+for key in ['currency','goods_quantity','net_weight','gross_weight','packages','cargo_description','seller_address','buyer_address','incoterms','payment_terms','origin']:
+    FIELDS[key]['documents']=list(dict.fromkeys([*FIELDS[key]['documents'],'Contract','Purchase Order']))
+for key in ['goods_quantity','packages','gross_weight','net_weight','cargo_description']:
+    FIELDS[key]['documents']=list(dict.fromkeys([*FIELDS[key]['documents'],'C/O']))
+FIELDS['booking']['aliases']+=['booking number','booking confirmation no','booking ref','số booking']
+FIELDS['contract_number']['aliases']+=['sale contract no','contract number','agreement no','agreement number','số hợp đồng','hợp đồng số']
+FIELDS['contract_date']['aliases']+=['sale contract date']
+FIELDS['currency']['label']='Đồng tiền'
+FIELDS['currency']['aliases']+=['contract currency']
+FIELDS['co_number']['aliases']+=['certificate number','certificate no','reference no']
+FIELDS['co_date']['aliases']+=['date of issue','certificate date']
+FIELDS['po_number']['documents']+=['Invoice','Packing List','Contract']
+FIELDS['po_number']['aliases']+=['po number','purchase order number','po reference','số đơn đặt hàng']
+FIELDS['contract_number']['documents']+=['Purchase Order']
+
+REVIEW_GROUPS=[
+    {'type':'Packing List','label':'Packing List','required_fields':['packing_number','packages','gross_weight'],'fields':['packing_number','packing_date','invoice_number','contract_number','po_number','shipper','consignee','goods_quantity','packages','gross_weight','net_weight','volume','shipping_marks']},
+    {'type':'Booking','label':'Booking / Booking Confirmation','required_fields':['booking','port_loading','port_discharge'],'fields':['booking','booking_date','carrier','shipper','consignee','notify_party','vessel','voyage','port_loading','port_discharge','place_receipt','place_delivery','etd','eta','cut_off','cargo_description','packages','gross_weight','volume','freight_terms']},
+    {'type':'Invoice','label':'Invoice','required_fields':['invoice_number','invoice_date','seller','buyer','currency','invoice_total'],'fields':['invoice_number','invoice_date','seller','seller_address','buyer','buyer_address','contract_number','po_number','currency','incoterms','payment_terms','goods_quantity','invoice_total','origin']},
+    {'type':'Contract','label':'Hợp đồng / thỏa thuận mua bán / PO','required_fields':[],'fields':['contract_number','contract_date','po_number','po_date','seller','seller_address','buyer','buyer_address','currency','incoterms','payment_terms','goods_quantity','contract_total','origin']},
+    {'type':'C/O','label':'C/O · nếu có','required_fields':['co_number','origin'],'fields':['co_number','co_form','co_date','co_issuer','exporter','exporter_address','importer','importer_address','consignee','invoice_number','origin','origin_criteria','cargo_description','goods_quantity','packages','gross_weight','net_weight']},
+]
+REVIEW_FIELDS=list(dict.fromkeys(key for group in REVIEW_GROUPS for key in group['fields']))
+PROFILE_TYPES=['Packing List','Booking','Invoice','C/O','Contract','Purchase Order']
+for spec in FIELDS.values():
+    if any(k in spec['documents'] for k in ['Invoice','Packing List']):
+        spec['documents']=list(dict.fromkeys([*spec['documents'],'Invoice & Packing List']))
+
+def commercial_profile(requirements, mode='FCL'):
+    return mode == 'FCL' and 'Booking' in requirements and 'Contract' in requirements
+
 def default_requirements(mode='FCL'):
+    if mode == 'FCL':
+        return {
+            'Packing List':{'required':True,'note':'Bộ kiểm tra nội bộ: phiếu đóng gói; nhận cả bản gộp Invoice & Packing List'},
+            'Booking':{'required':True,'note':'Booking / Booking Confirmation; không thay bằng B/L, số liệu là kế hoạch đặt chỗ'},
+            'Invoice':{'required':True,'note':'Bộ kiểm tra nội bộ: hóa đơn thương mại'},
+            'Contract':{'required':True,'note':'Sales/Sale Contract, hợp đồng/thỏa thuận mua bán; chấp nhận Purchase Order có căn cứ'},
+            'C/O':{'required':False,'note':'Nếu khách cung cấp thì nhận diện và kiểm tra; thiếu C/O không chặn duyệt nội bộ'},
+        }
     return {'Invoice':{'required':True,'note':'Checklist nghiệp vụ'},'Packing List':{'required':True,'note':'Checklist nghiệp vụ'},('AWB' if mode=='AIR' else 'B/L'):{'required':True,'note':'Sea Waybill có thể thay B/L'},'C/O':{'required':False,'note':'Nếu áp dụng chứng minh xuất xứ'},'Import Permit':{'required':False,'note':'Nếu mặt hàng phải có giấy phép'},'Inspection Certificate':{'required':False,'note':'Nếu thuộc kiểm tra chuyên ngành'}}

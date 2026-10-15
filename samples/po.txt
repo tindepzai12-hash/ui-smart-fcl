@@ -1,0 +1,8 @@
+SYNTHETIC TEST DOCUMENT — NOT FOR COMMERCIAL USE
+PURCHASE ORDER
+PO No: PO-001
+PO Date: 2026-09-20
+Seller: Demo Seller Ltd
+Buyer: Công ty Mẫu Việt Nam
+Currency: USD
+Total Quantity: 15 PCS

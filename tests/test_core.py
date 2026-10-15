@@ -10,7 +10,13 @@ from backend.validation import build_checks
 from fixtures import INVOICE,PACKING,BL,pdf,scan,image,generate
 
 client=TestClient(app);H={'X-UI-Smart':'local'}
-def new():return client.post('/api/cases',headers=H,json={'name':'Hồ sơ kiểm thử','customer':'Công ty Mẫu'}).json()['case']['id']
+def new():
+ # These regression fixtures deliberately exercise the legacy transport profile.
+ # New-default commercial behavior is covered independently in test_commercial.py.
+ id=client.post('/api/cases',headers=H,json={'name':'Hồ sơ kiểm thử legacy','customer':'Công ty Mẫu'}).json()['case']['id']
+ requirements={'Invoice':{'required':True,'note':'Legacy regression'},'Packing List':{'required':True,'note':'Legacy regression'},'B/L':{'required':True,'note':'Legacy regression'},'C/O':{'required':False,'note':'Legacy optional'},'Import Permit':{'required':False,'note':'Legacy optional'},'Inspection Certificate':{'required':False,'note':'Legacy optional'}}
+ db.execute('UPDATE cases SET requirements=? WHERE id=?',(db.encode(requirements),id))
+ return id
 def upload(id,files):return client.post('/api/cases/'+id+'/documents',headers=H,files=[('files',(name,data,'application/octet-stream')) for name,data in files])
 def process(id,mode='local'):
  res=client.post('/api/cases/'+id+'/process',headers=H,json={'mode':mode,'allow_external':mode=='openai'});assert res.status_code==200,res.text

@@ -1,10 +1,12 @@
-SYNTHETIC TEST DOCUMENT
+SYNTHETIC TEST DOCUMENT — NOT FOR COMMERCIAL USE
 PACKING LIST
-Invoice Reference: 000123-A
 Packing List No: PK-001
+Packing List Date: 2026-10-01
+Invoice Reference: 000123-A
+Contract No: SC-001
+Shipper: Demo Seller Ltd
+Consignee: Công ty Mẫu Việt Nam
+Total Quantity: 15 PCS
 Total Packages: 100 CTNS
 Gross Weight: 1000 KGS
 Net Weight: 900 KG
-Container | Seal | Type
-MSCU1234567 | SEAL01 | 20GP
-CSNU7654321 | SEAL02 | 40HC

@@ -48,6 +48,18 @@ const components = await import(
   'data:text/javascript;base64,' + Buffer.from(componentModuleSource).toString('base64')
 );
 
+test('Commercial profile has five steps and never treats Draft as completed review/export', () => {
+  const current = {case:{id:'DEMO',requirements:{Booking:{required:true},Contract:{required:true}},revision:2},documents:[{status:'read',type_verified:true}],records:[{kind:'field',status:'verified'}],checks:[],blockers:[],exports:[{mode:'Draft',case_revision:2}]};
+  const steps=helper.computeStepStates(current);
+  assert.equal(steps.length,5);
+  assert.deepEqual(steps.map(s=>s.tab),['documents','review','comparison','customs','export']);
+  assert.equal(steps[4].done,false);
+  assert.equal(steps[4].detail,'Đã xuất bản nháp');
+  current.case.reviewed_at='2026-10-15';
+  current.exports.push({mode:'Reviewed',case_revision:2});
+  assert.equal(helper.computeStepStates(current)[4].done,true);
+});
+
 test('Show normalized number/unit, preserve leading zero text, and format container/item values cleanly', () => {
   assert.equal(helper.textValue({ number: '1000', unit: 'KG' }), '1000 KG');
   assert.equal(helper.textValue({ text: '000123-A' }), '000123-A');

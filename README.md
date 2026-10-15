@@ -55,18 +55,17 @@ Không mở `index.html` bằng file://. Frontend cần backend để lưu và �
 
 Dependency Python nằm trong `vendor/`, tách khỏi Python toàn hệ thống. Có `package-lock.json` và requirements ghim phiên bản. Gói source bàn giao không bao gồm dependency đã cài hay dữ liệu khách hàng; chạy setup trên máy mới. Frontend build được kèm trong gói.
 
-## Sử dụng tám bước
+## Checklist thương mại và năm bước sử dụng
 
-1. **Tạo hồ sơ:** Đặt tên, khách hàng. Phạm vi chính là nhân viên chứng từ/đại lý hải quan của forwarder.
-2. **Nạp chứng từ:** Thêm file thật hoặc chọn Bộ mẫu chuẩn/Bộ mẫu sai lệch trong hồ sơ trống. Mẫu là dữ liệu giả lập.
-3. **Đọc & nhận diện:** Chọn Local → Đọc & trích xuất; kiểm tra và xác nhận loại từng tệp. Chọn loại mới rồi xác nhận; dữ liệu liên quan cần kiểm tra lại. Giới hạn 25 MB/tệp, 100 trang/tệp, 30 tệp/lần.
-4. **Xác minh trường:** Tìm trường/giá trị, lọc Chặn xuất/Cần kiểm/Đã duyệt, mở nguồn và đối chiếu. Lưu chỉnh sửa rồi xác minh từng bản ghi. Giá trị số/ngày mơ hồ phải làm rõ; Seller/Exporter/Shipper và Buyer/Importer/Consignee giữ vai trò riêng.
-5. **Đối chiếu chéo:** Xử lý sai lệch/thiếu/cần kiểm theo nguồn và phạm vi. Ghi lý do không sửa đè nguồn hoặc thay bước đọc/phân loại.
-6. **Chuẩn bị bảng kê:** Rà checklist theo lô; chứng từ không bắt buộc phải có lý do. Dữ liệu thiếu liên quan vẫn cần nhân viên xử lý. Container vật lý và bản ghi nguồn được đếm riêng.
-7. **Kiểm tra xuất file:** Xem điều kiện chặn, bổ sung hoặc xác minh rồi Hoàn thành kiểm tra. Sửa dữ liệu sẽ hủy trạng thái Reviewed cũ.
-8. **Xuất Excel:** Hai nút bản nháp/bản đã duyệt độc lập; bản nháp xuất được khi có dữ liệu, bản đã duyệt phải qua cổng kiểm tra. Workbook 7 sheet là hồ sơ nội bộ; mapping template scalar có nguồn truy vết.
+5 nhóm: **Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng, C/O (nếu có)**. Nhận diện riêng 6 loại: Packing List, Booking, Invoice, Contract, Purchase Order, C/O. Contract và PO giữ số/ngày, nguồn riêng; có một trong hai đáp ứng nhóm hợp đồng trong checklist nội bộ, không có nghĩa hai giấy tờ tương đương pháp lý. Không yêu cầu B/L, container, seal hoặc chỉ tiêu khai báo trong phạm vi này.
 
-Tám bước có thể bấm hoặc dùng bàn phím để mở vùng tương ứng. Dấu hoàn tất phản ánh dữ liệu hiện tại; xuất Draft không hoàn tất bước 8. Không có chức năng điều xe, gửi tờ khai thật hoặc tự xác định mã HS/thuế.
+1. **Tải & nhận diện:** Tạo hồ sơ, chọn nhiều tệp cùng lúc. Dùng Local hoặc OpenAI với đồng ý gửi nội dung. Tách PDF nhiều chứng từ; kiểm và xác nhận loại theo nội dung. Bộ mẫu chuẩn/sai lệch là giả lập và chỉ nạp vào hồ sơ trống.
+2. **Kiểm trường:** Xem nguồn từng trường/dòng hàng, sửa lỗi trích xuất có căn cứ, lưu và xác minh. Vai trò bên bán/mua/gửi/nhận giữ riêng.
+3. **Đối chiếu:** Kiểm số tham chiếu, trường cùng vai trò/đơn vị/phạm vi và số học Invoice. Booking là kế hoạch, hợp đồng/PO có thể gồm nhiều đợt giao; khác số lượng không tự kết luận sai.
+4. **Checklist:** Mở từng nhóm để xem trường cốt lõi, trường có ghi thì kiểm và nguồn. C/O thiếu không chặn; có cung cấp thì kiểm số/xuất xứ. Nhóm khác không yêu cầu trong tình huống cụ thể phải ghi lý do.
+5. **Duyệt & xuất:** Xử lý điều kiện chặn rồi Hoàn thành kiểm tra. Excel 6 sheet có bản Draft/Reviewed và nguồn/lịch sử; sửa dữ liệu hủy Reviewed cũ. Reviewed chỉ là kiểm dữ liệu nội bộ.
+
+Hướng dẫn nhân viên và ví dụ sầu riêng tại [huong-dan.html](https://ui-smart-fcl.onrender.com/huong-dan.html), sinh từ cùng nội dung với hướng dẫn trong ứng dụng. Giới hạn 25 MB/tệp, 100 trang/tệp, 30 tệp/lần. Tên file không quyết định loại chứng từ.
 
 ## OpenAI tùy chọn từ bước phân loại
 

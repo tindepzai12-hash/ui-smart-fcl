@@ -445,3 +445,12 @@ blockquote{margin:8px 0;padding:9px 12px;border-left:3px solid #a6c5fa;backgroun
 .excluded-file{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
 .excluded-file>div:first-child{min-width:0;flex:1 1 240px;overflow-wrap:anywhere}
 .excluded-file p{margin:4px 0;max-width:75ch}
+
+.document-check-group {border:1px solid var(--border,#dce4ef);border-radius:10px;margin-top:12px;overflow:hidden;}
+.document-check-group>summary {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px;cursor:pointer;list-style:none;background:#f8faff;}
+.document-check-group summary small {display:block;margin-top:5px;overflow-wrap:anywhere;color:#64748b;}
+.document-check-group[open]>summary {border-bottom:1px solid #dce4ef;}
+.document-check-body {padding:16px;}
+.check-source-value {display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0;}
+.steps {grid-template-columns:repeat(5,minmax(0,1fr));}
+@media(max-width:760px){.steps{grid-template-columns:repeat(2,minmax(0,1fr));}.document-check-group>summary{align-items:flex-start;}}

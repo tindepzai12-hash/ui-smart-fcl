@@ -190,6 +190,13 @@ export function computeStepStates(current: any) {
   const reviewed = !!current?.case?.reviewed_at && (current?.blockers || []).length === 0;
   const exported = reviewed && (current?.exports || []).some((e: any) => e.mode === 'Reviewed' && e.case_revision === current?.case?.revision);
   const draft = (current?.exports || []).some((e: any) => e.mode === 'Draft') && !exported;
+  if (current?.case?.requirements?.Booking && current?.case?.requirements?.Contract) return [
+    {index:1,label:'Tải & nhận diện',tab:'documents',done:allRead,partial:hasDocs&&!allRead,detail:`${docs.length} tệp · ${docs.filter((d:any)=>!d.type_verified || d.status!=='read').length} cần xử lý`},
+    {index:2,label:'Kiểm trường',tab:'review',done:records.length>0&&pending===0,partial:pending>0,detail:`${pending} bản ghi cần kiểm`},
+    {index:3,label:'Đối chiếu',tab:'comparison',done:checks.length>0&&unresolved.length===0,partial:unresolved.length>0,detail:`${unresolved.length} mục chưa xử lý`},
+    {index:4,label:'Checklist',tab:'customs',done:prepared,partial:hasDocs&&!prepared,detail:prepared?'Đủ trường cốt lõi':'Kiểm 5 nhóm chứng từ'},
+    {index:5,label:'Duyệt & xuất Excel',tab:'export',done:exported,partial:records.length>0&&!exported,detail:exported?'Đã xuất Reviewed':reviewed?'Sẵn sàng xuất':draft?'Đã xuất bản nháp':'Chưa hoàn thành kiểm tra'},
+  ];
   return [
     { index: 1, label: 'Tạo hồ sơ', tab: 'documents', done: !!current?.case?.id, partial: false, detail: current?.case?.id ? 'Đã tạo' : 'Chưa tạo' },
     { index: 2, label: 'Nạp chứng từ', tab: 'documents', done: hasDocs, partial: false, detail: `${docs.length} tệp` },
