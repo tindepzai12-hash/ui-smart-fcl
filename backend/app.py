@@ -14,7 +14,8 @@ except ImportError:
     ConfigDict = None
 from PIL import Image, ImageOps
 from openpyxl import load_workbook
-from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle, source_locator
+from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle, source_locator, consistency
+from .dictionary import COMPARISON_TYPES
 from .dictionary import FIELDS, TYPES, default_requirements, commercial_profile, REVIEW_GROUPS, REVIEW_FIELDS, PROFILE_TYPES, PROFILE_VARIANTS, DOCUMENT_LABELS
 from .normalize import normalize
 
@@ -77,7 +78,7 @@ class ClassInput(Input):
         'Invoice', 'Invoice & Packing List', 'Packing List', 'Booking', 'B/L', 'Sea Waybill', 'AWB', 'C/O',
         'Arrival Notice', 'Delivery Order', 'Contract', 'Purchase Order',
         'Insurance', 'Freight Invoice', 'Import Permit',
-        'Inspection Certificate', 'Phytosanitary Certificate', 'Other'
+        'Inspection Certificate', 'Phytosanitary Certificate', 'Customs Declaration','Customs Release','Warehouse Receipt','Other'
     ]
 
 class CollectionInput(Input):
@@ -192,6 +193,7 @@ def bundle(id):
         'other_files': references,
         'records': records,
         'checks': checks,
+        'consistency':consistency.report(case,docs,records,checks),
         'blockers': validation.blockers(case, docs, records, checks),
         'exports': db.rows('SELECT id,created_at,version,mode,workbook_type,case_revision FROM exports WHERE case_id=? ORDER BY version DESC', (id,)),
         'active_job': next((j for j in JOBS.values() if j['case_id'] == id and j['status'] == 'running'), None),
@@ -241,7 +243,8 @@ def dictionary():
 def list_cases():
     return db.rows(
         "SELECT c.*,(SELECT count(*) FROM documents d WHERE d.case_id=c.id AND d.collection='document') document_count,"
-        "(SELECT count(*) FROM records r WHERE r.case_id=c.id AND r.status='pending' AND (r.document_id IS NULL OR r.document_id IN (SELECT id FROM documents WHERE collection='document'))) pending_count "
+        "(SELECT count(*) FROM records r WHERE r.case_id=c.id AND r.status='pending' AND (r.document_id IS NULL OR r.document_id IN (SELECT id FROM documents WHERE collection='document'))) pending_count,"
+        "(SELECT count(*) FROM exports e WHERE e.case_id=c.id) export_count "
         "FROM cases c ORDER BY updated_at DESC"
     )
 
@@ -353,7 +356,7 @@ def collection(id: str, body: CollectionInput):
     with LOCK:
         doc = require_doc(id)
         busy(doc['case_id'])
-        if body.document_type is not None and (body.collection != 'document' or body.document_type not in PROFILE_VARIANTS):
+        if body.document_type is not None and (body.collection != 'document' or body.document_type not in COMPARISON_TYPES):
             raise HTTPException(422, 'Chọn một trong 6 loại chứng từ chính trước khi đưa vào checklist.')
         if doc.get('collection', 'document') != body.collection:
             with db.connect() as c:
@@ -589,7 +592,7 @@ def worker(job_id):
                     raise InterruptedError()
                 case = require_case(id)
                 commercial = commercial_profile(json.loads(case['requirements']),case['mode'])
-                main_types = PROFILE_VARIANTS
+                main_types = COMPARISON_TYPES
                 # A staff correction is explicit. Keep it in the main set, but flag conflicting AI classification.
                 if commercial and d['type_verified'] and d['type'] in main_types and kind != d['type'] and not (d['type']=='Contract' and kind=='Purchase Order'):
                     extraction_warning = f'Máy gợi ý {kind}, khác loại {d["type"]} đã được nhân viên xác nhận. Kiểm bản gốc và loại trước khi dùng dữ liệu.'
@@ -627,13 +630,18 @@ def worker(job_id):
                 message = str(exc)[:600] if isinstance(exc, ValueError) else 'Không đọc/xử lý được tệp. Kiểm tra định dạng và thử lại.'
                 db.execute("UPDATE documents SET status='error',error=? WHERE id=?", (message, d['id']))
                 job['errors'].append({'document': d['name'], 'error': message})
+        if mode=='openai' and not job['cancel'] and commercial_profile(json.loads(require_case(id)['requirements']),require_case(id)['mode']):
+            job['stage']='OpenAI đối chiếu toàn bộ hồ sơ'
+            case_docs=db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document'",(id,))
+            review_error=consistency.run_ai_review(id,case_docs,working_records(id))
+            if review_error:job['warnings'].append({'document':'Đối chiếu toàn hồ sơ','message':review_error})
         final_status = 'completed'
         if job['errors']:
             job['stage'] = f"Hoàn tất có cảnh báo ({len(job['errors'])}/{len(docs)} tệp lỗi — xem chi tiết từng tệp)"
         elif job['warnings']:
             job['stage'] = f"Đã đọc; {len(job['warnings'])} cảnh báo cần kiểm tra"
         else:
-            job['stage'] = 'Chờ nhân viên xác minh'
+            job['stage'] = 'Đã đối chiếu; mở Sai lệch & xử lý'
     except InterruptedError:
         final_status = 'cancelled'
         job['stage'] = 'Đã hủy'

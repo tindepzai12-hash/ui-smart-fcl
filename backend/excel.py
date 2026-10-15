@@ -97,6 +97,8 @@ def numeric(raw, verified):
 def build(path, case, documents, records, checks, audit, mode='Draft', workbook_type='A', selected=None, version=1):
     requirements=json.loads(case['requirements']) if isinstance(case['requirements'],str) else case['requirements']
     commercial=commercial_profile(requirements,case['mode'])
+    if commercial:
+        checks=[c for c in checks if not c['key'].startswith('classification:')]
     names=list(SHEETS)
     if commercial: names[1]='THONG_TIN_CHUNG_TU'
     expected=[n for i,n in enumerate(names) if not (commercial and i==3)]
@@ -121,10 +123,10 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
             ['Nghiệp vụ', case['mode']],
             ['Số chứng từ', len(documents)],
             *([] if commercial else [['Container vật lý (duy nhất)', f"{len(unique_containers)} container vật lý / {len(cont_records)} bản ghi nguồn"]]),
-            *([['Checklist', 'Packing List · Booking · Invoice · Hợp đồng/PO · C/O (nếu có)']] if commercial else []),
+            *([['Checklist', 'Packing List · Booking · Invoice · Hợp đồng/PO · Arrival Notice · C/O (nếu có)']] if commercial else []),
             ['Phương pháp', 'Local / OpenAI theo từng nguồn'],
             ['Tạo lúc', case['created_at']],
-            ['Duyệt lúc', case.get('reviewed_at') or 'Chưa hoàn thành duyệt Reviewed'],
+            ['Duyệt lúc', case.get('reviewed_at') or ('Báo cáo đối chiếu; không yêu cầu duyệt từng trường' if commercial else 'Chưa hoàn thành duyệt Reviewed')],
             ['Xuất lúc', now()],
             ['Trạng thái xuất', mode],
             ['Loại workbook', workbook_type],
@@ -133,7 +135,7 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
             ['Phiên bản', version],
             ['Phạm vi', 'Hồ sơ làm việc nội bộ, không phải tờ khai chính thức hay mẫu import VNACCS.'],
             ['Dữ liệu thương mại', 'Chỉ chia sẻ workbook với người được phép.'],
-            ['Ý nghĩa phiên bản', 'Bản Draft giữ nguyên các bản ghi chờ xác minh và cảnh báo. Bản Reviewed xác nhận nhân viên đã kiểm tra hết các cổng nội bộ.'],
+            ['Ý nghĩa phiên bản', 'Báo cáo giữ nguyên các giá trị máy đọc, hiệu chỉnh và cảnh báo. Không phát hiện sai lệch không chứng minh hồ sơ đầy đủ hay hợp lệ.' if commercial else 'Bản Draft giữ nguyên các bản ghi chờ xác minh và cảnh báo. Bản Reviewed xác nhận nhân viên đã kiểm tra hết các cổng nội bộ.'],
         ],
     )
     grouped = {}

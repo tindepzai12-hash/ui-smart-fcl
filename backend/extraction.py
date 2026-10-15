@@ -5,6 +5,11 @@ from .normalize import normalize,decimal_text
 CLASS_RULES=[('Booking',r'booking\s+(?:confirmation|confirm|note|acknowledge?ment)|^booking$|xác nhận đặt chỗ'),('Packing List',r'packing\s+list'),('Sea Waybill',r'sea\s+waybill'),('B/L',r'bill\s+of\s+lading'),('AWB',r'air\s+waybill'),('C/O',r'certificate\s+of\s+origin'),('Arrival Notice',r'arrival\s+notice|notice of arrival'),('Delivery Order',r'delivery\s+order'),('Freight Invoice',r'freight\s+invoice'),('Invoice',r'commercial\s+invoice|^invoice$'),('Purchase Order',r'purchase\s+order'),('Contract',r'sales?\s+contract|(?:sales?|purchase)\s+agreement|^contract$|hợp\s+đồng(?:\s+mua\s+bán)?'),('Insurance',r'insurance\s+certificate'),('Import Permit',r'import\s+permit|import license'),('Phytosanitary Certificate',r'phytosanitary\s+certificate'),('Inspection Certificate',r'inspection\s+certificate')]
 
 def classify(pages):
+    if len(pages)>1:
+        parts=[classify([p]) for p in pages]
+        kinds={k for k,_ in parts}-{'Other'}
+        if kinds=={'Invoice','Packing List'}:
+            return 'Invoice & Packing List',next(q for k,q in parts if k=='Packing List')
     # Only document headings, never a contract's list of required attachments or a B/L reference label.
     lines=[line.strip() for p in pages[:1] for line in p['text'].splitlines() if line.strip()]
     for line in lines:
@@ -22,6 +27,13 @@ def classify(pages):
                 return kind,line
     # A carrier's arrival notice often has its title embedded in a logo/raster stamp.
     text='\n'.join(lines)
+    for kind,pattern in [
+        ('Customs Declaration',r'(?im)^Tờ khai hàng hóa (?:xuất|nhập) khẩu[^\n]*$'),
+        ('Customs Release',r'(?im)^ĐỦ ĐIỀU KIỆN QUA KHU VỰC GIÁM SÁT HẢI QUAN\s*$'),
+        ('Warehouse Receipt',r'(?im)^(?:YÊU CẦU|PHIẾU) NHẬP KHO\s*$'),
+    ]:
+        m=re.search(pattern,text)
+        if m:return kind,m.group(0).strip()
     arrival=re.search(r'(?im)^.*(?:est\.?\s*arrival\s*date|estimated\s*time\s*of\s*arrival)\s*:\s*[^\n]+',text)
     if arrival and re.search(r'(?i)free\s*time\s*until',text):
         return 'Arrival Notice',arrival.group(0).strip()

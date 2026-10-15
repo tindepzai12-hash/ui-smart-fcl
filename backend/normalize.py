@@ -7,7 +7,7 @@ UNITS = {
     'MT': 'MT', 'TONNES': 'MT', 'TONNE': 'MT',
     'LBS': 'LB', 'LB': 'LB',
     'PCS': 'PCS', 'PIECES': 'PCS', 'PIECE': 'PCS',
-    'CARTONS': 'CTN', 'CTNS': 'CTN', 'CARTON': 'CTN', 'CTN': 'CTN',
+    'CARTONS': 'CTN', 'CTNS': 'CTN', 'CARTON': 'CTN', 'CTN': 'CTN', 'CT':'CTN',
     'PALLETS': 'PLT', 'PALLET': 'PLT',
     'PKGS': 'PKG', 'PACKAGES': 'PKG', 'PACKAGE': 'PKG',
     'SETS': 'SET', 'CBM': 'CBM', 'M3': 'CBM',
@@ -71,7 +71,8 @@ def normalize(raw, kind='text'):
         result['text'] = raw.upper()
     elif kind == 'date':
         # Month names make this printed punctuation unambiguous; retain raw separately.
-        date_text = re.sub(r'[,\.]', ' ', raw) if re.fullmatch(r'\d{1,2}[, .-]+[A-Za-z]{3,9}[,. ]+\d{4}',raw) else raw
+        named_date = re.fullmatch(r'(?:\d{1,2}[, .-]+[A-Za-z]{3,9}[,. ]+\d{4}|[A-Za-z]{3,9}[,. ]+\d{1,2}[,. ]+\d{4})',raw)
+        date_text = re.sub(r'[,\.]', ' ', raw) if named_date else raw
         date_text = re.sub(r'\s+',' ',date_text).strip()
         found = None
         matched_fmt = None

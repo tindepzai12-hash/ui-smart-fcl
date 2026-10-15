@@ -1,127 +1,107 @@
 # Hướng dẫn nhân viên xử lý hồ sơ U&I SMART
 
-5 bước làm việc: tải & nhận diện → kiểm trường → đối chiếu → checklist → duyệt & xuất Excel.
+4 bước: tải chứng từ cùng một lô → AI đọc & đối chiếu → xử lý sai lệch → xuất báo cáo.
 
-Dành cho nhân viên chứng từ U&I/FWD. Phạm vi hiện tại gồm Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng, Arrival Notice và C/O nếu có. Không yêu cầu dữ liệu container, seal, B/L hay chỉ tiêu khai hải quan.
+Dành cho nhân viên chứng từ U&I/FWD. Không cần xác minh lần lượt mọi trường. Sáu nhóm chính vẫn là Packing List, Booking, Invoice, Hợp đồng/PO, Arrival Notice và C/O nếu có. Tờ khai, danh sách qua giám sát và phiếu nhập kho có thể làm nguồn đối chiếu bổ sung; tài liệu không liên quan vào Giấy tờ khác.
 
-## Ví dụ làm việc: hồ sơ sầu riêng nhập khẩu (giả lập)
+## Ví dụ thật: bộ HS XUAT SAI GW
 
-Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nút nạp riêng trong hồ sơ trống; đây không phải chứng từ thương mại thật.
+Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là ví dụ xuất khẩu để kiểm thử sai lệch trọng lượng, không phải bộ nhập khẩu đầy đủ.
 
-- **Người bán / người mua:** THAI FRUIT DEMO / MINH AN FRUIT DEMO — tên giả lập
-- **5 nhóm cần có:** PL-DUR-001 · BK-DUR-001 · INV-DUR-001 · SC-DUR-001 (hoặc PO-DUR-001) · Arrival Notice tham chiếu B/L của lô
-- **C/O:** CO-DUR-001 nếu khách gửi. Không có C/O vẫn tiếp tục kiểm 5 nhóm còn lại.
-- **Số lượng / đóng gói:** 18.000 kg hàng; 1.000 thùng; NW 18.000 kg; GW 19.500 kg
-- **Trị giá hóa đơn:** 18.000 kg × 4,50 USD/kg = 81.000 USD; CIF Cát Lái, Incoterms 2020
-- **Booking:** Laem Chabang → Cát Lái; thời gian và số lượng là dự kiến, cần kiểm đúng phiên bản.
+- **Packing List:** Gross 489.00 KG; net 391.20 KG; 56 cartons; 1200 PCS.
+- **Tờ khai 307537505830:** Tổng trọng lượng hàng (Gross): 515,08 KGM.
+- **Sai lệch cần xem:** Gross chênh 26,08 kg. Chưa thể quyết định giấy nào đúng chỉ từ số đông.
+- **Phiếu nhập kho:** Weight 515.080 không ghi gross/net; giữ vai trò riêng, không dùng để tự sửa gross.
 
 
-## Bước 1. Tải file và xác nhận đúng loại
+## Bước 1. Tải bộ chứng từ của cùng một lô
 
-**Việc nhân viên làm:** Nhận Packing List, Booking, Invoice, Arrival Notice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.
+**Việc nhân viên làm:** Tạo một hồ sơ cho một lô; tải các PDF hoặc ảnh của lô đó.
 
-**Thao tác trên web:** Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → chọn OpenAI, tích đồng ý gửi nội dung → Đọc tệp này. Chỉ tệp vừa chọn được xử lý; thông tin không có nguồn vẫn để thiếu.
+**Thao tác trên web:** Tạo hồ sơ → Thêm chứng từ; có thể chọn nhiều tệp.
 
-**Kiểm tra trong ví dụ sầu riêng:** Dù file tên 1.pdf, nội dung PACKING LIST phải nhận là Packing List. SALES CONTRACT nhận Contract; PURCHASE ORDER nhận Purchase Order. Không đổi PO thành Contract để đủ checklist.
+**Kiểm tra trong bộ ví dụ:** Bộ ví dụ gồm Packing List + Invoice, tờ khai, danh sách qua giám sát và phiếu nhập kho.
 
-**Khi nào chuyển bước?:** Các file đã đọc, loại đã được kiểm theo nội dung; mỗi file hoặc nhóm trang chứa đúng một chứng từ.
+**Khi nào chuyển bước?:** Đủ các tệp khách thực tế gửi; tài liệu không liên quan được giữ riêng.
 
-**Nếu chưa đạt:** Không rõ loại: xem tiêu đề và mục đích nội dung, kiểm bản gốc rồi chọn lại. Scan mờ: xin bản rõ hơn. C/O không có thì bỏ qua; không cần tạo file trống. Tệp lỗi hoặc ảnh chưa đủ rõ vẫn cần kiểm tra; không tự coi là giấy tờ không liên quan.
+**Nếu chưa đạt:** Không lấy chứng từ lô khác để lấp mục thiếu. Nếu PDF gộp nhiều loại ngoài PL+Invoice, tách trang theo gợi ý rồi đọc.
 
 
 
-## Bước 2. Kiểm những gì máy đã đọc
+## Bước 2. Cho AI đọc và đối chiếu
 
-**Việc nhân viên làm:** Kiểm trường và dòng hàng từ bản gốc. AI/OCR hỗ trợ đọc, trạng thái chờ xác minh không có nghĩa chứng từ sai.
+**Việc nhân viên làm:** Chọn OpenAI và đồng ý gửi nội dung chứng từ cho yêu cầu này.
 
-**Thao tác trên web:** Mở Xác minh → chọn bản ghi → Xem nguồn. Kiểm trang, câu trích dẫn và vùng được đánh dấu. Sai thì sửa, ghi lý do, lưu rồi Xác minh. Máy không xác định được tọa độ thì kiểm trang/câu nguồn; không coi khung gần đó là bằng chứng chắc chắn. Thông tin chứng từ là các bản ghi theo từng nguồn; Dòng hàng hóa là từng mặt hàng trong bảng, không phải số kiện/container.
+**Thao tác trên web:** Chứng từ → AI hỗ trợ · OpenAI → đồng ý gửi → Đọc & đối chiếu.
 
-**Kiểm tra trong ví dụ sầu riêng:** Invoice: số/ngày, người bán/mua, USD, tổng 81.000. PL: số PL chỉ kiểm nếu bản gốc có ghi; 1.000 thùng, GW 19.500 kg và NW 18.000 kg giữ riêng. Booking: số BK, cảng đi/đến, ETD/ETA nếu ghi. Arrival Notice: số B/L tham chiếu, tàu/chuyến, ETA nếu có; không thay Booking. Hợp đồng/PO: số riêng và điều kiện giao dịch nếu ghi.
+**Kiểm tra trong bộ ví dụ:** Máy đọc riêng gross 489.00 và gross 515,08, giữ đúng trang nguồn.
 
-**Khi nào chuyển bước?:** Các bản ghi dùng để xuất đã được nhân viên đối chiếu bản gốc và xác minh; dữ liệu không đọc được đã có nguồn bổ sung.
+**Khi nào chuyển bước?:** Tác vụ hoàn tất; tự chuyển sang Sai lệch & xử lý.
 
-**Nếu chưa đạt:** Giấy ghi 81.000 nhưng AI ra 87.000: sửa giá trị trích xuất thành 81000, không sửa giấy gốc. Không có dữ liệu thì yêu cầu khách bổ sung, không đoán.
-
-
-
-## Bước 3. Giải quyết các mục đối chiếu
-
-**Việc nhân viên làm:** Kiểm liên kết số Invoice, bên mua/bán, xuất xứ, số lượng, tiền tệ, điều kiện và phép tính trên Invoice. Chỉ so cùng đơn vị và cùng phạm vi.
-
-**Thao tác trên web:** Mở Đối chiếu → chọn Chưa xử lý → Xem nguồn từng bên. Lỗi máy đọc: sửa bản ghi tại nguồn. Giấy thực sự khác nhau: xin xác nhận/phiên bản đúng từ khách; chỉ ghi lý do xử lý khi có căn cứ.
-
-**Kiểm tra trong ví dụ sầu riêng:** 18.000 × 4,50 = 81.000. Không so NW 18.000 với GW 19.500. Booking dự kiến 20.000 kg hoặc hợp đồng tổng 100.000 kg chưa chứng minh lô 18.000 kg sai.
-
-**Khi nào chuyển bước?:** Mỗi cảnh báo có kết quả kiểm theo nguồn hoặc lý do xử lý cụ thể. Trạng thái khớp máy không thay xác minh bản gốc.
-
-**Nếu chưa đạt:** Khác số hợp đồng hoặc hóa đơn tham chiếu: kiểm đúng lô, bản sửa và phạm vi giao trước khi xử lý. Không bấm bỏ qua chỉ để mở khóa Reviewed.
+**Nếu chưa đạt:** Nếu lỗi key/kết nối, chưa coi AI đã kiểm xong. Local vẫn có đối chiếu số liệu đã đọc; thông báo phạm vi rõ trên màn hình.
 
 
 
-## Bước 4. Rà 6 nhóm và trường còn thiếu
+## Bước 3. Mở lý do và xử lý chỗ sai lệch
 
-**Việc nhân viên làm:** Xem còn thiếu nhóm chứng từ nào, trường cốt lõi nào. Không yêu cầu mọi trường của mọi mẫu phải có.
+**Việc nhân viên làm:** Ưu tiên Sai lệch số liệu, sau đó Cần làm rõ; không duyệt mọi trường.
 
-**Thao tác trên web:** Mở Checklist & trường kiểm tra → mở từng nhóm. Xem nguồn để kiểm giá trị, Bổ sung từ nguồn để nhập trường máy bỏ sót; chọn đúng file/trang và ghi căn cứ. Nếu đơn vị không yêu cầu một nhóm trong tình huống cụ thể, ghi lý do tại nhóm đó.
+**Thao tác trên web:** Sai lệch & xử lý → Xem lý do → so sánh các ô cạnh nhau → Hiện bản gốc có đánh dấu.
 
-**Kiểm tra trong ví dụ sầu riêng:** Có Sales Contract hoặc PO là đủ nhóm Hợp đồng/Đơn đặt hàng; có cả hai thì giữ riêng để xem. Không có C/O không chặn. Có C/O thì kiểm số và xuất xứ cùng các dữ liệu đọc được.
+**Kiểm tra trong bộ ví dụ:** Xem đúng nhãn Gross trên PL và tờ khai. Không so gross với net 391.20 hoặc Weight chưa rõ vai trò.
 
-**Khi nào chuyển bước?:** Đủ các nhóm đang yêu cầu và trường cốt lõi, không còn mục thiếu chưa xử lý. Các trường có ghi thì kiểm không phải danh sách bắt buộc chung.
+**Khi nào chuyển bước?:** Nếu OCR/AI đọc sai: nhập lại đúng ô kèm căn cứ; đối chiếu số liệu cập nhật ngay. Nếu hai giấy gốc khác nhau: yêu cầu khách gửi bản sửa hoặc ghi rõ cách xử lý.
 
-**Nếu chưa đạt:** Bổ sung từ nguồn cần chọn chứng từ đã tải và trang chứa giá trị. Thiếu chứng từ thật: nhờ khách cung cấp; không lấy số ở file khác để giả làm nguồn.
+**Nếu chưa đạt:** Sửa giá trị làm việc không sửa PDF gốc. Không đổi tất cả nguồn cho khớp. Sau sửa, nhận xét ngữ nghĩa AI sẽ báo cần chạy lại. Khác biệt hợp đồng/booking có thể do phạm vi, giao nhiều đợt hoặc kế hoạch thay đổi.
 
 
 
-## Bước 5. Duyệt và bàn giao Excel
+## Bước 4. Xuất báo cáo và bàn giao
 
-**Việc nhân viên làm:** Bàn giao dữ liệu đúng phiên bản và nêu rõ mục còn chờ. Reviewed là đã qua kiểm dữ liệu nội bộ, không phải hồ sơ pháp lý đã được phê duyệt.
+**Việc nhân viên làm:** Xem Thiếu nguồn và Một nguồn để biết phần chưa đối chiếu được.
 
-**Thao tác trên web:** Hoàn thành kiểm tra khi hết điều kiện chặn → Xuất Excel → Xuất bản đã duyệt. Nếu cần trao đổi trước, Xuất bản nháp, người nhận sẽ thấy trạng thái chưa kiểm. Sau khi sửa dữ liệu phải kiểm lại phiên bản mới.
+**Thao tác trên web:** Xuất Excel → Tải báo cáo Excel.
 
-**Kiểm tra trong ví dụ sầu riêng:** Excel gồm 6 sheet: tổng quan, thông tin chứng từ, chi tiết hàng, đối chiếu, thiếu/cần xác minh, nguồn/lịch sử. Không có bảng container hoặc yêu cầu mã khai báo.
+**Kiểm tra trong bộ ví dụ:** Báo cáo vẫn giữ giá trị nguồn, lỗi, ghi chú và lịch sử trước/sau sửa.
 
-**Khi nào chuyển bước?:** Người nhận có file đúng trạng thái, bản chứng từ tương ứng và danh sách việc còn chờ nếu xuất Draft.
+**Khi nào chuyển bước?:** Có báo cáo để trao đổi với khách hoặc đồng nghiệp; không cần xác minh từng trường để xuất.
 
-**Nếu chưa đạt:** Reviewed bị khóa: mở Xác minh và xử lý các điều kiện chặn. Web không tự gửi email hoặc nộp tờ khai.
+**Nếu chưa đạt:** Không có cảnh báo không chứng minh bộ chứng từ đầy đủ, hợp lệ pháp lý hoặc đã được hải quan chấp nhận.
 
 ## Ba tình huống để biết phải xử lý thế nào
 
-### Khách gửi PO thay Sales Contract
+### Hai Packing List cùng lô ghi gross khác nhau
 
-Giữ loại Purchase Order, kiểm số PO. Checklist nhóm Hợp đồng/Đơn đặt hàng được đáp ứng; không bắt khách có thêm Sales Contract trong phạm vi kiểm nội bộ này.
+Hiện Sai lệch với cả hai nguồn; bấm Xem lý do. Không tự chọn file mới hoặc số xuất hiện nhiều hơn.
 
-### Không có C/O
+### Hợp đồng cho nhiều lần giao, Invoice chỉ một lần
 
-Không tạo file hoặc nhập xuất xứ giả. Bỏ qua nhóm C/O, tiếp tục các nhóm còn lại. Nếu khách gửi sau thì tải thêm và kiểm riêng.
+Giữ cảnh báo Cần làm rõ phạm vi; đọc điều khoản shipment/partial delivery. Không ép tổng hợp đồng bằng một Invoice.
 
-### Booking và PL khác khối lượng
+### Chỉ có một nguồn hoặc chữ scan không rõ
 
-Kiểm cùng đơn vị, trọng lượng cả bì/tịnh, ngày sửa booking và phạm vi giao. Booking là kế hoạch: ghi căn cứ sau khi đã xác nhận, không tự sửa số thật trên giấy để ép khớp.
+Ghi Một nguồn hoặc Cần làm rõ. Không coi là khớp và không đoán giá trị thiếu.
 
 ## Phần việc thực hiện bên ngoài U&I SMART
 
 - Trao đổi với khách để xác nhận sai lệch thực tế và xin chứng từ rõ/đúng phiên bản.
 - Các thủ tục hải quan, giấy phép, kiểm tra chuyên ngành và giao nhận thực hiện theo quy trình riêng của đơn vị.
 
-Đây là checklist chứng từ thương mại do dự án lựa chọn. Kết quả đọc không xác thực chữ ký, C/O hoặc tính hợp pháp của giao dịch. Không phải bộ hồ sơ pháp lý đầy đủ cho mọi lô FCL.
+AI hỗ trợ đọc và gợi ý ngữ nghĩa. Đối chiếu số học dùng quy tắc và đơn vị rõ ràng. Nhân viên quyết định nguồn đúng; web không tự sửa giấy gốc hoặc tự nộp tờ khai.
 
 Nguồn: [Phạm vi và thao tác U&I SMART](https://ui-smart-fcl.onrender.com/). Hướng dẫn khớp phạm vi 6 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập.
 
 ## Khi gặp vấn đề với web
 
-### Chọn loại thủ công rồi nhưng chưa có trường dữ liệu
+### OpenAI chưa hoàn tất
 
-Chọn loại chỉ xác định nhóm trường cần tìm. Bấm Đọc tệp này hoặc Đọc lại tệp này để trích xuất theo loại vừa xác nhận; với OpenAI phải tích đồng ý gửi nội dung. Máy chỉ điền giá trị có bằng chứng trong tệp, không tự tạo dữ liệu cho đủ checklist. Nếu tiêu đề mâu thuẫn với loại chọn, kiểm bản gốc và sửa loại.
+Kiểm tra Cài đặt/Render và thông báo lỗi. Không xem kết quả Local như đã được OpenAI kiểm ngữ nghĩa.
 
-### Không tìm thấy nguồn
+### Không thấy ô được đánh dấu
 
-Bấm Xem nguồn ở bản ghi hoặc bảng checklist. Kiểm trang gốc và câu trích dẫn; nếu không có tọa độ đáng tin thì web không khẳng định vị trí chính xác.
+Mở vùng nguồn; nếu nhiều vị trí khớp hoặc OCR không định vị được, kiểm nguyên trang và nhãn.
 
-### AI chưa kết nối
+### Mất dữ liệu sau Render khởi động lại
 
-Cài đặt → Kiểm tra kết nối. OpenAI vẫn được giữ; API key Environment trên Render không thay đổi khi cập nhật mã. Local là lựa chọn đọc khác, không phải kết quả OpenAI.
-
-### Render đang khởi động hoặc mất hồ sơ
-
-Đợi máy chủ thức dậy. Gói Free lưu tạm có thể mất dữ liệu khi cập nhật/khởi động. Nếu cần giữ hồ sơ, dùng sao lưu trong Cài đặt.
+Render Free lưu dữ liệu tạm. Xuất báo cáo hoặc backup trước khi máy chủ triển khai lại.
 

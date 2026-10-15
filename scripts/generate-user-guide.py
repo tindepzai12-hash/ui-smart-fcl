@@ -16,7 +16,7 @@ for label,value in s['facts']:
 body+='</dl></section><nav aria-label="Các bước xử lý hồ sơ"><h2>Nhân viên làm theo thứ tự</h2><ol>'
 for i,s in enumerate(g['steps'],1):body+=f'<li><a href="#guide-{esc(s["id"])}">Bước {i}: {esc(s["title"])}</a></li>'
 body+='</ol></nav>'
-labels=[('task','Việc nhân viên làm'),('action','Thao tác trên web'),('check','Kiểm tra trong ví dụ sầu riêng'),('done','Khi nào chuyển bước?'),('problem','Nếu chưa đạt')]
+labels=[('task','Việc nhân viên làm'),('action','Thao tác trên web'),('check','Kiểm tra trong bộ ví dụ'),('done','Khi nào chuyển bước?'),('problem','Nếu chưa đạt')]
 for i,s in enumerate(g['steps'],1):
     body+=f'<section id="guide-{esc(s["id"])}"><h2>Bước {i}. {esc(s["title"])}</h2><dl>'
     md+=f'\n\n## Bước {i}. {s["title"]}\n\n'

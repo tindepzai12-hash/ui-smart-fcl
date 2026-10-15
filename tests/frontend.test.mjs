@@ -16,6 +16,19 @@ const apiSource = fs.readFileSync(path.join(root, 'frontend/api.ts'), 'utf8');
 const apiJs = compileTsx(apiSource, 'api.ts');
 const helper = await import('data:text/javascript;base64,' + Buffer.from(apiJs).toString('base64'));
 
+test('Shipment flow focuses exceptions and allows an honest report without verifying every field',()=>{
+  const current={case:{revision:2},documents:[{status:'read',type_verified:false}],records:[{status:'pending'}],
+    consistency:{ai_state:'completed',open_count:1},exports:[]};
+  let steps=helper.computeStepStates(current);
+  assert.equal(steps.length,4);assert.equal(steps[1].done,true);
+  assert.equal(steps[2].partial,true);assert.equal(steps[3].done,false);
+  current.consistency.open_count=0;current.exports=[{case_revision:2,mode:'Draft'}];
+  steps=helper.computeStepStates(current);
+  assert.equal(steps[2].done,true);assert.equal(steps[3].done,true);
+  current.consistency.ai_state='stale';
+  assert.equal(helper.computeStepStates(current)[1].done,false);
+});
+
 const mainSource = fs.readFileSync(path.join(root, 'frontend/main.tsx'), 'utf8');
 const strippedMain = mainSource
   .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')

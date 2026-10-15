@@ -38,6 +38,7 @@ def migrate():
         if 'extraction_required' not in columns:
             c.execute('ALTER TABLE documents ADD COLUMN extraction_required INTEGER NOT NULL DEFAULT 0')
         c.execute('PRAGMA journal_mode=WAL')
+        c.execute('CREATE TABLE IF NOT EXISTS packet_reviews (case_id TEXT PRIMARY KEY REFERENCES cases(id) ON DELETE CASCADE, signature TEXT NOT NULL, payload TEXT NOT NULL, error TEXT NOT NULL, created_at TEXT NOT NULL)')
         # Recover work interrupted by an application restart. Files are retained.
         c.execute("UPDATE documents SET status='error', error='Xử lý bị gián đoạn. Chọn thử lại.' WHERE status='reading'")
         c.execute("UPDATE cases SET status='Needs verification' WHERE status='Reading'")

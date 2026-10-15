@@ -15,7 +15,9 @@ def suggest(pages):
 
 
 def is_mixed(pages):
-    return len({g['type'] for g in suggest(pages)} - {'Other'}) > 1
+    kinds={g['type'] for g in suggest(pages)}-{'Other'}
+    # A common two-part commercial packet can be read with page-specific provenance.
+    return len(kinds)>1 and not kinds.issubset({'Invoice','Packing List','Invoice & Packing List'})
 
 
 def validate_ranges(groups, total):

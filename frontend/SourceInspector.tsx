@@ -21,7 +21,7 @@ function SourceText({text,raw,evidence}:any) {
   return <pre>{start<0?text:<>{text.slice(0,start)}<mark ref={anchor}>{text.slice(start,end)}</mark>{text.slice(end)}</>}</pre>;
 }
 
-export function SourceInspector({record,title,reason,busy,onClose,onVerify,onNext,onEdit,onSave}:any) {
+export function SourceInspector({record,title,reason,busy,onClose,onVerify,onNext,onEdit,onSave,exceptionMode=false}:any) {
   const [data,setData]=useState<any>(null);
   const [error,setError]=useState('');
   const [attempt,setAttempt]=useState(0);
@@ -58,7 +58,7 @@ export function SourceInspector({record,title,reason,busy,onClose,onVerify,onNex
     <div className="source-value"><span>Giá trị đang làm việc</span>{editing && record.kind==='field'?
       <div className="source-inline-editor"><input ref={editor} aria-label="Sửa giá trị tại nguồn" value={draft} onChange={e=>setDraft(e.target.value)} disabled={saving||busy}/><button className="btn small" disabled={saving||busy||!draft.trim()} onClick={saveDraft}>Lưu sửa</button></div>:<strong>{textValue(record.value)||'—'}</strong>}
       {raw && raw!==textValue(record.value) && <small>Máy đọc gốc: {raw}</small>}
-      <p>{reason || 'Chưa được nhân viên xác minh; chưa có nghĩa là máy đọc sai.'}</p></div>
+      <p>{reason || 'Giá trị máy đọc có nguồn; xem nhãn và đơn vị trước khi sửa.'}</p></div>
     {error && <div className="source-notice" role="alert"><p>{error}</p><button className="btn small" onClick={()=>setAttempt(attempt+1)}>Thử định vị lại</button></div>}
     {!data && !error && <div className="source-loading" role="status"><Loader2 className="spin" size={20}/> Đang định vị chữ trên bản gốc…</div>}
     {data && <>
@@ -84,9 +84,9 @@ export function SourceInspector({record,title,reason,busy,onClose,onVerify,onNex
     <footer className="source-review-actions"><button className="btn small" disabled={saving||busy} onClick={()=>{
       if(record.kind!=='field'){onEdit();return;}setEditing(true);setTimeout(()=>editor.current?.focus(),0);
     }}>Sửa giá trị</button>
-      <button className="btn small primary" disabled={busy||saving||!draft.trim()||record.status==='verified'||!!record.value?.warning||!data} onClick={saveAndVerify}><Check size={15}/> {saving?'Đang lưu…':'Đúng, xác minh & tiếp'}</button>
-      <button className="text-btn" disabled={busy||saving} onClick={()=>{
+      {!exceptionMode&&<button className="btn small primary" disabled={busy||saving||!draft.trim()||record.status==='verified'||!!record.value?.warning||!data} onClick={saveAndVerify}><Check size={15}/> {saving?'Đang lưu…':'Đúng, xác minh & tiếp'}</button>}
+      {!exceptionMode&&<button className="text-btn" disabled={busy||saving} onClick={()=>{
         if(draft!==textValue(record.value)){setError('Bạn đang sửa giá trị. Bấm Lưu sửa trước khi chuyển mục, hoặc đóng và mở lại nguồn để bỏ bản sửa chưa lưu.');return;}onNext();
-      }}>Để sau, mục tiếp <ChevronRight size={15}/></button></footer>
+      }}>Để sau, mục tiếp <ChevronRight size={15}/></button>}</footer>
   </section>;
 }

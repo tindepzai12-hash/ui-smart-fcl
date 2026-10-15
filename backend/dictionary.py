@@ -138,6 +138,25 @@ REVIEW_FIELDS=list(dict.fromkeys(key for group in REVIEW_GROUPS for key in group
 PROFILE_TYPES=['Packing List','Booking','Invoice','C/O','Contract','Arrival Notice']
 # Subtypes share a checklist group; they remain distinct when recognized from content.
 PROFILE_VARIANTS=PROFILE_TYPES+['Purchase Order','Invoice & Packing List']
+# Supporting documents participate in shipment consistency, not the six-type checklist.
+SUPPORTING_TYPES=['Customs Declaration','Customs Release','Warehouse Receipt']
+COMPARISON_TYPES=PROFILE_VARIANTS+SUPPORTING_TYPES
+TYPES+=SUPPORTING_TYPES
+DOCUMENT_LABELS.update({'Customs Declaration':'Tờ khai hải quan','Customs Release':'Danh sách hàng qua giám sát','Warehouse Receipt':'Phiếu / yêu cầu nhập kho'})
+for key,label,aliases,value_type,kinds in [
+    ('declaration_number','Số tờ khai',['số tờ khai','declaration no'],'text',SUPPORTING_TYPES[:2]),
+    ('declared_weight','Tổng trọng lượng khai báo (chưa rõ gross/net)',['tổng trọng lượng hàng'],'weight',['Customs Release']),
+    ('cargo_weight','Trọng lượng chưa ghi rõ gross/net',['trọng lượng','weight','cargo weight'],'weight',['Warehouse Receipt','Booking']),
+    ('shipment_terms','Điều khoản giao hàng / giao từng phần',['shipment','partial shipment','delivery schedule','thời hạn giao hàng'],'text',['Contract','Purchase Order']),
+]:
+    FIELDS[key]={'id':key,'label':label,'aliases':aliases,'type':value_type,'documents':kinds,'class':'A','level':'document','human_review':True,'sheet':'THONG_TIN_KHAI_BAO','official_mapping':'Nội bộ — đối chiếu bằng chứng'}
+REVIEW_FIELDS+=['declaration_number','declared_weight','cargo_weight','shipment_terms']
+for key in ['gross_weight','net_weight','packages','goods_quantity','volume','booking','vessel','voyage','etd','invoice_number','seller','buyer','exporter','importer','cargo_description']:
+    kinds=(['Customs Declaration'] if key in ['gross_weight','net_weight','goods_quantity','invoice_number','seller','buyer','exporter','importer'] else SUPPORTING_TYPES)
+    FIELDS[key]['documents']=list(dict.fromkeys([*FIELDS[key]['documents'],*kinds]))
+for key in ['booking','vessel','voyage','etd','eta','cargo_description']:
+    FIELDS[key]['documents']=list(dict.fromkeys([*FIELDS[key]['documents'],'Invoice','Packing List','Invoice & Packing List']))
+FIELDS['gross_weight']['aliases']+=['tổng trọng lượng hàng (gross)']
 for spec in FIELDS.values():
     if any(k in spec['documents'] for k in ['Invoice','Packing List']):
         spec['documents']=list(dict.fromkeys([*spec['documents'],'Invoice & Packing List']))

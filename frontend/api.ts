@@ -179,6 +179,15 @@ export function humanCheckTitle(key: string, fieldsDict: Record<string, any> = {
 }
 
 export function computeStepStates(current: any) {
+  if(current?.consistency){
+    const r=current.consistency,docs=current.documents||[],read=docs.length>0&&docs.every((d:any)=>d.status==='read');
+    return [
+      {index:1,label:'Tải chứng từ',tab:'documents',done:docs.length>0,partial:false,detail:`${docs.length} tệp · cùng một lô`},
+      {index:2,label:'AI đọc & đối chiếu',tab:'documents',done:read&&r.ai_state==='completed',partial:docs.length>0&&(!read||r.ai_state!=='completed'),detail:r.ai_state==='completed'?'Đã đọc toàn hồ sơ':read?'Đã đọc · xem phạm vi AI':'Chưa đọc xong'},
+      {index:3,label:'Xử lý sai lệch',tab:'comparison',done:read&&r.open_count===0,partial:r.open_count>0,detail:`${r.open_count} điểm cần xử lý`},
+      {index:4,label:'Xuất báo cáo',tab:'export',done:(current.exports||[]).some((e:any)=>e.case_revision===current.case.revision),partial:false,detail:'Giữ nguồn & lịch sử'},
+    ];
+  }
   const docs = current?.documents || [];
   const records = (current?.records || []).filter((r: any) => r.status !== 'rejected');
   const checks = current?.checks || [];

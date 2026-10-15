@@ -156,7 +156,7 @@ def build_checks(case, documents, records):
             reason = 'Có đơn vị/số/ngày chưa rõ. Giữ nguyên giá trị gốc.'
         elif len(group) == 1:
             result = 'Not Yet Checked'
-            reason = 'Chỉ có một nguồn; cần nhân viên kiểm tra bản gốc.'
+            reason = 'Chỉ có một nguồn; chưa có dữ liệu độc lập để đối chiếu. Không coi đây là sai lệch.'
         elif len(set(values)) > 1:
             # Same field across multiple independent invoices cannot automatically be a conflict.
             doc_types = [s['type'] for s in sources]
@@ -169,10 +169,13 @@ def build_checks(case, documents, records):
             elif commercial and any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['port_loading','port_discharge','incoterms']:
                 result = 'Needs Verification'
                 reason = 'Cách ghi điều kiện/địa điểm trong hợp đồng hoặc PO khác chứng từ giao hàng. Kiểm địa điểm, lựa chọn cảng và phạm vi lô; chưa kết luận sai lệch.'
+            elif key in ['cargo_description','shipment_terms','payment_terms']:
+                result = 'Needs Verification'
+                reason = 'Cách diễn đạt hoặc mức độ chi tiết khác nhau. Cần so sánh ý nghĩa, mã hàng và điều khoản; khác câu chữ chưa chứng minh nội dung sai.'
             elif key.startswith('invoice_') and doc_types.count('Invoice') > 1:
                 result = 'Needs Verification'
                 reason = 'Nhiều hóa đơn; xác minh quan hệ chứng từ trước khi đối chiếu.'
-            elif key in ['gross_weight', 'packages'] and (doc_types.count('Packing List') > 1 or doc_types.count('B/L') > 1):
+            elif not commercial and key in ['gross_weight', 'packages'] and (doc_types.count('Packing List') > 1 or doc_types.count('B/L') > 1):
                 result = 'Needs Verification'
                 reason = 'Có nhiều chứng từ tổng lô; cần xác định phạm vi/quan hệ vận đơn.'
             elif key in ['goods_quantity', 'packages'] and len({r['value'].get('unit') for r in group}) > 1:
@@ -252,6 +255,11 @@ def build_checks(case, documents, records):
             weight_result = 'Needs Verification' if unclear or len(weights) < 2 else 'Matched' if len(set(values)) == 1 else 'Mismatch'
             add('container-weight:' + number, weight_result,
                 f'Trọng lượng riêng container {number}: đối chiếu {len(weights)} nguồn có ghi trọng lượng và đơn vị; không lấy tổng trọng lượng lô để chia đều cho container.', cont_sources)
+    if commercial:
+        from .consistency import additional_checks,ai_checks
+        checks.extend(additional_checks(documents,active))
+        existing={c['key'] for c in checks if c['result'] in ['Mismatch','Needs Verification']}
+        checks.extend(c for c in ai_checks(case.get('id'),documents,records) if 'field:'+c['key'].split(':',1)[1] not in existing)
     return checks
 
 def persist_checks(c, case, docs, records):
@@ -290,6 +298,10 @@ def human_check_label(key, docs_map=None):
     if key.startswith('field:'):
         sub = key.split(':', 1)[1]
         return FIELDS.get(sub, {}).get('label', sub)
+    if key.startswith('ai-semantic:'):
+        return 'AI · '+FIELDS.get(key.split(':',1)[1],{}).get('label',key.split(':',1)[1])
+    if key.startswith('weight-order:'):return 'Trọng lượng tịnh / cả bì'
+    if key.startswith('item:'):return 'Dòng hàng · '+key.split(':',1)[1]
     if key.startswith('arithmetic:'):
         return 'Nhân số lượng × đơn giá dòng hàng'
     if key.startswith('total:'):

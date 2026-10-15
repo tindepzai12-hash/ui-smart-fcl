@@ -24,6 +24,7 @@ import { PdfSplit } from './PdfSplit';
 import { SourceInspector } from './SourceInspector';
 import { UserGuide } from './UserGuide';
 import { OtherFiles } from './OtherFiles';
+import { DiscrepancyWorkbench } from './DiscrepancyWorkbench';
 
 type Any = any;
 
@@ -142,6 +143,7 @@ function App() {
   const [highlight, setHighlight] = useState('');
   const [findText, setFindText] = useState('');
   const [mode, setMode] = useState('local');
+  const modeInitialized = useRef(false);
   const [consent, setConsent] = useState(false);
   const [exportMode, setExportMode] = useState('Draft');
   const [workbookType, setWorkbookType] = useState('A');
@@ -155,6 +157,7 @@ function App() {
     const [c, h, d] = await Promise.all([api('/cases'), api('/health'), api('/dictionary')]);
     setCases(c);
     setHealth(h);
+    if(!modeInitialized.current){if(h.ai?.configured)setMode('openai');modeInitialized.current=true;}
     setDict(d);
     return c;
   };
@@ -209,7 +212,8 @@ function App() {
             if (j.errors?.length) {
               setError(j.errors.map((err: Any) => `${err.document}: ${err.error}`).join('\n'));
             }
-            notify('Đã xử lý. Kiểm tra nguồn và xác minh từng giá trị.');
+            setTab('comparison');
+            notify('Đã đọc & đối chiếu. Mở từng sai lệch để xem lý do.');
           } else {
             notify('Tác vụ đã dừng. Dữ liệu được giữ lại.');
           }
@@ -247,7 +251,7 @@ function App() {
       setJob(b.active_job || null);
       setConsent(false);
       setView('case');
-      setTab('documents');
+      setTab(b.records.length ? 'comparison' : 'documents');
       setSelectedDoc(b.documents[0]?.id || '');
       setPage(1);
       setRotation(0);
@@ -447,8 +451,8 @@ function App() {
       });
       replace(b);
       await refresh();
-      setSaveStates((prev) => ({ ...prev, [r.id]: { status: 'saved', message: 'Đã lưu · cần xác minh lại' } }));
-      notify('Đã lưu · cần xác minh lại');
+      setSaveStates((prev) => ({ ...prev, [r.id]: { status: 'saved', message: 'Đã lưu · đối chiếu đã cập nhật' } }));
+      notify('Đã lưu · đối chiếu đã cập nhật');
       return b.records.find((x: Any) => x.id === r.id) || r;
     } catch (e: Any) {
       setSaveStates((prev) => ({ ...prev, [r.id]: { status: 'save_error', message: e.message } }));
@@ -513,230 +517,9 @@ function App() {
 
   function renderNextActionBanner() {
     if (!current) return null;
-    if (job?.status === 'running') return <div className="processing-summary" role="status"><Loader2 size={16} className="spin"/> Đang đọc {job.index}/{job.total} tệp · {job.stage}. Chờ hoàn tất để kiểm tra nguồn.</div>;
-    const docs = current.documents || [];
-    const unreadDocs = docs.filter((d: Any) => d.status !== 'read');
-    const unverifiedDocs = docs.filter((d: Any) => d.status === 'read' && !d.type_verified);
-    const warningRecords = (current.records || []).filter((r: Any) => r.status !== 'rejected' && r.value?.warning);
-    const needsExtraction = docs.find((d: Any) => d.extraction_required);
-
-    if (needsExtraction) return <div className="next-action-bar">
-      <div><span className="badge info">Việc cần làm tiếp theo</span>
-        <strong>Đọc lại {needsExtraction.name} theo loại {needsExtraction.type} vừa xác nhận</strong>
-        <p>Chọn loại chỉ xác định nhóm trường cần tìm. Máy chỉ điền thông tin có bằng chứng trên bản gốc; dữ liệu thiếu vẫn để trống.</p>
-        {mode === 'openai' && !consent && <p>Để dùng OpenAI, tích đồng ý gửi nội dung ở thanh chế độ xử lý bên dưới.</p>}
-      </div>
-      <button className="btn primary" disabled={!canReadSelected} onClick={() => readDocument(needsExtraction.id)}>Đọc tệp này · {mode === 'openai' ? 'OpenAI' : 'Local'}</button>
-    </div>;
-
-    if (!docs.length) {
-      return (
-        <div className="next-action-bar">
-          <div>
-            <span className="badge info">Việc cần làm tiếp theo</span>
-            <strong>Tải Packing List, Booking, Invoice, Arrival Notice và Hợp đồng hoặc PO; thêm C/O nếu có</strong>
-            <p>Kéo thả hoặc chọn tệp từ máy tính để bắt đầu đọc và trích xuất dữ liệu local.</p>
-          </div>
-          <label className="btn primary upload-btn">
-            <Upload size={16} />
-            Thêm chứng từ
-            <input
-              type="file"
-              multiple
-              accept={health?.supported.join(',')}
-              hidden
-              onChange={(e) => {
-                if (e.target.files) upload(e.target.files);
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-      );
-    }
-    if (unreadDocs.length > 0) {
-      const mixed = docs.find((d: Any) => d.mixed_pdf);
-      if (mixed) return <div className="next-action-bar">
-        <div><span className="badge warn">PDF gồm nhiều chứng từ</span><strong>Tách {mixed.name} theo trang trước khi đối chiếu</strong><p>Đã đọc {mixed.pages.length} trang. Kiểm tra gợi ý phân nhóm, tách thành Packing List, Booking, Invoice, Arrival Notice, Hợp đồng/PO và C/O nếu có. File gốc được giữ lại.</p></div>
-        <button className="btn primary" disabled={loading || job?.status === 'running'} onClick={() => { setError(''); setDialog({ kind: 'split-pdf', document: mixed }); }}>Tách bộ PDF</button>
-      </div>;
-      return (
-        <div className="next-action-bar">
-          <div>
-            <span className="badge warn">Việc cần làm tiếp theo</span>
-            <strong>
-              Còn {unreadDocs.length}/{docs.length} tệp chưa đọc hoặc đọc lỗi ({unreadDocs.map((d: Any) => d.name).join(', ')})
-            </strong>
-            <p>Bấm “Đọc & trích xuất” để đọc nội dung văn bản/OCR và nhận diện các trường thông tin.</p>
-          </div>
-          <button
-            className="btn primary"
-            disabled={loading || job?.status === 'running' || (mode === 'openai' && !consent)}
-            onClick={() => {
-              setTab('documents');
-              run(async () => {
-                const j = await post('/cases/' + current.case.id + '/process', {
-                  mode,
-                  allow_external: mode === 'openai' && consent,
-                });
-                setJob(j);
-                replace(await api('/cases/' + current.case.id));
-              });
-            }}
-          >
-            <FileCheck2 size={16} />
-            Chạy đọc & trích xuất ngay
-          </button>
-        </div>
-      );
-    }
-    if (unverifiedDocs.length > 0) {
-      const targetDoc = unverifiedDocs[0];
-      return (
-        <div className="next-action-bar">
-          <div>
-            <span className="badge warn">Việc cần làm tiếp theo</span>
-            <strong>
-              Xác nhận loại chứng từ cho {unverifiedDocs.length} tệp ({unverifiedDocs.map((d: Any) => `${d.name} → ${d.type}`).join(', ')})
-            </strong>
-            <p>Loại chứng từ do máy nhận diện từ nội dung cần nhân viên kiểm tra và bấm “Xác nhận loại”.</p>
-          </div>
-          <div className="row">
-            <button
-              className="btn"
-              onClick={() => {
-                setTab('documents');
-                setSelectedDoc(targetDoc.id);
-                setPage(1);
-              }}
-            >
-              Xem {targetDoc.name}
-            </button>
-            <button
-              className="btn primary"
-              disabled={loading}
-              onClick={() =>
-                update(
-                  () => patch('/documents/' + targetDoc.id + '/classification', { type: targetDoc.type }),
-                  'Đã xác nhận loại ' + targetDoc.name
-                )
-              }
-            >
-              <Check size={16} />
-              Xác nhận {targetDoc.name} là {targetDoc.type}
-            </button>
-          </div>
-        </div>
-      );
-    }
-    if (warningRecords.length > 0) {
-      const firstWarn = warningRecords[0];
-      return (
-        <div className="next-action-bar">
-          <div>
-            <span className="badge warn">Việc cần làm tiếp theo</span>
-            <strong>Có {warningRecords.length} bản ghi có định dạng số / ngày / đơn vị mơ hồ cần chỉnh rõ</strong>
-            <p>{firstWarn.value?.warning}</p>
-          </div>
-          <button
-            className="btn primary"
-            onClick={() => {
-              setRecordGroup(firstWarn.kind);
-              chooseSource(firstWarn);
-            }}
-          >
-            Đi tới bản ghi cần sửa
-          </button>
-        </div>
-      );
-    }
-    if (unresolved.length > 0) {
-      return (
-        <div className="next-action-bar">
-          <div>
-            <span className="badge bad">Việc cần làm tiếp theo</span>
-            <strong>Còn {unresolved.length} mục đối chiếu / thiếu dữ liệu chưa xử lý</strong>
-            <p>Kiểm tra các mục Sai lệch, Thiếu hoặc Cần kiểm tra trong bảng Đối chiếu trước khi duyệt hồ sơ.</p>
-          </div>
-          <button
-            className="btn primary"
-            onClick={() => {
-              setCheckFilter('unresolved');
-              setTab('comparison');
-            }}
-          >
-            Mở {unresolved.length} mục cần đối chiếu
-          </button>
-        </div>
-      );
-    }
-    if (pending > 0) {
-      return (
-        <div className="next-action-bar">
-          <div>
-            <span className="badge warn">Việc cần làm tiếp theo</span>
-            <strong>Còn {pending} bản ghi ở trạng thái Chờ xác minh</strong>
-            <p>Đối chiếu từng giá trị với bằng chứng gốc rồi bấm “Xác minh” (không duyệt tự động hàng loạt).</p>
-          </div>
-          <div className="row">
-            <button className="btn primary" onClick={() => jumpToNextPending()}>
-              Bắt đầu kiểm tra ({pending})
-            </button>
-            <button className="btn" onClick={() => setTab('review')}>
-              Mở bàn Xác minh tổng hợp
-            </button>
-          </div>
-        </div>
-      );
-    }
-    if (!current.case.reviewed_at && current.blockers.length === 0) {
-      return (
-        <div className="next-action-bar ready">
-          <div>
-            <span className="badge good">Sẵn sàng duyệt</span>
-            <strong>Tất cả chứng từ, bản ghi và đối chiếu đã được xác minh đầy đủ</strong>
-            <p>Bạn có thể bấm “Hoàn thành kiểm tra” để chuyển hồ sơ sang trạng thái Đã kiểm tra (Reviewed).</p>
-          </div>
-          <button
-            className="btn primary"
-            disabled={loading}
-            onClick={() => update(() => post('/cases/' + current.case.id + '/review'), 'Đã hoàn thành kiểm tra hồ sơ')}
-          >
-            <ShieldCheck size={16} />
-            Hoàn thành kiểm tra hồ sơ
-          </button>
-        </div>
-      );
-    }
-    if (current.blockers.length) return (
-      <div className="next-action-bar">
-        <div><span className="badge warn">Kiểm tra xuất file</span><strong>Còn {current.blockers.length} điều kiện cần xử lý</strong><p>Mở danh sách để kiểm tra dữ liệu và điều kiện duyệt hồ sơ.</p></div>
-        <button className="btn primary" onClick={() => setTab('review')}>Mở kiểm tra hồ sơ</button>
-      </div>
-    );
-    return (
-      <div className="next-action-bar ready">
-        <div>
-          <span className="badge good">Đã duyệt Reviewed</span>
-          <strong>
-            Hồ sơ đã hoàn thành kiểm tra lúc {current.case.reviewed_at ? date(current.case.reviewed_at) : 'hiện tại'}
-          </strong>
-          <p>
-            Bạn có thể xuất workbook Reviewed chính thức. Mọi thao tác sửa/thêm dữ liệu sau thời điểm này sẽ tự động yêu cầu xác minh lại.
-          </p>
-        </div>
-        <button
-          className="btn primary"
-          onClick={() => {
-            setExportMode('Reviewed');
-            setTab('export');
-          }}
-        >
-          <Download size={16} />
-          Mở Xuất Excel Reviewed
-        </button>
-      </div>
-    );
+    if (job?.status === 'running') return <div className="processing-summary" role="status"><Loader2 size={16} className="spin"/> {job.stage} · {job.index}/{job.total} tệp</div>;
+    const count=current.consistency?.open_count||0;
+    return <div className="next-action-bar"><div><span className="badge info">Việc tiếp theo</span><strong>{current.records.length?`${count} điểm cần xử lý trong bộ chứng từ`:'Tải chứng từ của cùng một lô, rồi bấm Đọc & đối chiếu'}</strong><p>{current.records.length?'Mở “Sai lệch & xử lý” → Xem lý do → so sánh nguồn → nhập lại hoặc ghi căn cứ xử lý. Không cần xác minh lần lượt mọi trường.':'Nhận Packing List, Booking, Invoice, hợp đồng/PO, Arrival Notice và C/O nếu có. Chứng từ hỗ trợ được đối chiếu riêng; tài liệu không liên quan vào Giấy tờ khác.'}</p></div>{current.records.length>0&&<button className="btn primary" onClick={()=>setTab('comparison')}>Xem sai lệch <ArrowRight size={16}/></button>}</div>;
   }
 
   const tableCases = () => (
@@ -766,7 +549,7 @@ function App() {
               </td>
               <td>
                 {c.document_count} file
-                {c.pending_count > 0 ? <small>{c.pending_count} bản ghi chờ xác minh</small> : null}
+                {c.pending_count > 0 ? <small>{c.pending_count} giá trị máy đã đọc</small> : null}
               </td>
               <td>
                 <Badge status={c.status} />
@@ -819,7 +602,7 @@ function App() {
           </button>
           <div className="row" style={{ gap: 6 }}>
             {hasConflict && <span className="badge bad">Đang lệch nguồn</span>}
-            <Badge status={r.status} />
+            <span className="badge neutral">{r.method.startsWith('Manual')?'Đã hiệu chỉnh':'Máy đã đọc'}</span>
           </div>
         </div>
         <label className="sr-only" htmlFor={'field-' + r.id}>
@@ -889,24 +672,7 @@ function App() {
             <Undo2 size={15} />
           </button>
 <button className="text-btn danger" onClick={()=>verifyRecord(r,'rejected')}>Từ chối bản ghi</button></details>
-          {r.status === 'verified' ? (
-            <button className="text-btn" onClick={() => verifyRecord(r, 'pending')}>
-              Mở lại
-            </button>
-          ) : (
-            <>
 
-              <button
-                className="btn small"
-                disabled={job?.status === 'running' || !!r.value.warning}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => sourceRecordId===r.id ? verifyAndNext(r) : verifyRecord(r, 'verified')}
-              >
-                <Check size={14} />
-                {sourceRecordId===r.id?'Xác minh & tiếp':'Xác minh'}
-              </button>
-            </>
-          )}
         </div>
       </article>
     );
@@ -986,20 +752,13 @@ function App() {
                       {r.value.scope && <small>Phạm vi: {r.value.scope}</small>}
                     </td>
                     <td>
-                      <Badge status={r.status} />
+                      <span className="badge neutral">{r.method.startsWith('Manual')?'Đã hiệu chỉnh':'Máy đã đọc'}</span>
                       {r.value.warning && <small className="warning-text">{r.value.warning}</small>}
                     </td>
                     <td>
                       <div className="row">
                         <button className="btn small" onClick={() => editDialog(r)}>
                           Sửa
-                        </button>
-                        <button
-                          className="btn small"
-                          disabled={!!r.value.warning}
-                          onClick={() => verifyRecord(r, r.status === 'verified' ? 'pending' : 'verified')}
-                        >
-                          {r.status === 'verified' ? 'Mở lại' : 'Xác minh'}
                         </button>
                         <button className="text-btn danger" onClick={() => verifyRecord(r, 'rejected')}>
                           Từ chối
@@ -1057,9 +816,8 @@ function App() {
 
   const caseTabs = [
     ['documents', 'Chứng từ'],
-    ['review', 'Xác minh'],
-    ['comparison', 'Đối chiếu'],
-    ['customs', 'Checklist & trường kiểm tra'],
+        ['comparison', 'Sai lệch & xử lý'],
+    ['customs', 'Nhóm chứng từ'],
     ['export', 'Xuất Excel'],
     ['case-history', 'Lịch sử'],
   ];
@@ -1125,7 +883,7 @@ function App() {
         <div className="sidebar-guide">
           <ShieldCheck size={22} />
           <strong>Kiểm tra cùng bằng chứng</strong>
-          <p>Nhân viên chứng từ xác minh từng giá trị trước khi hoàn thành hồ sơ FCL.</p>
+          <p>AI đọc toàn bộ hồ sơ. Nhân viên so sánh nguồn và xử lý những điểm sai lệch.</p>
         </div>
         <div className="local-foot">
           <span className={'dot ' + (health?.ok ? 'online' : '')} />
@@ -1199,8 +957,8 @@ function App() {
                   <div className="summary-strip">
                     {[
                       ['Tổng hồ sơ', cases.length, FolderOpen],
-                      ['Cần xác minh', cases.filter((c) => c.status === 'Needs verification').length, AlertTriangle],
-                      ['Đã kiểm tra (Reviewed)', cases.filter((c) => ['Reviewed', 'Exported'].includes(c.status)).length, ShieldCheck],
+                      ['Đã đọc · xem kết quả', cases.filter((c) => c.status === 'Needs verification').length, AlertTriangle],
+                      ['Đã có báo cáo', cases.filter((c) => c.export_count > 0).length, ShieldCheck],
                       ['Đã xuất Reviewed', cases.filter((c) => c.status === 'Exported').length, FileSpreadsheet],
                     ].map(([title, n, Icon]: Any) => (
                       <div className="metric" key={title}>
@@ -1218,7 +976,7 @@ function App() {
                     <div>
                       <h2>Bàn làm việc chứng từ nhập khẩu FCL · Nguồn dữ liệu minh bạch</h2>
                       <p>
-                        Tải & nhận diện → Kiểm trường → Đối chiếu → Checklist → Xuất Excel. OpenAI hỗ trợ đọc chứng từ; nhân viên kiểm bản gốc trước khi xác nhận.
+                        Tải bộ chứng từ → AI đọc & đối chiếu → xử lý sai lệch → xuất báo cáo. Nhân viên tập trung vào các điểm có vấn đề.
                       </p>
                     </div>
                     <span className="badge neutral">Không cần API key cho Local</span>
@@ -1284,7 +1042,7 @@ function App() {
                   <h1>{current.case.name}</h1>
                   <p>
                     {current.case.id} · {current.case.customer || 'Chưa có khách hàng'} ·{' '}
-                    {current.case.mode === 'FCL' ? 'Nhập khẩu FCL đường biển' : 'Hàng không'} · Phiên sửa đổi #{current.case.revision}{' '}
+                    {current.case.mode === 'FCL' ? 'Bộ chứng từ đường biển' : 'Hàng không'} · Phiên sửa đổi #{current.case.revision}{' '}
                     <Badge status={current.case.status} />
                   </p>
                 </div>
@@ -1304,7 +1062,7 @@ function App() {
               </div>
 
               <>
-                <details className="workflow-details"><summary>Quy trình kiểm tra · {current.documents.length} chứng từ · {pending} bản ghi chờ kiểm</summary>
+                <details className="workflow-details"><summary>Quy trình hồ sơ · {current.documents.length} chứng từ · {current.consistency?.open_count||0} điểm cần xử lý</summary>
                   <StepTracker current={current} onSelectTab={(t: string) => setTab(t)} />
                 </details>
                 {!(sourceRecord && tab === 'documents') && renderNextActionBanner()}
@@ -1323,7 +1081,7 @@ function App() {
                   >
                     {title}
                     {id === 'review' && pending > 0 ? <b>{pending}</b> : null}
-                    {id === 'comparison' && unresolved.length > 0 ? <b>{unresolved.length}</b> : null}
+                    {id === 'comparison' && (current.consistency?.open_count || 0) > 0 ? <b>{current.consistency.open_count}</b> : null}
                   </button>
                 ))}
               </nav>
@@ -1346,7 +1104,7 @@ function App() {
                         <option value="local">Xử lý Local</option>
                         <option value="openai">AI hỗ trợ · OpenAI</option>
                       </select>
-                      {pending > 0 && (
+                      {false && (
                         <button className="btn small" onClick={() => jumpToNextPending()}>
                           Bắt đầu kiểm tra ({pending})
                         </button>
@@ -1391,7 +1149,7 @@ function App() {
                         ) : (
                           <FileCheck2 size={16} />
                         )}
-                        Đọc & trích xuất
+                        Đọc & đối chiếu
                       </button>
                     </div>
                   </div>
@@ -1550,7 +1308,7 @@ function App() {
                     </aside>
 
                     <section className="preview-pane">
-                      {sourceRecord ? <SourceInspector record={sourceRecord} title={dict.fields[sourceRecord.key]?.label || (sourceRecord.kind==='item'?'Dòng hàng cần kiểm tra':'Container cần kiểm tra')}
+                      {sourceRecord ? <SourceInspector exceptionMode record={sourceRecord} title={dict.fields[sourceRecord.key]?.label || (sourceRecord.kind==='item'?'Dòng hàng cần kiểm tra':'Container cần kiểm tra')}
                         reason={sourceRecord.value?.warning || sourceConflict?.detail.reason} busy={loading || job?.status==='running' || saveStates[sourceRecord.id]?.status==='saving'}
                         onClose={()=>setSourceRecordId('')} onVerify={(r:Any)=>verifyAndNext(r,true)} onSave={editRecord} onNext={()=>jumpToNextPending()} onEdit={()=>focusRecordEditor(sourceRecord)}/> : <>
                       <div className="preview-toolbar">
@@ -1747,7 +1505,7 @@ function App() {
                         </div>
                       </div>
                       <p className="pane-help">
-                        Sửa giá trị rồi rời ô để lưu. Kiểm tra bằng chứng gốc trước khi bấm Xác minh.
+                        Các giá trị giữ nguồn riêng. Xem “Sai lệch & xử lý” để so sánh những điểm khác nhau.
                       </p>
                       <div className="segments">
                         {[
@@ -1803,7 +1561,7 @@ function App() {
                               return (
                                 <article className="field-card" key={r.id} id={'card-' + r.id}>
                                   <div className="row">
-                                    <Badge status={r.status} />
+                                    <span className="badge neutral">{r.method.startsWith('Manual')?'Đã hiệu chỉnh':'Máy đã đọc'}</span>
                                     <small className="source">
                                       {docName}
                                       {uLabel}
@@ -1823,13 +1581,6 @@ function App() {
                                     </button>
                                     <button className="btn small" onClick={() => editDialog(r)}>
                                       Kiểm tra / sửa
-                                    </button>
-                                    <button
-                                      className="btn small"
-                                      disabled={!!r.value.warning}
-                                      onClick={() => verifyRecord(r, r.status === 'verified' ? 'pending' : 'verified')}
-                                    >
-                                      {r.status === 'verified' ? 'Mở lại' : 'Xác minh'}
                                     </button>
                                   </div>
                                 </article>
@@ -1860,7 +1611,7 @@ function App() {
                       </p>
                     </div>
                     <div className="row">
-                      {pending > 0 && (
+                      {false && (
                         <button className="btn" onClick={() => jumpToNextPending()}>
                           Đi tới mục chờ tiếp theo
                         </button>
@@ -1948,201 +1699,9 @@ function App() {
                 </>
               )}
 
-              {tab === 'comparison' && (
-                <>
-                  <div className="section-title">
-                    <div>
-                      <h2>Đối chiếu cùng chỉ tiêu, cùng phạm vi</h2>
-                      <p className="muted">
-                        {unresolved.length} mục cần xử lý · Kết quả Khớp chỉ phản ánh các nguồn trùng nhau sau chuẩn hóa, vẫn cần nhân viên xác minh. Ghi chú xử lý sai lệch được lưu audit và không tự động sửa đè nguồn gốc.
-                      </p>
-                    </div>
-                    <div className="filter-pills">
-                      {[
-                        ['all', `Tất cả (${current.checks.length})`],
-                        ['unresolved', `Cần xử lý (${unresolved.length})`],
-                        ['Mismatch', `Sai lệch (${current.checks.filter((c: Any) => c.result === 'Mismatch').length})`],
-                        ['Missing', `Thiếu (${current.checks.filter((c: Any) => c.result === 'Missing').length})`],
-                        [
-                          'Needs Verification',
-                          `Cần kiểm tra (${current.checks.filter((c: Any) => c.result === 'Needs Verification').length})`,
-                        ],
-                        ['Matched', `Khớp (${current.checks.filter((c: Any) => c.result === 'Matched').length})`],
-                        ['resolved', `Đã xử lý (${current.checks.filter((c: Any) => c.resolution).length})`],
-                      ].map(([cid, clabel]) => (
-                        <button
-                          key={cid}
-                          className={'pill-btn ' + (checkFilter === cid ? 'active' : '')}
-                          onClick={() => setCheckFilter(cid)}
-                        >
-                          {clabel}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <section className="surface">
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Chỉ tiêu / quy tắc</th>
-                            <th>Giá trị và nguồn đối chiếu</th>
-                            <th>Kết quả</th>
-                            <th>Giải thích & hành động xử lý</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredChecks.map((c: Any) => {
-                            const meta = humanCheckTitle(c.key, dict.fields, current.documents);
-                            const isClassification = c.key.startsWith('classification:');
-                            const isReading = c.key.startsWith('reading:');
-                            const isDocCheck = c.key.startsWith('document:');
-                            const isMissingField = c.key.startsWith('missing:');
-                            const canResolveByNote =
-                              ['Mismatch', 'Needs Verification'].includes(c.result) &&
-                              !isClassification &&
-                              !isReading;
-                            return (
-                              <tr key={c.id}>
-                                <td>
-                                  <span className="badge neutral" style={{ marginBottom: 4 }}>
-                                    {meta.category}
-                                  </span>
-                                  <strong style={{ display: 'block' }}>{meta.title}</strong>
-                                  <small>{c.key}</small>
-                                </td>
-                                <td>
-                                  {c.detail.sources?.length ? (
-                                    c.detail.sources.map((s: Any, sIdx: number) => {
-                                      const docObj = current.documents.find((d: Any) => d.name === s.document);
-                                      const uText = s.page ? ' · ' + unitLabel(docObj || s.type, s.page) : '';
-                                      return (
-                                        <div key={s.id || sIdx} className="compare-source-item">
-                                          <button
-                                            className="text-btn"
-                                            onClick={() => {
-                                              const r = current.records.find((x: Any) => x.id === s.id);
-                                              if (r) chooseSource(r);
-                                              else if (docObj) {
-                                                setSelectedDoc(docObj.id);
-                                                setPage(s.page || 1);
-                                                setTab('documents');
-                                              }
-                                            }}
-                                          >
-                                            {s.document}
-                                            {uText}
-                                          </button>
-                                          <div>{textValue(s.value)}</div>
-                                        </div>
-                                      );
-                                    })
-                                  ) : (
-                                    <span className="muted">Chưa có bản ghi nguồn</span>
-                                  )}
-                                </td>
-                                <td>
-                                  <Badge status={c.result} />
-                                  {c.resolution && (
-                                    <small className="good-text">Đã ghi nhận căn cứ xử lý (giữ nguyên nguồn gốc)</small>
-                                  )}
-                                </td>
-                                <td>
-                                  <p>{c.detail.reason}</p>
-                                  {c.resolution && <blockquote>Căn cứ xử lý: {c.resolution}</blockquote>}
-                                  <div className="row" style={{ marginTop: 8 }}>
-                                    {isClassification && c.result !== 'Matched' && (
-                                      <button
-                                        className="btn small primary"
-                                        onClick={() => {
-                                          const docId = c.key.slice('classification:'.length);
-                                          const dObj = current.documents.find((d: Any) => d.id === docId);
-                                          if (dObj) {
-                                            update(
-                                              () => patch('/documents/' + dObj.id + '/classification', { type: dObj.type }),
-                                              'Đã xác nhận loại ' + dObj.name
-                                            );
-                                          }
-                                        }}
-                                      >
-                                        <Check size={14} />
-                                        Xác nhận loại ngay
-                                      </button>
-                                    )}
-                                    {isReading && (
-                                      <button
-                                        className="btn small"
-                                        onClick={() => {
-                                          const docId = c.key.slice('reading:'.length);
-                                          setSelectedDoc(docId);
-                                          setTab('documents');
-                                        }}
-                                      >
-                                        Mở chứng từ để đọc lại
-                                      </button>
-                                    )}
-                                    {isDocCheck && c.result === 'Missing' && (
-                                      <button
-                                        className="btn small"
-                                        onClick={() => {
-                                          const docKind = c.key.slice('document:'.length);
-                                          setDialog({
-                                            kind: 'requirement',
-                                            documentType: docKind,
-                                            required: false,
-                                            note: '',
-                                          });
-                                        }}
-                                      >
-                                        Đặt Không bắt buộc (có lý do)
-                                      </button>
-                                    )}
-                                    {isMissingField && c.result === 'Missing' && (
-                                      <button
-                                        className="btn small"
-                                        onClick={() => {
-                                          const sub = c.key.slice('missing:'.length);
-                                          if (sub === 'items') {
-                                            setDialog({ kind: 'record', recordKind: 'item', value: {}, note: '' });
-                                          } else if (sub === 'containers') {
-                                            setDialog({ kind: 'record', recordKind: 'container', value: {}, note: '' });
-                                          } else {
-                                            setDialog({
-                                              kind: 'record',
-                                              recordKind: 'field',
-                                              defaultKey: sub,
-                                              value: '',
-                                              note: '',
-                                            });
-                                          }
-                                        }}
-                                      >
-                                        <Plus size={14} />
-                                        Nhập bổ sung có căn cứ
-                                      </button>
-                                    )}
-                                    {canResolveByNote && (
-                                      <button
-                                        className="btn small"
-                                        onClick={() => setDialog({ kind: 'resolve', check: c })}
-                                      >
-                                        {c.resolution ? 'Sửa lý do xử lý' : 'Ghi lý do xử lý'}
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                      {!filteredChecks.length && (
-                        <div className="empty">Không có mục đối chiếu nào khớp bộ lọc hiện tại.</div>
-                      )}
-                    </div>
-                  </section>
-                </>
-              )}
+              {tab === 'comparison' && <DiscrepancyWorkbench current={current} dict={dict} busy={loading||job?.status==='running'}
+                onSaved={async (b:Any)=>{replace(b);await refresh();notify('Đã lưu · đối chiếu số liệu đã cập nhật');}}
+                onDocuments={()=>setTab('documents')} onSource={chooseSource} onExport={()=>setTab('export')}/>}
 
               {tab === 'customs' && (
                 <section className="surface padded commercial-checklist">
@@ -2164,235 +1723,13 @@ function App() {
                 </section>
               )}
 
-              {tab === 'export' && (
-                <>
-                  <div className="export-layout">
-                    <section className="surface padded">
-                      <div className="export-icon">
-                        <FileSpreadsheet size={28} />
-                      </div>
-                      <h2>Xuất hồ sơ làm việc</h2>
-                      <p className="muted">
-                        6 sheet tiêu chuẩn, giữ nguyên mọi nguồn, số zero đầu và trạng thái xác minh. Không tự ghi đè nguồn đang xung đột.
-                      </p>
-                      <label className="form-label">
-                        Loại workbook
-                        <select
-                          aria-label="Loại workbook"
-                          value={workbookType}
-                          onChange={(e) => setWorkbookType(e.target.value)}
-                        >
-                          <option value="A">A · Workbook kiểm tra nội bộ</option>
-                          <option value="B">B · Workbook chọn trường chứng từ</option>
-                        </select>
-                      </label>
-                      <label className="form-label">
-                        Phiên bản
-                        <select
-                          aria-label="Phiên bản"
-                          value={exportMode}
-                          onChange={(e) => setExportMode(e.target.value)}
-                        >
-                          <option value="Draft">Draft</option>
-                          <option value="Reviewed">Reviewed</option>
-                        </select>
-                      </label>
-                      <div className={'alert ' + (exportMode === 'Draft' ? 'warn' : 'info')}>
-                        <div>
-                          <strong>
-                            {exportMode === 'Draft'
-                              ? 'Bản nháp (Draft) — Không đồng nghĩa hồ sơ đã hoàn thành kiểm tra'
-                              : 'Bản đã kiểm tra (Reviewed) — Đã qua các cổng kiểm tra nội bộ'}
-                          </strong>
-                          <p>
-                            {exportMode === 'Draft'
-                              ? 'Draft cho phép xuất ngay cả khi còn dữ liệu chờ xác minh hoặc cảnh báo sai lệch để nhân viên trao đổi nội bộ. Trạng thái từng nguồn được giữ rõ trong 6 sheet.'
-                              : 'Reviewed chỉ xuất được sau khi toàn bộ tài liệu đã xác nhận loại, mọi bản ghi đã xác minh, không còn cảnh báo chặn và hồ sơ đã bấm Hoàn thành kiểm tra.'}
-                          </p>
-                        </div>
-                      </div>
-                      <details>
-                        <summary>Chọn trường cấp hồ sơ (mặc định tất cả)</summary>
-                        <div className="field-choices">
-                          {Object.values(dict.fields).filter((f: Any) => !dict.review_fields || dict.review_fields.includes(f.id) || f.id === dialog?.record?.key).map((f: Any) => (
-                            <label className="check-label" key={f.id}>
-                              <input
-                                type="checkbox"
-                                checked={selectedFields.includes(f.id)}
-                                onChange={(e) =>
-                                  setSelectedFields(
-                                    e.target.checked
-                                      ? [...selectedFields, f.id]
-                                      : selectedFields.filter((x) => x !== f.id)
-                                  )
-                                }
-                              />
-                              {f.label}
-                            </label>
-                          ))}
-                        </div>
-                      </details>
-                      <div className="export-actions">
-                        {['Draft', 'Reviewed'].map((version) => (
-                          <button key={version} className={'btn full ' + (version === 'Reviewed' ? 'primary' : '')}
-                            disabled={loading || !current.records.some((r: Any) => r.status !== 'rejected') || (version === 'Reviewed' && (current.blockers.length > 0 || !current.case.reviewed_at))}
-                            onClick={() => run(async () => {
-                              const result = await post('/cases/' + current.case.id + '/export', { mode: version, workbook_type: workbookType, selected: selectedFields.length ? selectedFields : null });
-                              setExportMode(version);
-                              replace(await api('/cases/' + current.case.id));
-                              await refresh();
-                              const anchor = document.createElement('a');
-                              anchor.href = result.download;
-                              anchor.download = '';
-                              anchor.click();
-                              notify('Đã tạo Excel ' + version);
-                            })}>
-                            <Download size={17} />{version === 'Draft' ? 'Xuất bản nháp (.xlsx)' : 'Xuất bản đã duyệt (.xlsx)'}
-                          </button>
-                        ))}
-                        {(!current.case.reviewed_at || current.blockers.length > 0) && <p className="muted">Bản đã duyệt đang khóa: còn {current.blockers.length} điều kiện chặn hoặc chưa hoàn thành kiểm tra hồ sơ. Bản nháp vẫn xuất được khi có dữ liệu.</p>}
-                      </div>
-                    </section>
-
-                    <section className="surface padded">
-                      <div className="section-title">
-                        <h2>Xem trước nội dung</h2>
-                        <Badge status={exportMode} />
-                      </div>
-                      <div className="export-counts">
-                        <div>
-                          <strong>
-                            {current.records.filter((r: Any) => r.kind === 'field' && r.status !== 'rejected').length}
-                          </strong>
-                          <span>Trường dữ liệu</span>
-                        </div>
-                        <div>
-                          <strong>
-                            {current.records.filter((r: Any) => r.kind === 'item' && r.status !== 'rejected').length}
-                          </strong>
-                          <span>Dòng hàng độc lập</span>
-                        </div>
-
-                      </div>
-                      <div className="workbook-sheets">
-                        {[
-                          'Tổng quan hồ sơ',
-                          'Thông tin chứng từ',
-                          'Chi tiết hàng hóa',
-                          'Đối chiếu chứng từ',
-                          'Thiếu và cần xác minh',
-                          'Nguồn và lịch sử',
-                        ].map((s, i) => (
-                          <div key={s}>
-                            <FileSpreadsheet size={17} />
-                            <span>
-                              {i + 1}. {s}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="table-wrap">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Chỉ tiêu</th>
-                              <th>Giá trị</th>
-                              <th>Nguồn</th>
-                              <th>Trạng thái</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {current.records
-                              .filter(
-                                (r: Any) =>
-                                  r.kind === 'field' &&
-                                  r.status !== 'rejected' &&
-                                  (!selectedFields.length || selectedFields.includes(r.key))
-                              )
-                              .slice(0, 20)
-                              .map((r: Any) => {
-                                const docObj = current.documents.find((d: Any) => d.id === r.document_id);
-                                return (
-                                  <tr key={r.id}>
-                                    <td>{dict.fields[r.key]?.label}</td>
-                                    <td>{textValue(r.value)}</td>
-                                    <td className="muted">
-                                      {docObj?.name || 'Nhập tay'}
-                                      {r.page ? ' · ' + unitLabel(docObj || r.method, r.page) : ''}
-                                    </td>
-                                    <td>
-                                      <Badge status={r.status} />
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                          </tbody>
-                        </table>
-                      </div>
-                      <details style={{ marginTop: 12 }}>
-                        <summary>Checklist xuất Reviewed ({current.blockers.length} mục còn thiếu)</summary>
-                        <ul>
-                          {current.blockers.map((s: string) => (
-                            <li key={s}>{s}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    </section>
-                  </div>
-
-                  <section className="surface padded">
-                    <h2>Lịch sử phiên bản Excel</h2>
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Phiên bản</th>
-                            <th>Loại workbook</th>
-                            <th>Độ mới so với hồ sơ</th>
-                            <th>Thời gian</th>
-                            <th>Download</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {current.exports.map((e: Any) => {
-                            const isCurrentRev =
-                              e.case_revision === undefined || e.case_revision === current.case.revision;
-                            return (
-                              <tr key={e.id}>
-                                <td>
-                                  <strong>v{e.version}</strong> · <Badge status={e.mode} />
-                                </td>
-                                <td>{e.workbook_type}</td>
-                                <td>
-                                  <span className={'badge ' + (isCurrentRev ? 'good' : 'warn')}>
-                                    {isCurrentRev
-                                      ? `Khớp bản sửa #${current.case.revision}`
-                                      : `Bản cũ (rev #${e.case_revision} · hồ sơ đã sửa sang #${current.case.revision})`}
-                                  </span>
-                                </td>
-                                <td>{date(e.created_at)}</td>
-                                <td>
-                                  <a className="text-btn" href={'/api/exports/' + e.id}>
-                                    Tải XLSX
-                                  </a>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    {!current.exports.length && <p className="muted">Chưa xuất phiên bản nào.</p>}
-                  </section>
-
-                  <TemplateCenter
-                    current={current}
-                    dict={dict}
-                    run={run}
-                    refresh={async () => replace(await api('/cases/' + current.case.id))}
-                  />
-                </>
-              )}
+              {tab === 'export' && <section className="surface padded exception-export"><FileSpreadsheet size={30}/><h2>Xuất báo cáo đối chiếu</h2>
+                <p>Excel giữ các nguồn, giá trị máy đọc, giá trị nhân viên chỉnh sửa, sai lệch và lịch sử. Báo cáo không tự chọn nguồn đúng và không có nghĩa là chứng từ đã hợp lệ.</p>
+                <p className="muted">{current.consistency?.open_count||0} điểm cần xử lý · {current.consistency?.single_source?.length||0} chỉ tiêu mới có một nguồn. Không cần duyệt từng trường để xuất báo cáo.</p>
+                <button className="btn primary" disabled={loading||job?.status==='running'||!current.records.length} onClick={()=>run(async()=>{
+                  const result=await post('/cases/'+current.case.id+'/export',{mode:'Draft',workbook_type:'A'});
+                  replace(await api('/cases/'+current.case.id));const anchor=document.createElement('a');anchor.href=result.download;anchor.download='';anchor.click();notify('Đã xuất báo cáo đối chiếu');
+                })}><Download size={17}/> Tải báo cáo Excel</button></section>}
 
               {tab === 'case-history' && <AuditTable rows={audit} />}
             </>
@@ -2416,7 +1753,7 @@ function App() {
 
           <footer className="app-footer">
             U&I SMART · Hồ sơ chứng từ nhập khẩu FCL{' '}
-            <span>U&I SMART 1.1 · Nhân viên xác minh cuối cùng</span>
+            <span>U&I SMART 1.1 · Nhân viên xử lý sai lệch</span>
           </footer>
         </main>
       </div>
