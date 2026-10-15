@@ -549,6 +549,11 @@ def document_diagnostic(doc,index):
 def diagnostic_source(id: str, diagnostic: Optional[int]=None, number: int=1,field_id:Optional[str]=None):
     doc=require_working_doc(id)
     raw='';evidence=doc.get('classification_evidence','')
+    if not evidence and diagnostic is None and not field_id:
+        source_pages=db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number',(id,))
+        _,evidence=extraction.classify(source_pages)
+        if evidence:
+            number=next((p['number'] for p in source_pages if evidence in p['text']),number)
     if diagnostic is not None:
         _,entry=document_diagnostic(doc,diagnostic)
         number=entry.get('page') or number
@@ -662,6 +667,11 @@ def worker(job_id):
                     pages = db.rows('SELECT number,text,method,quality,table_json FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
                     for p in pages:
                         p['tables'] = json.loads(p.pop('table_json'))
+                    if mode=='openai' and any(p['method']=='OCR' and 'Đã đọc bổ sung ô/dòng theo bố cục.' not in p['quality'] for p in pages):
+                        pages=reader.read_document(d['path'],lambda n:job.update(pages=n),lambda:job['cancel'])
+                        with db.connect() as c:
+                            c.execute('DELETE FROM pages WHERE document_id=?',(d['id'],))
+                            for p in pages:c.execute('INSERT INTO pages VALUES (?,?,?,?,?,?,?)',(db.uid(),d['id'],p['number'],p['text'],p['method'],p['quality'],db.encode(p['tables'])))
                 else:
                     db.execute("UPDATE documents SET status='reading',error=NULL WHERE id=?", (d['id'],))
                     pages = reader.read_document(d['path'], lambda n: job.update(pages=n), lambda: job['cancel'])

@@ -47,6 +47,9 @@ def test_unreadable_dates_units_and_empty_required_values_cannot_auto_pass():
     for key,raw,kind in [('booking','','text'),('gross_weight','abc','weight'),('gross_weight','1000','weight'),('eta','31/02/2020','date')]:
         assert not acceptance.readable({'kind':'field','key':key,'value':normalize(raw,kind)})
     assert not acceptance.readable({'kind':'item','value':{'description':'Cargo','quantity':'120','unit':''}})
+    for key,raw in [('cargo_weight','515.080'),('volume','7.380')]:
+        value=normalize(raw,'weight' if key=='cargo_weight' else 'quantity')
+        assert acceptance.readable({'kind':'field','key':key,'value':value}) and value['unit'] is None and value['text']==raw
     assert acceptance.readable({'kind':'field','key':'gross_weight','value':normalize('19,560 KGS','weight')})
     assert normalize('19,560 KGS','weight')['number'] is None  # Accepted as literal text, no guessed numeric conversion.
     date=normalize('02/03/2020','date')

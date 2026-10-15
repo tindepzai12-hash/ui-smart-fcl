@@ -210,6 +210,11 @@ def build_checks(case, documents, records):
             'value': r['value'],
             'page': r['page'],
         } for r in group]
+        if key in ['cargo_weight','declared_weight','volume'] and any(not r['value'].get('unit') for r in group):
+            from .acceptance import readable
+            if all(readable(r) for r in group):
+                add('field:'+key,'Not Yet Checked','Đã nhận nguyên văn. Nguồn không ghi đủ đơn vị nên chưa so sánh/quy đổi; không coi là sai lệch hoặc chữ chưa đọc rõ.',sources)
+                continue
         values = comparison_values(key,group,active)
         if any(v is None for v in values):
             from .acceptance import readable

@@ -2,7 +2,7 @@ import re, unicodedata
 from .dictionary import FIELDS, supports
 from .normalize import normalize,decimal_text
 
-CLASS_RULES=[('Booking',r'booking\s+(?:confirmation|confirm|note|acknowledge?ment)|^booking$|xác nhận đặt chỗ'),('Packing List',r'packing\s+list'),('Sea Waybill',r'sea\s+waybill'),('B/L',r'bill\s+of\s+lading'),('AWB',r'air\s+waybill'),('C/O',r'certificate\s+of\s+origin'),('Arrival Notice',r'arrival\s+notice|notice of arrival'),('Delivery Order',r'delivery\s+order'),('Freight Invoice',r'freight\s+invoice'),('Invoice',r'commercial\s+invoice|^invoice$'),('Purchase Order',r'purchase\s+order'),('Contract',r'sales?\s+contract|(?:sales?|purchase)\s+agreement|^contract$|hợp\s+đồng(?:\s+mua\s+bán)?'),('Insurance',r'insurance\s+certificate'),('Import Permit',r'import\s+permit|import license'),('Phytosanitary Certificate',r'phytosanitary\s+certificate'),('Inspection Certificate',r'inspection\s+certificate')]
+CLASS_RULES=[('Booking',r'booking\s+(?:confirmation|confirm|note|acknowledge?ment)|^booking$|xác nhận đặt chỗ'),('Packing List',r'packing\s+list'),('Sea Waybill',r'sea\s+waybill'),('B/L',r'bill\s+of\s+lading'),('AWB',r'air\s+waybill'),('C/O',r'certificate\s+of\s+origin'),('Arrival Notice',r'arrival\s+notice|notice of arrival'),('Delivery Order',r'delivery\s+order'),('Freight Invoice',r'freight\s+invoice'),('Invoice',r'commercial\s+invoice|^invoice$'),('Purchase Order',r'purchase\s+order'),('Contract',r'(?:sales?|purchase)\s+contract|(?:sales?|purchase)\s+agreement|^contract$|hợp\s+đồng(?:\s+mua\s+bán)?'),('Insurance',r'insurance\s+certificate'),('Import Permit',r'import\s+permit|import license'),('Phytosanitary Certificate',r'phytosanitary\s+certificate'),('Inspection Certificate',r'inspection\s+certificate')]
 
 def classify(pages):
     if len(pages)>1:
@@ -17,6 +17,10 @@ def classify(pages):
     # still follows the ordinary classification path.
     if lines and re.match(r'(?i)^ARTICLE\s+\d+\b',lines[0]):
         return 'Other','Trang điều khoản tiếp nối; giữ cùng chứng từ trước.'
+    source='\n'.join(lines)
+    waybill=re.search(r'(?im)\bWAYBILL\s*$',source)
+    if waybill and re.search(r'(?i)NON\s+NEGOTIABLE',source) and re.search(r'(?i)PORT\s+OF\s+LOADING',source):
+        return 'Sea Waybill',waybill.group(0).strip()
     for line in lines:
         if len(line) > 100 or re.search(r'(?i)required|original signed|detailed|shipped on board|^\d+[.)]|^\[',line):
             continue

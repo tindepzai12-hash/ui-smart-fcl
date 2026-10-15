@@ -79,8 +79,9 @@ def _layout(path, stamp, size, number, method):
     if image is not None:
         words += ocr_words(image)
         # Sparse OCR is already a distinct layer in stored source text. Do not blend readings.
-        if 'sparse' in method:
-            words += ocr_words(image,11)
+        if 'OCR' in method:
+            words += [{**w,'layer':'OCR sparse'} for w in ocr_words(image,11)]
+            words += [{**w,'layer':'OCR line'} for w in ocr_words(image,6)]
     return words
 
 def layout(path, number, method):
@@ -141,6 +142,9 @@ def inspect(doc, record, page):
             boxes=quote_boxes(words,candidate)
             if not boxes and len(tokens(record['evidence']))<=100:
                 boxes=quote_boxes(words,record['evidence'])
+            if not boxes and 0<len(tokens(record['evidence']))<=12:
+                boxes=locate(words,{'source_evidence':record['evidence']},record['evidence'])
+                boxes=[{**b,'evidence_only':True} for b in boxes]
             if boxes:message='Đánh dấu đoạn trích dẫn để kiểm tra ngữ cảnh; chưa chứng minh giá trị AI đúng.'
     except (ValueError, RuntimeError, IndexError, OSError) as exc:
         message=str(exc)[:300]

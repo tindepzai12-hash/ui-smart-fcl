@@ -25,7 +25,7 @@ _model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
 _tested = False
 _checked_at = None
 DISCHARGE_LABEL = r'(?i)\b(?:port\s+of\s+discharge|discharge\s+port|cảng\s+d/c|cảng\s+dỡ(?:\s+hàng)?)\s*[:：]?'
-ORIGIN_LABEL = r'(?i)\b(?:country\s+of\s+(?:origin|manufacture)|origin\s+of\s+(?:(?:goods|products)\b\s*[:：]?)?|made\s+in|all\s+the\s+products\s+were\s+produced\s+in|origin\s*[:：])|(?:nước\s+)?xuất\s*xứ'
+ORIGIN_LABEL = r'(?i)\b(?:country\s+of\s+(?:origin|manufacture)|origin\s+of\s+(?:(?:goods|products)\b\s*[:：]?)?|made\s+in|(?:all\s+the\s+)?(?:products|goods)\s+(?:were|are)\s+(?:produced|manufactured)\s+in|origin\s*[:：])|(?:nước\s+)?xuất\s*xứ'
 
 def origin_supported(value, quote):
     # Require the country in the same labelled source span, never a party address.
@@ -35,8 +35,9 @@ def origin_supported(value, quote):
 SHIPPING_MARKS_LABEL = r'(?i)\b(?:shipping\s*marks(?:\s*(?:&|and)\s*(?:nos?\.?|numbers?))?|marks\s*(?:&|and)\s*(?:nos?\.?|numbers?))\s*[:：]|ký\s*mã\s*hiệu\s*[:：]'
 CONSIGNEE_LABEL = r'(?i)\b(?:consignee|ship\s*to|deliver\s*to|delivery\s*address)\b|người\s*nhận\s*hàng'
 BUYER_LABEL = r'(?i)\b(?:buyer|purchaser|bill\s*to|sold\s*to)\b|người\s*mua'
+PARTY_ADDRESS = r'(?i)^\d+(?:F)?[ /,.-].*\b(?:STREET|WARD|DISTRICT|ROAD|ALLEY|LANE)\b'
 PACKING_NUMBER_LABEL = r'(?i)\bpacking\s*(?:list\s*)?(?:no\.?|number|reference|ref\.?)\b|số\s*(?:phiếu\s*)?đóng\s*gói'
-NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?|kgs?|kgm|lbs?)|n\.?\s*w\.?)\b|trọng\s*lượng\s*tịnh'
+NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?|kgs?|kgm|lbs?)|n\.?\s*(?:w\.?|weight))\b|trọng\s*lượng\s*tịnh'
 
 def co_header_numbers(page):
     text=page.get('text','')
@@ -393,7 +394,7 @@ def validate_result(result, pages):
             if values and f.raw_value not in values:
                 raise ValueError('Số kiện không thuộc ô tổng/số carton được ghi rõ; không lấy số thứ tự')
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','po_number','co_number','packing_number','do_number','booking']:
-            identifier_pattern = r'[A-Za-z0-9][A-Za-z0-9/_. -]{0,99}' if f.field_id=='contract_number' else r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}'
+            identifier_pattern = r'[A-Za-z0-9][A-Za-z0-9/_. -]{0,99}' if f.field_id in ['contract_number','invoice_number'] else r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}'
             if not re.fullmatch(identifier_pattern, f.raw_value):
                 raise ValueError('Số chứng từ phải là một định danh; không nhận dòng chứa container/seal hoặc nhãn')
             if not re.search(r'(?<![A-Za-z0-9/_-])'+re.escape(f.raw_value)+r'(?![A-Za-z0-9/_-])',field_evidence,re.I):
@@ -404,7 +405,7 @@ def validate_result(result, pages):
             raise ValueError('Tên bên nghiệp vụ đang lẫn địa chỉ/điện thoại; tách riêng trường')
         if f.field_id in ['seller','buyer','shipper','consignee','notify_party','exporter','importer'] and len(re.findall(r'(?i)\b(?:LIMITED|LTD\.?|CORPORATION)\b', f.raw_value)) > 1:
             raise ValueError('Tên bên nghiệp vụ có dấu hiệu ghép hai công ty; đối chiếu bố cục gốc')
-        if f.field_id in ['seller','buyer','shipper','consignee','notify_party','exporter','importer'] and re.match(r'^\d+[ /,-]',f.raw_value) and re.search(r'(?i)\b(?:STREET|WARD|DISTRICT|ROAD)\b',f.raw_value):
+        if f.field_id in ['seller','buyer','shipper','consignee','notify_party','exporter','importer'] and re.search(PARTY_ADDRESS,f.raw_value):
             raise ValueError('Tên bên nghiệp vụ có dấu hiệu là địa chỉ; không gán địa chỉ vào tên công ty')
         if f.field_id == 'port_discharge':
             source = next((p['text'] for p in pages if p['number']==f.source_page),'')
@@ -576,9 +577,10 @@ def packing_summary_fields(pages):
                                     recovered.setdefault('goods_quantity',[]).append(FieldResult(field_id='goods_quantity',raw_value=raw,unit=unit,unit_evidence=unit,source_page=page['number'],evidence_text=raw))
             for i,header in enumerate(table[0]):
                 header=header or '';label=re.sub(r'\s+',' ',header).casefold()
-                key=('net_weight' if re.search(r'net\s*(?:weight|wt)',label) else
-                     'gross_weight' if re.search(r'gross\s*(?:weight|wt)',label) else
-                     'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b',label) else None)
+                key=('net_weight' if re.search(r'net\s*(?:weight|wt)|^n[.]?\s*weight',label) else
+                     'gross_weight' if re.search(r'gross\s*(?:weight|wt)|^g[.]?\s*weight',label) else
+                     'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b|^no[. ]+packages',label) else None)
+                if key and len(table)>1 and i<len(table[1]) and table[1][i] and re.fullmatch(r'(?i)\s*\(?\s*(?:KGS?|KGM|LBS?)\s*\)?\s*',table[1][i]):header+=' '+table[1][i]
                 if key: columns[i]=(key,header)
             for row_index,row in enumerate(table[1:],start=1):
                 if not row:continue
@@ -611,25 +613,72 @@ def ground_source_format(result, pages):
     """Ground formatting and explicit price-header terms in literal source evidence."""
     from .normalize import decimal_text
     grounded = DocumentResult.model_validate(result.model_dump())
+    content_type,content_quote=classify(pages)
+    if content_type!='Other' and grounded.document_type in ['Other',content_type]:
+        grounded.document_type=content_type;grounded.classification_evidence=content_quote
+        grounded.fields=[f for f in grounded.fields if content_type in FIELDS.get(f.field_id,{}).get('documents',[])]
+        if result.document_type=='Other':grounded.items=[];grounded.containers=[]
+    elif content_type=='Other' and (grounded.document_type=='Other' or not any(evidence_ok(grounded.classification_evidence,grounded.classification_evidence,p['number'],pages) for p in pages)):
+        grounded.document_type='Other';grounded.fields=[];grounded.items=[];grounded.containers=[]
+        grounded.classification_evidence=next((line.strip() for p in pages for line in p['text'].splitlines() if line.strip() and not line.lstrip().startswith('[')),'')
     # Missing is not a rejected fabricated value. Empty model slots create no
     # record and no employee action; required missing fields remain in checklist.
     grounded.fields=[f for f in grounded.fields if f.raw_value.strip()]
+    grounded.fields=[f for f in grounded.fields if not (f.field_id in ['seller','buyer','shipper','consignee','notify_party','exporter','importer'] and re.search(PARTY_ADDRESS,f.raw_value))]
+    address_roles={'exporter_address':r'(?i)\b(?:consignor|exporter)\b', 'importer_address':r'(?i)\b(?:consignee|importer)\b',
+                   'seller_address':r'(?i)\bseller\b','buyer_address':BUYER_LABEL,
+                   'shipper_address':r'(?i)\bshipper\b','consignee_address':CONSIGNEE_LABEL}
+    for f in grounded.fields:
+        page=next((p for p in pages if p['number']==f.source_page),{})
+        cells=[]
+        for table in page.get('tables',[]):
+            if f.field_id=='cargo_description' and table:
+                columns=[i for i,h in enumerate(table[0]) if re.search(r'(?i)description(?:\s+of\s+goods)?|commodity',h or '')]
+                cells.extend(row[i] for row in table[1:] for i in columns if i<len(row) and isinstance(row[i],str))
+            elif f.field_id in address_roles:
+                cells.extend(cell for row in table for cell in row if isinstance(cell,str) and re.search(address_roles[f.field_id],cell))
+        # The PDF's original content-order layer must also contain the complete
+        # cell verbatim. A nearby matching number or an adjacent column is not enough.
+        quotes={cell for cell in cells if evidence_ok(f.raw_value,cell,f.source_page,pages) and evidence_ok(cell,cell,f.source_page,pages)}
+        if len(quotes)==1:
+            f.evidence_text=next(iter(quotes));f.evidence_start_line=None;f.evidence_end_line=None
     grounded.fields=[f for f in grounded.fields if not (f.field_id=='buyer' and any(
         p['number']==f.source_page and not re.search(BUYER_LABEL,p['text']) and re.search(CONSIGNEE_LABEL,p['text']) for p in pages))]
+    if grounded.document_type=='Warehouse Receipt':
+        candidates=[]
+        for p in pages:
+            if not re.search(r'(?is)unit\s+of\s+measure\s+quantity\s+weight\s+volume',p['text']):continue
+            for m in re.finditer(r'(?im)^[ \t]*\d+[ \t]+(CT|CTN|CARTONS?|PKG|BAGS?)[ \t]+(\d+)[ \t]+\d[\d.,]*[ \t]+\d[\d.,]*[ \t]*$',p['text']):
+                candidates.append((m.group(2),m.group(1),m.group(0).strip(),p['number']))
+        if len(set(candidates))==1:
+            raw,unit,quote,page=next(iter(set(candidates)))
+            grounded.fields=[f for f in grounded.fields if f.field_id!='packages']+[FieldResult(field_id='packages',raw_value=raw,unit=unit,unit_evidence=quote,source_page=page,evidence_text=quote)]
     # An absent discharge label means this optional role was not supplied.
     # FROM/TO alone describe a route and must not become discharge-port data.
     # Keep a genuine rejected reading when the role label does exist.
     grounded.fields=[f for f in grounded.fields if f.field_id!='port_discharge' or any(
         p['number']==f.source_page and re.search(DISCHARGE_LABEL,p['text']) for p in pages)]
+    grounded.fields=[f for f in grounded.fields if f.field_id!='arrival_date' or any(
+        p['number']==f.source_page and re.search(r'(?im)^\s*(?:actual\s+)?arrival\s*date\s*[:：]?',p['text']) for p in pages)]
     if grounded.document_type=='Booking':
         grounded.fields=[f for f in grounded.fields if not (f.field_id=='packages' and re.fullmatch(r'(?i)\s*\d+\s*[x×]\s*(?:20|40|45)\s*(?:DC|GP|HC|HQ|RF)\s*',f.raw_value))]
     if grounded.document_type=='C/O':
+        for f in grounded.fields:
+            if f.field_id!='origin':continue
+            # Prefer an explicitly printed country to an adjective only when
+            # its letters are identical (e.g. VIETNAM + ese). No country lookup
+            # or guess from an exporter address is permitted.
+            countries=[(m.group(1).strip(),m.group(0),p['number']) for p in pages if p['number']==f.source_page
+                       for m in re.finditer(r'(?im)\bORIGIN\s+OF\s+([A-Za-z][A-Za-z ]{1,40})\s*$',p['text'])]
+            bound={(raw,quote,num) for raw,quote,num in countries if re.sub(r'\s+','',f.raw_value).casefold()==re.sub(r'\s+','',raw).casefold()+'ese'}
+            if bound and len({re.sub(r'\s+','',raw).casefold() for raw,_,_ in bound})==1:
+                f.raw_value,f.evidence_text,f.source_page=next(iter(bound));f.evidence_start_line=None;f.evidence_end_line=None
         # These phrases identify a country/declaration, not an absent authority
         # name or an origin-criterion code. Omit them rather than ask staff to
         # approve a value of the wrong role.
         grounded.fields=[f for f in grounded.fields if not (
-            (f.field_id=='co_issuer' and re.match(r'(?i)^issued\s+in\b',f.raw_value)) or
-            (f.field_id=='origin_criteria' and re.fullmatch(r'(?i)[A-Za-z]+\s+origin\.?',f.raw_value)))]
+            (f.field_id=='co_issuer' and re.search(r'(?i)^issued\s+in\b|verification|https?://|www\.|\.gov\.|\.com\b',f.raw_value)) or
+            (f.field_id=='origin_criteria' and (re.fullmatch(r'(?i)[A-Za-z]+\s+origin\.?',f.raw_value) or re.search(r'(?i)criterion|criteria|notes|applied',f.raw_value))))]
         dates=[(raw,quote,p['number']) for p in pages for raw,quote in co_declaration_dates(p)]
         if len(dates)==1:
             raw,quote,page=dates[0]
@@ -698,6 +747,10 @@ def ground_source_format(result, pages):
                 f.evidence_text=source;f.evidence_start_line=None;f.evidence_end_line=None
         try: quote=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         except ValueError: continue
+        if not f.unit and FIELDS[f.field_id]['type'] in ['quantity','weight']:
+            combined=re.fullmatch(r'(?i)(\d[\d.,]*)\s+(CTNS?|CARTONS?|PACKAGES?|PKGS?|BAGS?|DRUMS?|SETS?|PCS|KGS?|KGM|MT|LBS?)',f.raw_value.strip())
+            if combined and re.search(r'(?i)(?<![\d.,])'+re.escape(combined.group(1))+r'\s*\)?\s*'+re.escape(combined.group(2))+r'(?!\w)',quote) and evidence_ok(quote,quote,f.source_page,pages):
+                f.raw_value=combined.group(1);f.unit=combined.group(2);f.unit_evidence=quote;f.unit_line=None
         if not f.unit and f.field_id in ['goods_quantity','packages'] and re.fullmatch(r'\d[\d.,]*',f.raw_value):
             allowed=(r'PCS|PIECES?|SETS?|KGS?|KGM|MT' if f.field_id=='goods_quantity' else r'CTNS?|CARTONS?|PACKAGES?|PKGS?|BAGS?')
             matches=list(re.finditer(r'(?<![\d.,])'+re.escape(f.raw_value)+r'\s*\)?\s*('+allowed+r')(?!\w)',quote,re.I))
@@ -769,9 +822,11 @@ def ground_source_format(result, pages):
                 columns={}
                 for i,header in enumerate(table[0]):
                     header=re.sub(r'\s+',' ',header or '').strip().casefold()
-                    attribute=('product_code' if re.search(r'item\s*(?:no\.?|code)|product\s*code|part\s*no|^sku$',header) else
+                    subheader=re.sub(r'\s+',' ',table[1][i] or '').strip() if len(table)>1 and i<len(table[1]) else ''
+                    if re.fullmatch(r'(?i)TOTAL\s+(?:SETS?|PCS|PIECES?|KGS?)',subheader):header=subheader.casefold()
+                    attribute=('product_code' if re.search(r'item\s*(?:no\.?|code)|product\s*code|part\s*no|^sku$|^item$',header) else
                                'description' if 'description' in header else
-                               'quantity' if re.search(r'quantity|^qty\.?$',header) else
+                               'quantity' if re.search(r'quantity|^qty\.?$|^total\s+(?:sets?|pcs|pieces?|kgs?)$',header) else
                                'unit_price' if re.search(r'unit\s*price',header) else
                                'line_amount' if re.search(r'amount',header) else
                                'unit' if header in ['unit','uom','u/m'] else None)
@@ -781,6 +836,10 @@ def ground_source_format(result, pages):
                 for row in table[1:]:
                     if code_column>=len(row) or (row[code_column] or '').strip()!=item.product_code:continue
                     cells={k:row[i] for k,i in columns.items() if i<len(row) and row[i] and evidence_ok(row[i],row[i],item.source_page,pages)}
+                    qi=columns.get('quantity')
+                    if qi is not None and len(table)>1 and qi<len(table[1]) and cells.get('quantity')==item.quantity:
+                        unit_header=table[1][qi] or ''
+                        if re.fullmatch(r'(?i)TOTAL\s+'+re.escape(item.unit or ''),unit_header.strip()) and evidence_ok(unit_header,unit_header,item.source_page,pages):cells['unit']=unit_header
                     if cells.get('product_code')==item.product_code:bindings.append(cells)
         unique={json.dumps(c,sort_keys=True,ensure_ascii=False):c for c in bindings}
         if len(unique)==1:
@@ -894,6 +953,9 @@ def repair_targets(result, records, rejected, pages):
               if (match := re.match(r'fields\[\d+\] ([a-z_]+):', reason))}
     found = {r['key'] for r in records if r['kind'] == 'field'}
     text = '\n'.join(p['text'] for p in pages)
+    if result.document_type in SUPPORTING_TYPES:
+        from .extraction import extract
+        fields.update(r['key'] for r in extract(pages,result.document_type) if r['kind']=='field' and r['key'] not in found)
     if supports(result.document_type, 'Invoice') and re.search(r'(?i)\b(?:total|amount)\b', text):
         fields.update({'invoice_total', 'currency'} - found)
     if result.document_type in ['B/L', 'Invoice & Packing List', 'Packing List'] and re.search(r'(?i)\b(?:gross\s+weight|GW|KGM|KGS)\b', text):
@@ -1066,7 +1128,7 @@ def analyze(case_id, document, pages):
         raise ValueError('Chưa cấu hình OpenAI. Bạn có thể tiếp tục bằng chế độ Local.')
     if sum(len(p['text']) for p in pages) > 90000:
         raise ValueError('Tài liệu vượt 90.000 ký tự cho một yêu cầu AI; chia tài liệu để tránh bỏ sót.')
-    text = encode([{'page': p['number'], 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)],
+    text = encode([{'page': p['number'], **({'reading_quality':p.get('quality','')} if p.get('method')=='OCR' else {}), 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)],
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
@@ -1154,6 +1216,7 @@ def analyze(case_id, document, pages):
         'If text includes [OCR image layer], original selectable text precedes it. Use OCR for missing labels/heading, but preserve original selectable numeric values/codes if OCR differs. Do not silently repair scan-only OCR spelling. '
         'A [PDF content-order layer] preserves the original PDF text sequence before geometric sorting. It is a second reading of the SAME page, not another document or another row. Use its contiguous description/address spans and separate numeric/header lines when sorted text interleaves columns. Never merge readings into invented values or duplicate a row across layers. '
         'If [OCR sparse layer] exists, it is a second reading of the SAME page for disconnected table cells. Use an existing quote from either layer for missing cells, but never synthesize or normalize a value by combining readings. '
+        'reading_quality is metadata, never source evidence. [OCR line layer] is a direct second reading of the SAME image, not a different document. If a code is explicitly listed as unclear in one reading, prefer a complete, clearly read code from that same physical labelled cell in another reading. Never complete a truncated code from another document or guess S/8, O/0, I/1. If the readings remain uncertain, omit it for manual entry. '
         'Content classifier result (not filename or staff hint): '+encode({'type':content_type,'quote':content_quote})+'. If type is not Other, preserve that content-supported type. '
         'Never correct inconsistent source data. Never use codes/legal classifications. Empty unavailable values=null. Fields allowed: ' + encode(permitted)
         + '\n' + EXAMPLES

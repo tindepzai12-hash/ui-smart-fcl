@@ -11,6 +11,10 @@ def readable(record):
     value=record['value']
     if record['kind']=='field':
         from .dictionary import FIELDS
+        if record['key'] in ['cargo_weight','declared_weight','volume'] and not value.get('unit'):
+            # A generic optional measurement can be stored exactly as printed.
+            # It is never assigned a unit or compared with a unit-bearing total.
+            return decimal_text(value.get('text','')) is not None or printed_number(value.get('text',''))
         if FIELDS.get(record['key'],{}).get('type') in ['weight','quantity'] and not value.get('unit'):return False
         if not str(value.get('text','')).strip() and value.get('number') is None:return False
         return (not value.get('warning')

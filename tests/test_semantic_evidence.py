@@ -227,6 +227,15 @@ def test_sparse_ocr_keeps_both_readings_without_correcting_source(monkeypatch):
     assert method=='OCR' and 'OCR bổ sung' in quality
 
 
+def test_form_ocr_reads_disconnected_identifier_and_voyage_line(monkeypatch):
+    readings={3:'Số tờ khai 30753750\nVessel / Voyage: SINAR SUNDA 1948',11:'Số tờ khai 307537505830\nVessel / Voyage: SINAR SUNDA 1948',6:'Số tờ khai 30753750530\nVessel / Voyage: SINAR SUNDA 194S'}
+    monkeypatch.setattr(reader,'ocr',lambda image,include_tables=False,psm=3:(readings[psm],'Ký tự mã/số chưa rõ' if psm==3 else 'OCR cần nhân viên kiểm tra',[]))
+    text,method,quality,_=reader.read_pdf_image(Image.new('RGB',(100,100),'gray'))
+    assert method=='OCR' and '[OCR sparse layer' in text and '[OCR line layer' in text
+    assert all(code in text for code in ['30753750','307537505830','1948','194S'])
+    assert 'Ký tự mã/số chưa rõ' in quality and 'Đã đọc bổ sung ô/dòng theo bố cục.' in quality
+
+
 def test_amount_currency_unit_has_its_own_evidence_and_raw_is_preserved():
     data=document('Invoice','INVOICE')
     data.fields=[ai.FieldResult(field_id='invoice_total',raw_value='46,000.00',unit='USD',unit_evidence='AMOUNT (USD)',source_page=1,evidence_text='TOTAL: 46,000.00')]

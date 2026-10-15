@@ -123,3 +123,64 @@ def test_merged_total_weight_header_keeps_per_drum_weight_separate():
     with pytest.raises(ValueError):ai.validate_result(bad,[page])
     multi={**page,'tables':[[*table[:3],['OTHER GOODS','20 DRUMS','100','110','2,000','2,200'],table[-1]]]}
     assert not ai.packing_summary_fields([multi]).get('net_weight')  # Do not sum separate rows.
+
+
+def test_readable_cells_rebind_interleaved_quotes_without_rewriting_values():
+    cell='COCONUT SAP\nAND EXTRACT\n( CLASS A)'
+    address='1. Consignor\nREAL EXPORTER LTD\n348D, STREET NAME\nVILLAGE, VIETNAM'
+    page={'number':1,'text':'CONTRACT\nCOCONUT SAP 100 200\nAND EXTRACT\n( CLASS A)\n[PDF content-order layer]\n'+cell+'\n'+address,
+          'tables':[[['Commodity','Quantity'],[cell,'100']],[[address,'CERTIFICATE OF ORIGIN']]]}
+    fields=[{'field_id':'cargo_description','raw_value':'COCONUT SAP AND EXTRACT ( CLASS A)','source_page':1,'evidence_text':'COCONUT SAP 100 200\nAND EXTRACT\n( CLASS A)'}]
+    model=ai.DocumentResult.model_validate({'document_type':'Contract','classification_evidence':'CONTRACT','fields':fields,'items':[],'containers':[]})
+    fixed=ai.ground_source_format(model,[page]);records,rejected=ai.validated_subset(fixed,[page])
+    assert not rejected and records[0]['raw']==fields[0]['raw_value'] and fixed.fields[0].evidence_text==cell
+    no_layer={**page,'text':page['text'].split('[PDF content-order layer]')[0]}
+    assert ai.ground_source_format(model,[no_layer]).fields[0].evidence_text==fields[0]['evidence_text']
+
+
+def test_origin_adjective_uses_explicit_country_and_notify_address_is_not_name():
+    page={'number':1,'text':'CERTIFICATE OF ORIGIN\nORIGIN OF VIETNAM\nVietNamese origin.\nNotify Party: EXAMPLE LTD\n5F, No. 5-4, Alley 10, Lane 30, Tung An Road, Taiwan'}
+    fields=[{'field_id':'origin','raw_value':'VietNamese','source_page':1,'evidence_text':'VietNamese origin.'}]
+    fixed=ai.ground_source_format(result('C/O',fields),[page]);records,rejected=ai.validated_subset(fixed,[page])
+    assert not rejected and records[0]['raw']=='VIETNAM'
+    wrong=result('C/O',[{**fields[0],'raw_value':'Chinese'}]);assert ai.ground_source_format(wrong,[page]).fields[0].raw_value=='Chinese'
+    fields=[{'field_id':'notify_party','raw_value':'EXAMPLE LTD','source_page':1,'evidence_text':'Notify Party: EXAMPLE LTD'}, {'field_id':'notify_party','raw_value':page['text'].splitlines()[-1],'source_page':1,'evidence_text':page['text'].splitlines()[-1]}]
+    model=ai.DocumentResult.model_validate({'document_type':'Arrival Notice','classification_evidence':'Notify Party','fields':fields,'items':[],'containers':[]})
+    fixed=ai.ground_source_format(model,[page]);assert len(fixed.fields)==1 and fixed.fields[0].raw_value=='EXAMPLE LTD'
+
+
+def test_warehouse_count_uses_quantity_after_packing_unit_never_row_index():
+    page={'number':1,'text':'YEU CAU NHAP KHO\nTổng số tờ khai: 1\nNo. Description Unit Of Measure Quantity Weight Volume\n1 CT 56 515.080 7.380'}
+    model=ai.DocumentResult.model_validate({'document_type':'Warehouse Receipt','classification_evidence':'YEU CAU NHAP KHO','fields':[{'field_id':'packages','raw_value':'1','source_page':1,'evidence_text':'Tổng số tờ khai: 1'}],'items':[],'containers':[]})
+    records,rejected=ai.validated_subset(ai.ground_source_format(model,[page]),[page])
+    assert not rejected and records[0]['raw']=='56' and records[0]['value']['unit']=='CTN'
+    many={**page,'text':page['text']+'\n2 CT 20 100.00 1.20'}
+    assert ai.ground_source_format(model,[many]).fields[0].raw_value=='1'  # No hidden sum or preferred row.
+
+
+def test_two_tier_weight_headers_and_joined_quantity_are_literal_sources():
+    page={'number':1,'text':'PACKING LIST\nITEM NO.PACKAGES N.WEIGHT G.WEIGHT\n(KGS) (KGS)\nTOTAL 2112 24288 25200\n42240SETS',
+          'tables':[[['ITEM','NO.PACKAGES','N.WEIGHT','G.WEIGHT'],[None,None,'(KGS)','(KGS)'],['TOTAL','2112','24288','25200']]]}
+    model=ai.DocumentResult.model_validate({'document_type':'Packing List','classification_evidence':'PACKING LIST','fields':[{'field_id':'goods_quantity','raw_value':'42240 SETS','source_page':1,'evidence_text':'42240SETS'}],'items':[],'containers':[]})
+    records,rejected=ai.validated_subset(ai.ground_source_format(model,[page]),[page])
+    assert not rejected and {r['key']:r['raw'] for r in records}=={'goods_quantity':'42240','packages':'2112','net_weight':'24288','gross_weight':'25200'}
+
+
+def test_unknown_classification_does_not_fabricate_a_document_or_block_other_files():
+    page={'number':1,'text':'Warehouse screen\nStatus: SUCCESS'}
+    model=ai.DocumentResult.model_validate({'document_type':'Other','classification_evidence':'Not actually on the page','fields':[],'items':[],'containers':[]})
+    fixed=ai.ground_source_format(model,[page]);assert fixed.document_type=='Other' and fixed.classification_evidence=='Warehouse screen'
+    assert ai.validate_result(fixed,[page])==[]
+    assert extraction.classify([{'number':1,'text':'PURCHASE CONTRACT\nNo: QL/DS2602'}])[0]=='Contract'
+    assert extraction.classify([{'number':1,'text':'WAYBILL\nNON NEGOTIABLE\nPORT OF LOADING\nTRANSPORT BILL OF LADING'}])[0]=='Sea Waybill'
+
+
+def test_excel_empty_formatted_tail_is_not_data_but_distant_values_are_checked(tmp_path):
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill
+    from backend import reader
+    wb=Workbook();s=wb.active;s['A1']='Commercial Invoice';s['B2']='INV-1';s['IV449'].fill=PatternFill('solid',fgColor='FFFFFF')
+    p=tmp_path/'formatted.xlsx';wb.save(p)
+    pages=reader.read_document(p);assert len(pages[0]['tables'][0])==2 and len(pages[0]['tables'][0][0])==2
+    s['IV449']='real data';wb.save(p);wb.close()
+    with pytest.raises(ValueError,match='cột'):reader.read_document(p)

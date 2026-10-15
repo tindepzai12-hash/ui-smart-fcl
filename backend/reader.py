@@ -1,5 +1,5 @@
 """Offline readers; preserve page/table boundaries. No document instructions executed."""
-import csv, io, os, shutil, subprocess, re, statistics, gc, sys, ctypes
+import csv, io, os, shutil, subprocess, re, statistics, gc, sys, ctypes, zipfile, xml.etree.ElementTree as ET
 from pathlib import Path
 try:
     import fitz
@@ -238,6 +238,9 @@ def _ocr(image, include_tables=False, psm=3):
         quality.append('Ảnh nhỏ/độ tương phản thấp; có thể bỏ sót chữ.')
     if 'vie' not in status['languages']:
         quality.append('Chưa cài ngôn ngữ vie; dấu tiếng Việt có thể đọc sai.')
+    unclear=[data['text'][i].strip() for i in range(len(data['text']))
+             if 0<=float(data['conf'][i])<70 and re.fullmatch(r'[A-Za-z0-9/-]*\d[A-Za-z0-9/-]{2,}',data['text'][i].strip())]
+    if unclear:quality.append('Ký tự mã/số chưa rõ trong lượt này: '+', '.join(dict.fromkeys(unclear[:20]))+'.')
     result = (text, ' '.join(quality) or 'OCR cần nhân viên kiểm tra')
     return (*result, ocr_tables(data)) if include_tables else result
 
@@ -260,15 +263,25 @@ def read_pdf_image(image):
     text, quality, tables = ocr(image, include_tables=True)
     # Forms with disconnected cells can lose values under automatic block segmentation.
     # Add a sparse pass only for form/table pages without recovered tables; keep both verbatim.
-    if not tables and re.search(r'(?i)\b(?:quantity|qty|container|bill\s+of\s+lading|packing\s+list)\b',text):
+    if not tables and re.search(r'(?i)\b(?:quantity|qty|container|bill\s+of\s+lading|packing\s+list|số\s+tờ\s+khai|người\s+xuất\s+khẩu)\b',text):
         try:
             sparse, sparse_quality, sparse_tables = ocr(image, include_tables=True, psm=11)
             if sparse.strip() != text.strip():
                 text += '\n\n[OCR sparse layer — giữ nguyên hai lượt đọc, đối chiếu ảnh nếu khác nhau]\n'+sparse
                 quality += ' Có lượt OCR bổ sung cho các ô rời; đối chiếu ảnh gốc nếu hai lượt khác nhau.'
+                quality += ' Lượt ô rời: '+sparse_quality
                 tables = tables or sparse_tables
         except ValueError as exc:
             quality += ' OCR bổ sung chưa hoàn tất: '+str(exc)
+    if re.search(r'(?i)vessel|voyage|chuyến|tên\s+tàu',text):
+        try:
+            line_text,line_quality,line_tables=ocr(image,include_tables=True,psm=6)
+            if line_text.strip()!=text.strip():
+                text+='\n\n[OCR line layer — đọc lại trực tiếp các dòng trên cùng ảnh]\n'+line_text
+                quality+=' Lượt dòng: '+line_quality
+        except ValueError as exc:
+            quality+=' OCR dòng bổ sung chưa hoàn tất: '+str(exc)
+    quality+=' Đã đọc bổ sung ô/dòng theo bố cục.'
     return text, 'OCR', quality, tables
 
 
@@ -403,14 +416,33 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                 text, q, tables = ocr(im.copy(), include_tables=True)
                 add(text, 'OCR', q, tables)
     elif ext == '.xlsx':
+        # VNACCS exports format empty cells up to column IV. Count only cells
+        # containing values/formulas, without dropping genuine distant data.
+        bounds={}
+        from openpyxl.utils.cell import column_index_from_string
+        with zipfile.ZipFile(path) as archive:
+            if sum(i.file_size for i in archive.infolist())>80*1024*1024:raise ValueError('Workbook vượt giới hạn dữ liệu giải nén')
+            for name in archive.namelist():
+                if not re.fullmatch(r'xl/worksheets/sheet\d+\.xml',name):continue
+                last_row,last_col=1,1
+                with archive.open(name) as source:
+                    for _,cell in ET.iterparse(source,events=['end']):
+                        if cell.tag.rsplit('}',1)[-1]!='c':continue
+                        populated=any(child.tag.rsplit('}',1)[-1] in ['v','is','f'] and (child.text or list(child)) for child in cell)
+                        if populated:
+                            ref=re.fullmatch(r'([A-Z]+)(\d+)',cell.get('r',''))
+                            if ref:last_col=max(last_col,column_index_from_string(ref[1]));last_row=max(last_row,int(ref[2]))
+                        cell.clear()
+                if last_row>10000 or last_col>100:raise ValueError('Sheet vượt 10.000 dòng hoặc 100 cột có dữ liệu')
+                bounds[name]=(last_row,last_col)
         wb = load_workbook(path, read_only=True, data_only=False)
         try:
             if len(wb.worksheets) > MAX_PAGES:
                 raise ValueError('Workbook có quá nhiều sheet')
             for sheet in wb:
-                if sheet.max_row > 10000 or sheet.max_column > 100:
-                    raise ValueError('Sheet vượt 10.000 dòng hoặc 100 cột')
-                table = [[str(v) if v is not None else '' for v in row] for row in sheet.iter_rows(values_only=True)]
+                max_row,max_col=bounds.get(sheet._worksheet_path,(sheet.max_row,sheet.max_column))
+                if max_row>10000 or max_col>100:raise ValueError('Sheet vượt giới hạn dữ liệu')
+                table = [[str(v) if v is not None else '' for v in row] for row in sheet.iter_rows(max_row=max_row,max_col=max_col,values_only=True)]
                 add(
                     sheet.title + '\n' + '\n'.join(' | '.join(r) for r in table),
                     'Excel',
