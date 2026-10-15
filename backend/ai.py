@@ -391,7 +391,10 @@ def validate_result(result, pages):
             raise ValueError('Booking chưa có nhãn số kiện; không lấy số 1 trong số lượng thiết bị')
         if f.field_id=='gross_weight' and result.document_type=='Booking' and not re.search(r'(?i)gross\s*(?:weight|wt)|g\.?w\.?',source_page.get('text','')):
             raise ValueError('Cargo Weight trên Booking chưa chứng minh Gross Weight; không tự đổi vai trò trọng lượng')
-        if f.field_id=='gross_weight' and result.document_type=='Customs Declaration' and not re.search(r'(?i)\bgross\b|trọng\s*lượng\s*cả\s*bì',field_evidence):
+        gross_form_binding=any(table and table[0]==['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'] and any(
+            len(row)==3 and re.fullmatch(r'(?i)\(?gross\)?',row[0]) and row[1]==f.raw_value and row[2]==f.unit
+            for row in table[1:]) for table in source_page.get('tables',[]))
+        if f.field_id=='gross_weight' and result.document_type=='Customs Declaration' and not (re.search(r'(?i)\bgross\b|trọng\s*lượng\s*cả\s*bì',field_evidence) or gross_form_binding):
             raise ValueError('Tờ khai phải ghi rõ Gross/cả bì trong bằng chứng; không tự đổi trọng lượng chung thành gross')
         if result.document_type=='C/O':
             if f.field_id=='co_number' and not any(f.raw_value == m.group(1).rstrip('.') for m in re.finditer(r'(?i)(?:reference|certificate|c/o)\s*(?:no\.?|number)\s*[:：]?\s*([^\s,;]+)',source_page.get('text',''))):
@@ -783,7 +786,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v27-ocr-role-bound-summary|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v28-ocr-form-role-binding|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])

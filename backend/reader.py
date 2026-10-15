@@ -102,7 +102,23 @@ def ocr_tables(data):
                 table.append(cells)
             if len(table) > 1:
                 tables.append(table)
-    return tables + ocr_packing_summary(data)
+    return tables + ocr_packing_summary(data) + ocr_labelled_weights(data)
+
+
+def ocr_labelled_weights(data):
+    """Retain the spatial link when a form label/value occupy different OCR blocks."""
+    words=[{'text':t.strip(),'x':data['left'][i],'right':data['left'][i]+data['width'][i],
+            'y':data['top'][i]+data['height'][i]/2,'h':data['height'][i]}
+           for i,t in enumerate(data['text']) if t.strip() and float(data['conf'][i])>=0]
+    rows=[]
+    for label in words:
+        if not re.fullmatch(r'(?i)\(?gross\)?',label['text']):continue
+        same=[w for w in words if w['x']>label['right'] and abs(w['y']-label['y'])<max(6,label['h']*.6)]
+        units=[w for w in same if re.fullmatch(r'(?i)KGS?|KGM|MT|LBS?',w['text'])]
+        numbers=[w for w in same if re.fullmatch(r'\d[\d.,]*',w['text'])]
+        if len(units)==len(numbers)==1 and numbers[0]['x']<units[0]['x']:
+            rows.append([label['text'],numbers[0]['text'],units[0]['text']])
+    return [[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],*rows]] if rows else []
 
 
 def ocr_packing_summary(data):

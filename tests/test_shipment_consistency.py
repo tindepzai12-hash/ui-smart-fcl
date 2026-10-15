@@ -147,6 +147,24 @@ def test_declaration_line_quantities_not_allowed_as_shipment_total():
     assert normalize('515.08 Kilogam','weight')['unit']=='KG'
     assert normalize('515.08 unknown','weight')['warning']
 
+
+def test_scan_form_gross_requires_same_row_label_value_unit_binding():
+    import pytest
+    from backend import ai,reader
+    data={'text':['(Gross)','515,08','KGM','391.20'], 'left':[100,500,650,500],
+          'top':[100,103,104,140], 'width':[70,60,40,60], 'height':[20,14,12,14], 'conf':[95]*4}
+    tables=reader.ocr_labelled_weights(data)
+    assert tables==[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['(Gross)','515,08','KGM']]]
+    pages=[{'number':1,'text':'Tờ khai hàng hóa xuất khẩu\nTổng trọng lượng hàng (Gross)\nĐịa điểm lưu kho\n515,08 KGM\n391.20','tables':tables}]
+    result=ai.DocumentResult.model_validate({'document_type':'Customs Declaration','classification_evidence':'Tờ khai hàng hóa xuất khẩu',
+        'fields':[{'field_id':'gross_weight','raw_value':'515,08','unit':'KGM','unit_evidence':'KGM','source_page':1,'evidence_text':'515,08 KGM'}], 'items':[],'containers':[]})
+    assert ai.validate_result(result,pages)
+    pages[0]['tables']=[]
+    with pytest.raises(ValueError,match='Gross'):
+        ai.validate_result(result,pages)
+    data['top'][1]=140
+    assert not reader.ocr_labelled_weights(data)
+
 def test_combined_packing_rows_do_not_enter_invoice_arithmetic():
     docs=[document('combined','Invoice & Packing List')]
     rows=[record('pl','combined','goods_item',{'description':'CARRIER','quantity':'600','unit':'PCS','scope':'packing'},'item'),
