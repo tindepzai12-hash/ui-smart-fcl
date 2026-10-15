@@ -36,3 +36,5 @@ Nguồn đối chiếu: [OpenAI — Model optimization](https://developers.opena
 - Source-format grounding: if the model changes numeric punctuation, recover the uniquely equal numeric literal only inside its existing valid source quote. Multiple alternatives or ambiguous numbers stay rejected. Currency evidence may use a printed Amount/Currency/Unit-price header only when the page has one unambiguous currency; symbols alone are insufficient. The unchanged validator still checks the result.
 
 - Optional Packing List roles stay conservative: an account/risk party is not automatically a consignee, and a neighboring commodity description is not shipping marks. Ambiguous table marks remain for human review rather than being forced into a field.
+
+- A missing Incoterms field may be read deterministically from one unique printed unit-price annotation such as `(CIF Example Port USD/MT)`. It requires the price header, explicit trade code and currency/unit; conflicting terms/locations are left unresolved. The literal term and original annotation remain available as evidence. Destination/payment wording never supplies a missing Incoterm.

@@ -231,3 +231,27 @@ def test_contract_quantity_header_requests_a_missing_document_quantity_even_when
     records,rejected=ai.validated_subset(candidate,pages)
     targets=ai.repair_targets(candidate,records,rejected,pages)
     assert 'goods_quantity' in targets['fields'] and targets['items']
+
+
+def test_missing_incoterm_can_only_come_from_a_unique_explicit_price_annotation():
+    pages=[{'number':1,'text':'SALES CONTRACT\nContract No: SC-9\nUNIT PRICE AMOUNT\nDESCRIPTION (MT) ( CIF Example Port USD/MT) (USD)'}]
+    candidate=output('Contract','SALES CONTRACT',[field('contract_number','SC-9','Contract No: SC-9')])
+    grounded=ai.ground_source_format(candidate,pages)
+    records,rejected=ai.validated_subset(grounded,pages)
+    assert not rejected
+    term=next(r for r in records if r['key']=='incoterms')
+    assert term['raw']=='CIF Example Port' and term['evidence']=='( CIF Example Port USD/MT)'
+    assert not any(f.field_id=='incoterms' for f in candidate.fields)
+    # The duplicated OCR reading is the same fact, not a second candidate.
+    pages[0]['text']+='\nUNIT PRICE (CIF Example Port USD/MT)'
+    assert ai.ground_source_format(candidate,pages).fields[-1].raw_value=='CIF Example Port'
+    # Another price term/location or trade code makes the automatic reading ambiguous.
+    for extra in ['\nUNIT PRICE (CIF Other Port USD/MT)','\nAlternative FOB Other Port']:
+        ambiguous=[{**pages[0],'text':pages[0]['text']+extra}]
+        assert not any(f.field_id=='incoterms' for f in ai.ground_source_format(candidate,ambiguous).fields)
+    for text in ['SALES CONTRACT\nDestination: Example Port\nAmount USD',
+                 'SALES CONTRACT\nUNIT PRICE (CIF Example Port XYZ/MT)',
+                 'SALES CONTRACT\nComment: (CIF Example Port USD/MT)']:
+        assert not any(f.field_id=='incoterms' for f in ai.ground_source_format(candidate,[{'number':1,'text':text}]).fields)
+    candidate.fields.append(field('incoterms','FOB Other Port','FOB Other Port'))
+    assert ai.ground_source_format(candidate,pages).fields[-1].raw_value=='FOB Other Port'

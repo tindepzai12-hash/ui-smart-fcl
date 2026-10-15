@@ -398,7 +398,7 @@ def validate_result(result, pages):
 
 
 def ground_source_format(result, pages):
-    """Recover only printed formatting / explicit global currency headers, never missing values."""
+    """Ground formatting and explicit price-header terms in literal source evidence."""
     from .normalize import decimal_text
     grounded = DocumentResult.model_validate(result.model_dump())
     currencies = {'USD','EUR','GBP','CNY','RMB','JPY','VND','AUD','CAD','SGD','HKD','CHF','THB','KRW','INR','MYR','IDR','TWD','PHP'}
@@ -453,6 +453,25 @@ def ground_source_format(result, pages):
                 header=explicit_currency(item.source_page,item.currency)
                 if header:
                     item.cell_evidence=[c for c in item.cell_evidence if c.attribute!='currency']+[CellEvidence(attribute='currency',evidence_text=header)]
+    # A price annotation such as (CIF Example Port USD/MT) explicitly prints a
+    # trade term. Read only that literal span; never infer it from a destination,
+    # payment clause or a currency. Conflicting printed terms remain for review.
+    if (grounded.document_type in FIELDS['incoterms']['documents']
+            and not any(f.field_id=='incoterms' for f in grounded.fields)):
+        terms=[]
+        for page in pages:
+            lines=page['text'].splitlines()
+            for index,line in enumerate(lines):
+                if not re.search(r'(?i)\bunit\s+price\b',' '.join(lines[max(0,index-2):index+1])):
+                    continue
+                for match in re.finditer(r'\(\s*((?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF)\b[^()\n]{0,80}?)\s+([A-Z]{3})\s*/\s*(?:MT|KGS?|KGM|PCS|SET|BAG)\s*\)',line):
+                    if match.group(2) in currencies:
+                        terms.append((match.group(1).strip(),match.group(0),page['number']))
+        printed_codes={m.group(0) for p in pages for m in re.finditer(r'\b(?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF)\b',p['text'])}
+        if (terms and len({' '.join(value.upper().split()) for value,_,_ in terms})==1
+                and printed_codes=={terms[0][0].split()[0]}):
+            value,quote,page=terms[0]
+            grounded.fields.append(FieldResult(field_id='incoterms',raw_value=value,source_page=page,evidence_text=quote))
     return grounded
 
 
@@ -613,7 +632,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v17-missing-printed-quantity|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v18-explicit-price-terms|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -728,6 +747,7 @@ def analyze(case_id, document, pages):
                     'For each diagnostic, identify the attribute that is NOT literally in its resolved quote. Find the actual source line containing it or omit/null that attribute. '
                     'USD is not a literal substring of US$: use a printed USD header with its own pointer, or keep that unit/currency null. '
                     'Never concatenate disjoint description/address fragments across intervening cells into one raw value. Return an exact source span, or omit the value if it cannot be supported. '
+                    'If a row description is interrupted by numeric columns, use its contiguous printed commodity-name fragment as description with that fragment as cell evidence. Preserve supported quantity, unit, unit_price and line_amount in their own cells; do not discard the entire row for an unsupported extra descriptive clause. '
                     'Every returned value must have correct source pointers and literal evidence. '
                     'Targets: '+encode(targets)+'; diagnostics: '+encode(repair_diagnostics(result,pages,rejected)))
                 retry = client.responses.parse(model=_model,
