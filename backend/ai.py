@@ -593,6 +593,36 @@ def ground_source_format(result, pages):
                 header=explicit_currency(f.source_page,f.unit)
                 if header: f.unit_evidence=header;f.unit_line=None
     for item in grounded.items:
+        # Recover a bad model line pointer from a uniquely identified table row.
+        # The layout binds columns; every cell quote must still exist literally
+        # on this page. Never locate a number by searching unrelated rows.
+        source_page=next((p for p in pages if p['number']==item.source_page),{})
+        bindings=[]
+        if item.product_code:
+            for table in source_page.get('tables',[]):
+                if not table:continue
+                columns={}
+                for i,header in enumerate(table[0]):
+                    header=re.sub(r'\s+',' ',header or '').strip().casefold()
+                    attribute=('product_code' if re.search(r'item\s*(?:no\.?|code)|product\s*code|part\s*no|^sku$',header) else
+                               'description' if 'description' in header else
+                               'quantity' if re.search(r'quantity|^qty\.?$',header) else
+                               'unit_price' if re.search(r'unit\s*price',header) else
+                               'line_amount' if re.search(r'amount',header) else
+                               'unit' if header in ['unit','uom','u/m'] else None)
+                    if attribute:columns[attribute]=i
+                code_column=columns.get('product_code')
+                if code_column is None or 'description' not in columns:continue
+                for row in table[1:]:
+                    if code_column>=len(row) or (row[code_column] or '').strip()!=item.product_code:continue
+                    cells={k:row[i] for k,i in columns.items() if i<len(row) and row[i] and evidence_ok(row[i],row[i],item.source_page,pages)}
+                    if cells.get('product_code')==item.product_code:bindings.append(cells)
+        unique={json.dumps(c,sort_keys=True,ensure_ascii=False):c for c in bindings}
+        if len(unique)==1:
+            cells=next(iter(unique.values()))
+            item.evidence_text=cells['product_code'];item.evidence_start_line=None;item.evidence_end_line=None
+            for attribute,quote in cells.items():
+                item.cell_evidence=[c for c in item.cell_evidence if c.attribute!=attribute]+[CellEvidence(attribute=attribute,evidence_text=quote)]
         try: quote=source_quote(item.source_page,item.evidence_text,item.evidence_start_line,item.evidence_end_line,pages)
         except ValueError: continue
         if item.origin:

@@ -1,4 +1,4 @@
-import io,json
+import io,json,pytest
 from openpyxl import load_workbook
 from backend import ai,db,consistency,source_locator
 from backend.app import bundle
@@ -103,3 +103,19 @@ def test_item_origin_uses_explicit_origin_header_not_seller_address():
     rows,rejected=ai.validated_subset(grounded,[page]);assert rows and not rejected
     grounded=ai.ground_source_format(result,[{**page,'text':page['text'].replace('Country of origin:','Seller address:')}])
     assert not grounded.items[0].cell_evidence
+
+def test_item_code_binds_cells_to_unique_printed_row_despite_wrong_model_pointers():
+    page={'number':1,'text':'INVOICE\nITEM-A ALUMINUM ALLOY CARRIER 600 PCS 6.53 3918.00\nITEM-B ALUMINUM ALLOY BRACKET 600 PCS 0.54 324.00',
+        'tables':[[['Item No.','Description','Quantity','Unit','Unit Price','Amount'],
+                   ['ITEM-A','ALUMINUM ALLOY CARRIER','600','PCS','6.53','3918.00'],
+                   ['ITEM-B','ALUMINUM ALLOY BRACKET','600','PCS','0.54','324.00']]]}
+    result=ai.DocumentResult.model_validate({'document_type':'Invoice','classification_evidence':'INVOICE','fields':[],
+        'items':[{'line_number':'1','product_code':'ITEM-A','description':'ALUMINUM ALLOY CARRIER','quantity':'600','unit':'PCS','unit_price':'6.53','line_amount':'3918.00','source_page':1,'evidence_text':'INVOICE',
+            'cell_evidence':[{'attribute':'product_code','evidence_text':'INVOICE'}]}],'containers':[]})
+    rows,rejected=ai.validated_subset(ai.ground_source_format(result,[page]),[page]);assert rows and not rejected
+    result.items[0].line_amount='324.00'  # Real amount on the other row must not pass.
+    with pytest.raises(ValueError,match='line_amount'):
+        ai.validated_subset(ai.ground_source_format(result,[page]) ,[page])
+    result.items[0].product_code='INVENTED'
+    with pytest.raises(ValueError,match='product_code'):
+        ai.validated_subset(ai.ground_source_format(result,[page]),[page])
