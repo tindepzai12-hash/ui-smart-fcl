@@ -1,5 +1,6 @@
 """A real subprocess restart, using an isolated database and localhost port."""
 import json,os,subprocess,sys,time,urllib.request
+import httpx
 from backend import db
 
 def test_real_backend_restart(tmp_path):
@@ -18,8 +19,15 @@ def test_real_backend_restart(tmp_path):
     p=launch()
     try:
         case=request('cases',{'name':'Restart proof','customer':'Synthetic'})['case']
-        result=request('cases/'+case['id']+'/records',{'kind':'field','key':'invoice_number','value':'000042','note':'Nguồn mẫu cho kiểm thử restart'})
-        record=result['records'][0]
+        uploaded=httpx.post(f'http://127.0.0.1:{port}/api/cases/'+case['id']+'/documents',headers={'X-UI-Smart':'local'},files={'files':('restart.txt',b'COMMERCIAL INVOICE\nInvoice No: 000042\n','text/plain')})
+        assert uploaded.status_code==200
+        job=request('cases/'+case['id']+'/process',{'mode':'local'})
+        for _ in range(100):
+            if request('jobs/'+job['id'])['status']!='running':break
+            time.sleep(.05)
+        result=request('cases/'+case['id'])
+        record=next(r for r in result['records'] if r['key']=='invoice_number')
+        assert record['value']['text']=='000042'
     finally:p.terminate();p.wait(timeout=10)
     p=launch()
     try:

@@ -708,8 +708,6 @@ def manual(id: str, body: NewRecord):
         busy(id)
         if commercial_profile(json.loads(case['requirements']),case['mode']) and (body.kind == 'container' or (body.kind == 'field' and body.key not in REVIEW_FIELDS)):
             raise HTTPException(422, 'Chỉ thêm trường chứng từ hoặc dòng hàng trong phạm vi checklist hiện tại')
-        if commercial_profile(json.loads(case['requirements']),case['mode']) and (not body.document_id or not body.page):
-            raise HTTPException(422, 'Chọn chứng từ và trang nguồn chứa giá trị cần bổ sung')
         value = checked_value(body.kind, body.key, body.value)
         if body.document_id:
             d = require_working_doc(body.document_id)
@@ -717,6 +715,8 @@ def manual(id: str, body: NewRecord):
                 raise HTTPException(422, 'Chứng từ thuộc hồ sơ khác')
             if body.page and not db.one('SELECT id FROM pages WHERE document_id=? AND number=?', (body.document_id, body.page)):
                 raise HTTPException(422, 'Trang nguồn không tồn tại')
+        if commercial_profile(json.loads(case['requirements']),case['mode']) and (not body.document_id or not body.page):
+            raise HTTPException(422, 'Chọn chứng từ và trang nguồn chứa giá trị cần bổ sung')
         with db.connect() as c:
             add_record(c, id, body.document_id, {'kind': body.kind, 'key': body.key, 'raw': body.value, 'value': value, 'page': body.page, 'evidence': body.note, 'method': 'Manual'})
             db.touch(c, id)
