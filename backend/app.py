@@ -582,7 +582,7 @@ def worker(job_id):
                         job['warnings'].append({'document': d['name'], 'message': extraction_warning})
                 else:
                     kind, evidence = extraction.classify(pages)
-                    if d['type_verified']:
+                    if d['type_verified'] and not (d['type']=='Contract' and kind=='Purchase Order'):
                         kind = d['type']
                     records = extraction.extract(pages, kind)
                 if job['cancel']:
@@ -591,7 +591,7 @@ def worker(job_id):
                 commercial = commercial_profile(json.loads(case['requirements']),case['mode'])
                 main_types = PROFILE_VARIANTS
                 # A staff correction is explicit. Keep it in the main set, but flag conflicting AI classification.
-                if commercial and d['type_verified'] and d['type'] in main_types and kind != d['type']:
+                if commercial and d['type_verified'] and d['type'] in main_types and kind != d['type'] and not (d['type']=='Contract' and kind=='Purchase Order'):
                     extraction_warning = f'Máy gợi ý {kind}, khác loại {d["type"]} đã được nhân viên xác nhận. Kiểm bản gốc và loại trước khi dùng dữ liệu.'
                     kind, records = d['type'], []
                     job['warnings'].append({'document':d['name'],'message':extraction_warning})

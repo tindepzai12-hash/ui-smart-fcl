@@ -338,6 +338,12 @@ def validate_result(result, pages):
             norm = lambda s: re.sub(r'\s+',' ',s).casefold().strip()
             if not any(norm(f.raw_value) in norm(source[m.end():m.end()+80]) for m in re.finditer(labels,source)):
                 raise ValueError('Ngày đến dự kiến thiếu nhãn ETA/Estimated Arrival; không dùng ngày phát hành hoặc xếp tàu')
+        if f.field_id == 'arrival_date':
+            source = next((p['text'] for p in pages if p['number']==f.source_page),'')
+            labels = r'(?im)^\s*(?:actual\s+)?arrival\s*date\s*[:：]?'
+            norm = lambda s: re.sub(r'\s+',' ',s).casefold().strip()
+            if not any(norm(f.raw_value) in norm(source[m.end():m.end()+80]) for m in re.finditer(labels,source)):
+                raise ValueError('Ngày hàng đến thực tế thiếu nhãn Arrival Date; không thay bằng ETA/ngày phát hành')
         normalized = normalize(f.raw_value, spec['type'])
         evidence = field_evidence
         if f.unit:

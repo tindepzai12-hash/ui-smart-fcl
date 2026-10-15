@@ -161,6 +161,22 @@ def test_packing_list_without_own_number_is_not_missing():
  assert not any(c['key']=='missing:packing_number' for c in b['checks'])
  assert not any(r['key']=='packing_number' for r in b['records'])
 
+def test_contract_group_selection_preserves_content_supported_po_subtype():
+ cid=create()
+ upload(cid,[('1.txt',sample('po.txt'))]);b,j=process(cid)
+ doc=b['documents'][0]
+ assert client.patch('/api/documents/'+doc['id']+'/classification',headers=H,json={'type':'Contract'}).status_code==200
+ b,j=process(cid)
+ assert not j['errors'] and b['documents'][0]['type']=='Purchase Order'
+ assert not b['documents'][0]['error']
+ assert any(r['key']=='po_number' for r in b['records'])
+
+def test_actual_arrival_date_cannot_be_inferred_from_eta_or_issue_date():
+ pages=[{'number':1,'text':'ARRIVAL NOTICE\nETA: 2026-08-29\nIssue Date: 2026-08-27','tables':[]}]
+ for value in ['2026-08-29','2026-08-27']:
+  result=ai.DocumentResult(document_type='Arrival Notice',classification_evidence='ARRIVAL NOTICE',fields=[{'field_id':'arrival_date','raw_value':value,'source_page':1,'evidence_text':pages[0]['text']}],items=[],containers=[])
+  with pytest.raises(ValueError):ai.validate_result(result,pages)
+
 def test_arrival_notice_is_main_but_bill_does_not_supply_booking():
  cid=create()
  upload(cid,[('1.txt',sample('arrival.txt')),('2.txt',sample('bl.txt'))])
