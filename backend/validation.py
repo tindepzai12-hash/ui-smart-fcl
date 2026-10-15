@@ -51,6 +51,8 @@ def build_checks(case, documents, records):
 
     for d in documents:
         doc_source = [{'id': d['id'], 'document': d['name'], 'type': d['type'], 'value': {'text': d['name']}, 'page': 1}]
+        if d.get('extraction_required'):
+            add('extraction:' + d['id'], 'Needs Verification', 'Đã đổi loại tài liệu. Đọc lại tệp này để trích xuất theo loại vừa chọn.', doc_source, severity='error')
         if d['status'] == 'needs_split':
             add('reading:' + d['id'], 'Needs Verification', 'Đã đọc nội dung. Tách bộ PDF thành từng chứng từ trước khi xác nhận loại và đối chiếu.', doc_source)
         elif d['status'] != 'read':

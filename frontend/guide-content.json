@@ -36,7 +36,7 @@
       "id": "upload",
       "title": "Tải file và xác nhận đúng loại",
       "task": "Nhận Packing List, Booking, Invoice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.",
-      "action": "Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác bên dưới thanh Đọc & trích xuất; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → Đọc & trích xuất lại.",
+      "action": "Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → chọn OpenAI, tích đồng ý gửi nội dung → Đọc tệp này. Chỉ tệp vừa chọn được xử lý; thông tin không có nguồn vẫn để thiếu.",
       "check": "Dù file tên 1.pdf, nội dung PACKING LIST phải nhận là Packing List. SALES CONTRACT nhận Contract; PURCHASE ORDER nhận Purchase Order. Không đổi PO thành Contract để đủ checklist.",
       "done": "Các file đã đọc, loại đã được kiểm theo nội dung; mỗi file hoặc nhóm trang chứa đúng một chứng từ.",
       "problem": "Không rõ loại: xem tiêu đề và mục đích nội dung, kiểm bản gốc rồi chọn lại. Scan mờ: xin bản rõ hơn. C/O không có thì bỏ qua; không cần tạo file trống. Tệp lỗi hoặc ảnh chưa đủ rõ vẫn cần kiểm tra; không tự coi là giấy tờ không liên quan."
@@ -103,6 +103,10 @@
     "note": "Hướng dẫn khớp phạm vi 5 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập."
   },
   "problems": [
+    [
+      "Chọn loại thủ công rồi nhưng chưa có trường dữ liệu",
+      "Chọn loại chỉ xác định nhóm trường cần tìm. Bấm Đọc tệp này hoặc Đọc lại tệp này để trích xuất theo loại vừa xác nhận; với OpenAI phải tích đồng ý gửi nội dung. Máy chỉ điền giá trị có bằng chứng trong tệp, không tự tạo dữ liệu cho đủ checklist. Nếu tiêu đề mâu thuẫn với loại chọn, kiểm bản gốc và sửa loại."
+    ],
     [
       "Không tìm thấy nguồn",
       "Bấm Xem nguồn ở bản ghi hoặc bảng checklist. Kiểm trang gốc và câu trích dẫn; nếu không có tọa độ đáng tin thì web không khẳng định vị trí chính xác."

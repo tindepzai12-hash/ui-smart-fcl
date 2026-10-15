@@ -361,7 +361,7 @@ def collection(id: str, body: CollectionInput):
                 if body.document_type is not None:
                     if doc['type'] != body.document_type:
                         c.execute("DELETE FROM records WHERE document_id=? AND status='pending' AND method NOT LIKE 'Manual%'", (id,))
-                    c.execute('UPDATE documents SET type=?,type_verified=1,error=NULL WHERE id=?', (body.document_type,id))
+                    c.execute("UPDATE documents SET type=?,type_verified=1,error=NULL,classification_evidence='',extraction_required=1 WHERE id=?", (body.document_type,id))
                     db.audit(c,doc['case_id'],'Xác nhận loại khi đưa vào bộ chính',id,before=doc['type'],after=body.document_type,reason=body.reason)
                     revalidate(c,doc['case_id'])
     return bundle(doc['case_id'])
@@ -398,6 +398,7 @@ def classification(id: str, body: ClassInput):
                 # Classification change requires extraction to be rerun, retain edited/verified records for review.
                 c.execute("DELETE FROM records WHERE document_id=? AND status='pending' AND method NOT LIKE 'Manual%'", (id,))
                 c.execute("UPDATE records SET status='pending',version=version+1,updated_at=? WHERE document_id=? AND status!='rejected'", (db.now(), id))
+                c.execute('UPDATE documents SET extraction_required=1,classification_evidence=\'\' WHERE id=?',(id,))
             c.execute('UPDATE documents SET type=?,type_verified=1 WHERE id=?', (body.type, id))
             db.touch(c, doc['case_id'])
             db.audit(c, doc['case_id'], 'Xác nhận loại tài liệu', id, before=doc['type'], after=body.type)
@@ -522,6 +523,8 @@ def worker(job_id):
     final_status = 'error'
     try:
         docs = db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document'", (id,))
+        if job.get('document_id'):
+            docs = [d for d in docs if d['id']==job['document_id']]
         for idx, d in enumerate(docs):
             if job['cancel']:
                 raise InterruptedError()
@@ -612,7 +615,7 @@ def worker(job_id):
                         if any(p['kind'] == r['kind'] and p['key'] == r['key'] and p['page'] == r['page'] and p['raw'] == r['raw'] for p in protected):
                             continue
                         add_record(c, id, d['id'], r)
-                    c.execute("UPDATE documents SET status='read',error=? WHERE id=?", (extraction_warning, d['id']))
+                    c.execute("UPDATE documents SET status='read',error=?,extraction_required=0 WHERE id=?", (extraction_warning, d['id']))
                     db.audit(c, id, 'Đọc và trích xuất ' + mode, d['id'], after={'type': kind, 'pages': len(pages), 'records': len(records)})
             except InterruptedError:
                 raise
@@ -643,9 +646,21 @@ def worker(job_id):
 
 @app.post('/api/cases/{id}/process')
 def process(id: str, body: ProcessInput):
+    return start_processing(id,body)
+
+@app.post('/api/documents/{id}/process')
+def process_document(id: str, body: ProcessInput):
+    doc = require_working_doc(id)
+    return start_processing(doc['case_id'],body,id)
+
+def start_processing(id: str, body: ProcessInput, document_id=None):
     with LOCK:
         require_case(id)
         busy(id)
+        if document_id:
+            selected = require_working_doc(document_id)
+            if selected['case_id'] != id:
+                raise HTTPException(422, 'Tệp không thuộc hồ sơ đang xử lý.')
         if os.getenv('UI_SMART_CLOUD') == '1' and any(j['status'] == 'running' for j in JOBS.values()):
             raise HTTPException(409, 'Máy chủ đang xử lý hồ sơ khác. Chờ hoàn tất rồi thử lại để tránh quá tải OCR.')
         if body.mode == 'openai' and not ai.key():
@@ -664,6 +679,7 @@ def process(id: str, body: ProcessInput):
         JOBS[job_id] = {
             'id': job_id,
             'case_id': id,
+            'document_id': document_id,
             'mode': body.mode,
             'status': 'running',
             'stage': 'Tiếp nhận',

@@ -1,5 +1,13 @@
 # Cải thiện AI trích xuất chứng từ
 
+## Quy tắc không suy diễn bắt buộc
+
+[AI_NO_INFERENCE.md](AI_NO_INFERENCE.md) là chính sách bắt buộc được `backend/ai.py` đọc trực tiếp và chèn vào system instructions cho cả lượt đầu và lượt sửa. Cache bao gồm nội dung chính sách và loại đã được nhân viên xác nhận, nên đổi loại không dùng lại kết quả Other cũ.
+
+MD không tự bảo đảm AI đúng. Backend tiếp tục kiểm bằng chứng từng giá trị/ô, nhãn nghiệp vụ, loại chứng từ và đơn vị; giá trị không qua kiểm tra bị loại, hiển thị cảnh báo và không được tự xác minh. Số lượng không được tự coi là trọng lượng tịnh. Kiểm thử có trường thiếu, tên tệp gây hiểu nhầm, chỉ dẫn độc hại và chọn nhầm loại thủ công.
+
+Nếu máy chưa xác định loại, nhân viên kiểm bản gốc → chọn loại → Đưa vào bộ chính → chọn OpenAI và đồng ý gửi nội dung → Đọc tệp này. Tác vụ chỉ xử lý tệp vừa chọn. Loại thủ công là phạm vi trích xuất, không phải bằng chứng: nếu nguồn có tiêu đề mâu thuẫn hoặc thiếu nhãn nghiệp vụ hỗ trợ thì không được ép tạo trường dữ liệu. Tệp không có tiêu đề rõ nhưng có nhãn Invoice No/Booking No/... vẫn có thể trích xuất theo loại đã xác nhận.
+
 Đây là cập nhật pipeline và prompt, chưa tạo model fine-tuned. Model hiện tại vẫn lấy từ cấu hình OpenAI của app.
 
 `backend/ai_guidance.py` chứa ví dụ giả lập về bảng có ô rời, bằng chứng số dòng, tiền tệ và đơn vị. Các ví dụ không chứa giá trị đáp án của bộ PDF công khai dùng để đánh giá.

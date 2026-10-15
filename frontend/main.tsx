@@ -311,6 +311,12 @@ function App() {
   }, [dialog?.kind]);
 
   const activeDoc = current?.documents.find((d: Any) => d.id === selectedDoc);
+  const canReadSelected = !loading && job?.status !== 'running' && (mode !== 'openai' || (health?.ai.configured && consent));
+  const readDocument = (id: string) => run(async () => {
+    const j = await post('/documents/' + id + '/process', {mode, allow_external: mode === 'openai' && consent});
+    setSelectedDoc(id); setPage(1); setTab('documents'); setJob(j);
+    replace(await api('/cases/' + current.case.id));
+  });
   const sourceRecord = current?.records.find((r:Any) => r.id === sourceRecordId && r.document_id === selectedDoc);
   const sourceConflict = sourceRecord && current?.checks.find((c:Any) => ['Mismatch','Needs Verification'].includes(c.result) && !c.resolution && c.detail.sources?.some((r:Any)=>r.id===sourceRecord.id));
   const allGroupRecords = current?.records.filter((r: Any) => r.kind === recordGroup) || [];
@@ -512,6 +518,16 @@ function App() {
     const unreadDocs = docs.filter((d: Any) => d.status !== 'read');
     const unverifiedDocs = docs.filter((d: Any) => d.status === 'read' && !d.type_verified);
     const warningRecords = (current.records || []).filter((r: Any) => r.status !== 'rejected' && r.value?.warning);
+    const needsExtraction = docs.find((d: Any) => d.extraction_required);
+
+    if (needsExtraction) return <div className="next-action-bar">
+      <div><span className="badge info">Việc cần làm tiếp theo</span>
+        <strong>Đọc lại {needsExtraction.name} theo loại {needsExtraction.type} vừa xác nhận</strong>
+        <p>Chọn loại chỉ xác định nhóm trường cần tìm. Máy chỉ điền thông tin có bằng chứng trên bản gốc; dữ liệu thiếu vẫn để trống.</p>
+        {mode === 'openai' && !consent && <p>Để dùng OpenAI, tích đồng ý gửi nội dung ở thanh chế độ xử lý bên dưới.</p>}
+      </div>
+      <button className="btn primary" disabled={!canReadSelected} onClick={() => readDocument(needsExtraction.id)}>Đọc tệp này · {mode === 'openai' ? 'OpenAI' : 'Local'}</button>
+    </div>;
 
     if (!docs.length) {
       return (
@@ -1383,9 +1399,13 @@ function App() {
                   <OtherFiles files={current.other_files || current.reference_files || []}
                     types={[...dict.document_types, 'Invoice & Packing List']}
                     disabled={loading || job?.status === 'running'}
-                    onRestore={(file: Any, kind: string) => update(() => patch('/documents/' + file.id + '/collection', {
-                      collection: 'document', document_type: kind, reason: 'Nhân viên kiểm bản gốc và xác nhận đưa vào bộ chính',
-                    }), 'Đã đưa vào bộ chính · bấm Đọc & trích xuất để kiểm dữ liệu')} />
+                    onRestore={(file: Any, kind: string) => run(async () => {
+                      const b = await patch('/documents/' + file.id + '/collection', {
+                        collection: 'document', document_type: kind, reason: 'Nhân viên kiểm bản gốc và xác nhận đưa vào bộ chính',
+                      });
+                      replace(b); setSelectedDoc(file.id); setPage(1); setTab('documents'); setSourceRecordId('');
+                      await refresh(); notify('Đã xác nhận loại · bấm Đọc tệp này để trích xuất có nguồn');
+                    })} />
 
                   {mode === 'openai' && (
                     <div className="alert info">
@@ -1609,6 +1629,9 @@ function App() {
                             ) : (
                               'Xác nhận loại'
                             )}
+                          </button>
+                          <button className="btn small" disabled={!canReadSelected || !activeDoc.type_verified || activeDoc.status === 'needs_split'} onClick={() => readDocument(activeDoc.id)}>
+                            Đọc lại tệp này · {mode === 'openai' ? 'OpenAI' : 'Local'}
                           </button>
                           <button
                             className="icon-btn danger"

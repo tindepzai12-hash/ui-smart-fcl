@@ -20,7 +20,7 @@ Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nú
 
 **Việc nhân viên làm:** Nhận Packing List, Booking, Invoice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.
 
-**Thao tác trên web:** Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác bên dưới thanh Đọc & trích xuất; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → Đọc & trích xuất lại.
+**Thao tác trên web:** Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → chọn OpenAI, tích đồng ý gửi nội dung → Đọc tệp này. Chỉ tệp vừa chọn được xử lý; thông tin không có nguồn vẫn để thiếu.
 
 **Kiểm tra trong ví dụ sầu riêng:** Dù file tên 1.pdf, nội dung PACKING LIST phải nhận là Packing List. SALES CONTRACT nhận Contract; PURCHASE ORDER nhận Purchase Order. Không đổi PO thành Contract để đủ checklist.
 
@@ -108,6 +108,10 @@ Kiểm cùng đơn vị, trọng lượng cả bì/tịnh, ngày sửa booking v
 Nguồn: [Phạm vi và thao tác U&I SMART](https://ui-smart-fcl.onrender.com/). Hướng dẫn khớp phạm vi 5 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập.
 
 ## Khi gặp vấn đề với web
+
+### Chọn loại thủ công rồi nhưng chưa có trường dữ liệu
+
+Chọn loại chỉ xác định nhóm trường cần tìm. Bấm Đọc tệp này hoặc Đọc lại tệp này để trích xuất theo loại vừa xác nhận; với OpenAI phải tích đồng ý gửi nội dung. Máy chỉ điền giá trị có bằng chứng trong tệp, không tự tạo dữ liệu cho đủ checklist. Nếu tiêu đề mâu thuẫn với loại chọn, kiểm bản gốc và sửa loại.
 
 ### Không tìm thấy nguồn
 

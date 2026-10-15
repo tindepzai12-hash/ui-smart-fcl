@@ -35,6 +35,8 @@ def migrate():
             c.execute("ALTER TABLE documents ADD COLUMN collection TEXT NOT NULL DEFAULT 'document' CHECK(collection IN ('document','reference'))")
         if 'collection_reason' not in columns:
             c.execute("ALTER TABLE documents ADD COLUMN collection_reason TEXT NOT NULL DEFAULT ''")
+        if 'extraction_required' not in columns:
+            c.execute('ALTER TABLE documents ADD COLUMN extraction_required INTEGER NOT NULL DEFAULT 0')
         c.execute('PRAGMA journal_mode=WAL')
         # Recover work interrupted by an application restart. Files are retained.
         c.execute("UPDATE documents SET status='error', error='Xử lý bị gián đoạn. Chọn thử lại.' WHERE status='reading'")
