@@ -25,6 +25,14 @@ _model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
 _tested = False
 _checked_at = None
 DISCHARGE_LABEL = r'(?i)\b(?:port\s+of\s+discharge|discharge\s+port)\s*[:：]?'
+ORIGIN_LABEL = r'(?i)\b(?:country\s+of\s+(?:origin|manufacture)|origin\s+of\s+(?:goods|products)|made\s+in|origin\s*[:：])|(?:nước\s+)?xuất\s*xứ'
+
+def origin_supported(value, quote):
+    # Require the country in the same labelled source span, never a party address.
+    return any(evidence_ok(value, quote[m.end():m.end()+160], 1, [{'number':1,'text':quote}])
+               for m in re.finditer(ORIGIN_LABEL, quote))
+
+PACKING_NUMBER_LABEL = r'(?i)\bpacking\s*(?:list\s*)?(?:no\.?|number|reference|ref\.?)\b|số\s*(?:phiếu\s*)?đóng\s*gói'
 NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?)|n\.?\s*w\.?)\b|trọng\s*lượng\s*tịnh'
 NO_INFERENCE_POLICY = (Path(__file__).resolve().parents[1] / 'docs' / 'AI_NO_INFERENCE.md').read_text(encoding='utf-8')
 
@@ -280,6 +288,10 @@ def validate_result(result, pages):
         field_evidence=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages):
             raise ValueError('AI trả giá trị không có bằng chứng nguồn')
+        if f.field_id == 'packing_number' and not any(evidence_ok(f.raw_value, field_evidence[m.end():m.end()+160], f.source_page, pages) for m in re.finditer(PACKING_NUMBER_LABEL,field_evidence)):
+            raise ValueError('Số Packing List thiếu nhãn số chứng từ; không dùng số kiện hoặc số Invoice thay thế')
+        if f.field_id == 'origin' and not origin_supported(f.raw_value, field_evidence):
+            raise ValueError('Xuất xứ thiếu nhãn nguồn; không suy ra từ địa chỉ người bán/cảng đi')
         if f.field_id == 'incoterms' and not re.search(r'(?i)\b(?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF|DAT|DAF|DES|DEQ|DDU)\b', f.raw_value):
             raise ValueError('Điều kiện giao hàng phải có mã Incoterms; không dùng điều khoản thanh toán thay thế')
         if f.field_id == 'net_weight' and not any(re.search(NET_WEIGHT_LABEL,p['text']) for p in pages if p['number']==f.source_page):
@@ -346,6 +358,8 @@ def validate_result(result, pages):
             for k, val in v.items():
                 if val and k != 'line_number' and not evidence_ok(val, quotes.get(k,evidence), page, pages):
                     raise ValueError('AI trả dòng hàng/container thiếu bằng chứng cho ' + k)
+            if kind == 'item' and v.get('origin') and not origin_supported(v['origin'], quotes.get('origin',evidence)):
+                raise ValueError('Xuất xứ dòng hàng thiếu nhãn nguồn; không suy ra từ địa chỉ người bán/cảng đi')
             if not evidence_ok(evidence,evidence,page,pages):
                 raise ValueError('Dòng thiếu trích dẫn nguồn')
             if kind == 'container' and not re.fullmatch(r'[A-Z]{4}\d{7}', v['container_number']):
@@ -407,9 +421,16 @@ def repair_targets(result, records, rejected, pages):
     if result.document_type in ['B/L', 'Invoice & Packing List', 'Packing List'] and re.search(r'(?i)\b(?:gross\s+weight|GW|KGM|KGS)\b', text):
         fields.update({'gross_weight'} - found)
     fields = {k for k in fields if result.document_type in FIELDS[k]['documents']}
+    if result.document_type in ['Contract','Purchase Order'] and re.search(r'(?i)\b(?:total|amount)\b',text):
+        fields.update({'contract_total','currency'} - found if result.document_type=='Contract' else {'currency'} - found)
+    # Re-read missing units only when a quantity header exists; the model must quote it.
+    quantity_header = bool(re.search(r'(?is)\b(?:quantity|qty)\b.{0,180}?(?<![A-Za-z])(?:KGS?|KGM|MT|PCS|SETS?|BAGS?)\b', text))
+    if quantity_header:
+        fields.update(r['key'] for r in records if r['key']=='goods_quantity' and not r['value'].get('unit'))
     items = any(reason.startswith('items[') for reason in rejected)
-    if supports(result.document_type, 'Invoice') and re.search(r'(?i)\b(?:quantity|qty)\b', text):
+    if result.document_type in ['Invoice','Invoice & Packing List','Packing List','Contract','Purchase Order'] and re.search(r'(?i)\b(?:quantity|qty)\b', text):
         items |= not any(r['kind'] == 'item' and r['raw'].get('quantity') for r in records)
+        items |= quantity_header and any(r['kind']=='item' and r['raw'].get('quantity') and not r['raw'].get('unit') for r in records)
     containers = any(reason.startswith('containers[') for reason in rejected)
     return {'fields': sorted(fields), 'items': items, 'containers': containers}
 
@@ -445,7 +466,10 @@ def merge_supported_repair(first, repair, pages, targets):
             good = [v for v in existing if valid(name, v)]
             if good:
                 if name == 'fields':
-                    continue  # Never overwrite an accepted field with another reading.
+                    # Only enrich a missing unit; never change an accepted raw value or unit.
+                    if not (value.get('unit') and all(v['raw_value']==value['raw_value'] and not v.get('unit')
+                        and not normalize(v['raw_value'],FIELDS[v['field_id']]['type']).get('unit') for v in good)):
+                        continue
                 # A fuller row may fill null cells, but must agree with every existing value.
                 attributes = (['product_code', 'description', 'quantity', 'unit', 'unit_price', 'line_amount', 'currency', 'origin']
                               if name == 'items' else ['container_number', 'seal_number', 'container_type'])
@@ -462,6 +486,7 @@ def extraction_notice(rejected):
         if field:
             label=FIELDS.get(field.group(1),{}).get('label','Một thông tin chứng từ')
             explanation=('chưa chứng minh được đúng nhãn cảng dỡ' if field.group(1)=='port_discharge'
+                         else 'chưa có nhãn chứng minh xuất xứ hàng hóa' if field.group(1)=='origin'
                          else 'giá trị hoặc đơn vị chưa khớp trích dẫn nguồn')
             details.append(label+' — '+explanation)
         elif reason.startswith('items['):
@@ -511,7 +536,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v13-no-inference-manual-target|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v14-role-evidence-units|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -524,6 +549,10 @@ def analyze(case_id, document, pages):
                  if k in REVIEW_FIELDS and v['documents'] and (target_type=='Other' or target_type in v['documents'])}
     if not re.search(DISCHARGE_LABEL,'\n'.join(p['text'] for p in pages)):
         permitted.pop('port_discharge',None)
+    if not any(re.search(PACKING_NUMBER_LABEL,p['text']) for p in pages):
+        permitted.pop('packing_number',None)
+    if not any(re.search(ORIGIN_LABEL,p['text']) for p in pages):
+        permitted.pop('origin',None)
     if not any(re.search(NET_WEIGHT_LABEL,p['text']) for p in pages):
         permitted.pop('net_weight',None)
     instructions = (
@@ -536,6 +565,8 @@ def analyze(case_id, document, pages):
         'No tools/actions. Never infer HS, declaration/tax/customs codes. No invented values. '
         'Keep seller, exporter, shipper, buyer, importer and consignee roles separate. '
         'Party name fields contain only the company/person name; addresses and telephone belong in separate fields. '
+        'Origin at field and item level requires a printed Country of Origin / Origin: / Made in label and the country in the SAME evidence quote. Seller address, port, company name and certificate issuer country never prove goods origin. If no origin label is printed, omit origin on all fields and items. '
+        'Quantity units must be read from the actual quantity column/header (including Quantity followed by a separate line such as (KGS)), using exact unit_line or cell_evidence. Do not leave a unit null when that applicable header is readable; do not substitute packing weight, net/gross weight or price unit for quantity. '
         'incoterms contains a printed trade term such as CIF or FOB, never TT, LC or a payment sentence. Put payment conditions in payment_terms. Do not infer net_weight from quantity without a net-weight label. '
         'Return independent line items. For the commercial document review profile, containers MUST be an empty array: do not extract container numbers, seals or per-container cargo. Every nonempty value must occur literally in its evidence on its source page. '
         'Copy raw_value EXACTLY as written, including spaces, punctuation, date format and separators. Never normalize a number/date/unit in raw_value. '
@@ -550,6 +581,8 @@ def analyze(case_id, document, pages):
         'Always supply a description cell_evidence for each item. A numeric row does not prove a description printed on another line. Point description to its actual printed line(s), and numeric cells to their own lines; never rewrite or concatenate disjoint description fragments into a new string. '
         'A unit or currency printed in a table column header can be copied with a cell_evidence quote of that header. Use null if not printed. Never combine two different rows. '
         'For numeric fields with units/currency in a separate cell, raw_value is the exact number, unit is the printed unit/currency, unit_evidence quotes that separate cell on the SAME page. Otherwise unit and unit_evidence=null. '
+        'packing_number requires an explicit Packing List No / Packing No / Packing Number label and its value in the same quote. A Packing List may have only Invoice No: keep that as invoice_number, omit packing_number. Package counts such as 840BAGS are never document numbers. '
+        'For Contract and Purchase Order, read independent item rows and their quantity/price/currency headers as printed, including MT quantities and USD/MT prices. Retain source units without converting raw values. '
         'Document numbers must contain only the identifier, without NO: or other labels; container and seal identifiers are separate attributes, never a bl_number. '
         'container_number contains exactly four uppercase letters followed by seven digits, even if a printed container type or slash touches it with no space. Copy the 11-character substring; seal_number and container_type are separate. '
         'eta is only the estimated arrival date marked ETA/Est. Arrival Date/Estimated Arrival, never Est. Issued Date, on-board date or departure date. Omit it if not present. '

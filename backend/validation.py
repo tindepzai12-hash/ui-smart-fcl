@@ -19,6 +19,21 @@ def required(rule):
     # A legacy/incomplete waiver without a reason must not silently relax review.
     return rule.get('required', True) or len(str(rule.get('note', '')).strip()) < 3
 
+def field_comparable(key, value):
+    comparison = comparable(value)
+    if comparison is None:
+        return None
+    if key == 'goods_quantity' and value.get('number') is not None and value.get('unit') in ['KG','MT','LB']:
+        factor = {'KG':Decimal(1),'MT':Decimal(1000),'LB':Decimal('0.45359237')}[value['unit']]
+        return (Decimal(value['number'])*factor,'KG')
+    if key in ['seller','buyer','shipper','consignee','notify_party','exporter','importer','seller_address','buyer_address','shipper_address','consignee_address','exporter_address','importer_address']:
+        text=value.get('text','')
+        if key.endswith('_address'):
+            text=re.sub(r'(?i)^\s*add(?:ress)?\s*[:：]\s*','',text)
+        return tuple(re.findall(r'[^\W_]+',text.casefold(),flags=re.UNICODE))
+    return comparison
+
+
 def build_checks(case, documents, records):
     checks = []
     active = [r for r in records if r['status'] != 'rejected']
@@ -135,7 +150,7 @@ def build_checks(case, documents, records):
             'value': r['value'],
             'page': r['page'],
         } for r in group]
-        values = [comparable(r['value']) for r in group]
+        values = [field_comparable(key,r['value']) for r in group]
         if any(v is None for v in values):
             result = 'Needs Verification'
             reason = 'Có đơn vị/số/ngày chưa rõ. Giữ nguyên giá trị gốc.'
@@ -151,6 +166,9 @@ def build_checks(case, documents, records):
             elif commercial and any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight']:
                 result = 'Needs Verification'
                 reason = 'Hợp đồng/PO có thể bao gồm nhiều đợt giao. Kiểm phạm vi lô trước khi so với Invoice/Packing List.'
+            elif commercial and any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['port_loading','port_discharge','incoterms']:
+                result = 'Needs Verification'
+                reason = 'Cách ghi điều kiện/địa điểm trong hợp đồng hoặc PO khác chứng từ giao hàng. Kiểm địa điểm, lựa chọn cảng và phạm vi lô; chưa kết luận sai lệch.'
             elif key.startswith('invoice_') and doc_types.count('Invoice') > 1:
                 result = 'Needs Verification'
                 reason = 'Nhiều hóa đơn; xác minh quan hệ chứng từ trước khi đối chiếu.'
@@ -165,7 +183,11 @@ def build_checks(case, documents, records):
                 reason = 'Giá trị sau chuẩn hóa khác nhau ở cùng chỉ tiêu/role; kiểm tra phạm vi lô hàng.'
         else:
             result = 'Matched'
-            reason = 'Các nguồn cùng trường/role khớp sau chuẩn hóa.'
+            reason = ('Các nguồn cùng chỉ tiêu khớp sau quy đổi đơn vị khối lượng về KG (1 MT = 1000 KG); giữ nguyên giá trị và đơn vị gốc.'
+                      if key=='goods_quantity' and len({r['value'].get('unit') for r in group})>1 else
+                      'Các nguồn cùng trường/role khớp sau chuẩn hóa dấu câu/khoảng trắng; giữ nguyên bản gốc.'
+                      if any(key==x or key==x+'_address' for x in ['seller','buyer','shipper','consignee','notify_party','exporter','importer']) else
+                      'Các nguồn cùng trường/role khớp sau chuẩn hóa.')
         add('field:' + key, result, reason, sources)
 
     # Invoice arithmetic is per document, never across all invoices.

@@ -91,3 +91,74 @@ def test_restored_document_requires_new_extraction_and_other_files_cannot_be_rea
     assert restored['documents'][0]['extraction_required'] and restored['documents'][0]['type_verified']
     j=wait(client.post('/api/documents/'+d['id']+'/process',headers=H,json={'mode':'local'}))
     assert not j['errors'] and bundle(cid)['records'][0]['raw']=='T-9'
+
+
+def test_origin_needs_its_own_business_label_for_fields_and_items():
+    text='COMMERCIAL INVOICE\nInvoice No: TEST-91\nSeller address: Example City, CHINA\nBLUE BOLTS 20\nCountry of Origin: VIETNAM'
+    pages=[{'number':1,'text':text}]
+    candidate=output('Invoice','COMMERCIAL INVOICE',[field('invoice_number','TEST-91','Invoice No: TEST-91'),
+        field('origin','CHINA','Seller address: Example City, CHINA')])
+    candidate.items=[ai.ItemResult(line_number='1',description='BLUE BOLTS',quantity='20',origin='CHINA',source_page=1,
+        evidence_text='BLUE BOLTS 20',cell_evidence=[ai.CellEvidence(attribute='origin',evidence_text='Seller address: Example City, CHINA')])]
+    records,rejected=ai.validated_subset(candidate,pages)
+    assert [r['key'] for r in records]==['invoice_number'] and len(rejected)==2
+    candidate.fields[1]=field('origin','VIETNAM','Country of Origin: VIETNAM')
+    candidate.items[0].origin='VIETNAM';candidate.items[0].cell_evidence[0].evidence_text='Country of Origin: VIETNAM'
+    records,rejected=ai.validated_subset(candidate,pages)
+    assert not rejected and records[-1]['raw']['origin']=='VIETNAM'
+    assert not ai.origin_supported('CHINA','Seller address: Example City, CHINA\nCountry of Origin: VIETNAM')
+
+
+def test_bounded_repair_can_add_a_proven_quantity_unit_but_cannot_change_value():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nQuantity\n(KGS)\nBLUE BOLTS 21000'}]
+    first=output('Invoice','COMMERCIAL INVOICE',[field('goods_quantity','21000','BLUE BOLTS 21000')])
+    first.items=[ai.ItemResult(line_number='1',description='BLUE BOLTS',quantity='21000',source_page=1,evidence_text='BLUE BOLTS 21000')]
+    records,rejected=ai.validated_subset(first,pages)
+    targets=ai.repair_targets(first,records,rejected,pages)
+    assert targets['items'] and 'goods_quantity' in targets['fields']
+    second=first.model_copy(deep=True)
+    second.fields[0].unit='KGS';second.fields[0].unit_evidence='(KGS)'
+    second.items[0].unit='KGS';second.items[0].cell_evidence=[ai.CellEvidence(attribute='unit',evidence_text='(KGS)')]
+    merged=ai.merge_supported_repair(first,second,pages,targets)
+    checked,_=ai.validated_subset(merged,pages)
+    assert checked[0]['value']['unit']=='KG' and checked[1]['raw']['unit']=='KGS'
+    # A literal alternative number exists, but a repair cannot replace the accepted one.
+    pages[0]['text']+='\nOther value: 100'
+    second.fields[0].raw_value='100';second.fields[0].evidence_text='Other value: 100'
+    merged=ai.merge_supported_repair(first,second,pages,targets)
+    assert merged.fields[0].raw_value=='21000' and merged.fields[0].unit is None
+
+
+def test_package_count_cannot_be_packing_list_number():
+    pages=[{'number':1,'text':'PACKING LIST\nInvoice No: INV-9\nTOTAL PACKAGES:840BAGS\nPacking List No: PL-9'}]
+    candidate=output('Packing List','PACKING LIST',[field('invoice_number','INV-9','Invoice No: INV-9'),
+        field('packing_number','840BAGS','TOTAL PACKAGES:840BAGS')])
+    records,rejected=ai.validated_subset(candidate,pages)
+    assert [r['key'] for r in records]==['invoice_number'] and len(rejected)==1
+    candidate.fields[1]=field('packing_number','PL-9','Packing List No: PL-9')
+    records,rejected=ai.validated_subset(candidate,pages)
+    assert not rejected and records[-1]['raw']=='PL-9'
+
+
+def test_commercial_comparison_preserves_real_differences_and_explains_unit_conversion():
+    from backend.validation import build_checks,field_comparable
+    from backend.dictionary import default_requirements
+    from backend.normalize import normalize
+    assert field_comparable('buyer',normalize('EXAMPLE CO.,LTD.'))==field_comparable('buyer',normalize('example co.,ltd'))
+    assert field_comparable('buyer',normalize('EXAMPLE CO.,LTD.'))!=field_comparable('buyer',normalize('OTHER CO.,LTD.'))
+    assert field_comparable('seller_address',normalize('ADD: Example road, CITY'))==field_comparable('seller_address',normalize('example Road, city'))
+    assert normalize('04,Aug., 2026','date')['text']=='2026-08-04'
+    assert normalize('04,Aug., 2026','date')['warning'] is None
+    docs=[{'id':'i','name':'invoice','type':'Invoice','status':'read','type_verified':True},
+          {'id':'c','name':'contract','type':'Contract','status':'read','type_verified':True}]
+    records=[]
+    for did,kind,quantity,port in [('i','Invoice','21000 KGS','Example Port'),('c','Contract','21.0 MT','Alternative/Example Port')]:
+        for key,raw,typ in [('goods_quantity',quantity,'quantity'),('port_loading',port,'text')]:
+            records.append({'id':did+key,'document_id':did,'kind':'field','key':key,'value':normalize(raw,typ),'status':'pending','page':1})
+    checks=build_checks({'mode':'FCL','requirements':default_requirements()},docs,records)
+    quantity=next(c for c in checks if c['key']=='field:goods_quantity')
+    assert quantity['result']=='Matched' and '1 MT = 1000 KG' in quantity['detail']['reason']
+    assert next(c for c in checks if c['key']=='field:port_loading')['result']=='Needs Verification'
+    records[-2]['value']=normalize('22.0 MT','quantity')
+    checks=build_checks({'mode':'FCL','requirements':default_requirements()},docs,records)
+    assert next(c for c in checks if c['key']=='field:goods_quantity')['result']=='Needs Verification'

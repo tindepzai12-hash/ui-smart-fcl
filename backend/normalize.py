@@ -70,11 +70,14 @@ def normalize(raw, kind='text'):
     elif kind == 'currency':
         result['text'] = raw.upper()
     elif kind == 'date':
+        # Month names make this printed punctuation unambiguous; retain raw separately.
+        date_text = re.sub(r'[,\.]', ' ', raw) if re.fullmatch(r'\d{1,2}[, .-]+[A-Za-z]{3,9}[,. ]+\d{4}',raw) else raw
+        date_text = re.sub(r'\s+',' ',date_text).strip()
         found = None
         matched_fmt = None
         for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%d/%m/%Y', '%d-%m-%Y', '%d %b %Y', '%d %B %Y', '%b %d %Y', '%B %d %Y']:
             try:
-                found = datetime.strptime(raw, fmt).date().isoformat()
+                found = datetime.strptime(date_text, fmt).date().isoformat()
                 matched_fmt = fmt
                 break
             except ValueError:

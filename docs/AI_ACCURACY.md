@@ -23,3 +23,12 @@ Lượt đọc lại có thể thêm một yêu cầu AI cho mỗi chứng từ,
 Muốn fine-tune sau này, cần bộ chứng từ được phép sử dụng, đáp án do nhân viên xác nhận và bộ kiểm thử riêng để tránh đánh giá trên chính dữ liệu huấn luyện. Hai phiên bản gốc/scan của cùng một hồ sơ không đại diện cho hai hồ sơ độc lập.
 
 Nguồn đối chiếu: [OpenAI — Model optimization](https://developers.openai.com/api/docs/guides/model-optimization), [Responses API](https://developers.openai.com/api/reference/python/resources/responses/methods/create).
+
+
+## Real-document regression safeguards
+
+- Origin requires an explicit origin label with the country in the same evidence quote, at both document and item level. A seller address or loading port is insufficient.
+- Packing List numbers require their own printed number label. Package counts and Invoice numbers cannot fill that field.
+- Bounded re-reading may fill a missing unit from a printed quantity header without changing the accepted raw number.
+- Party/address comparisons ignore punctuation, case and address labels but retain all word/number tokens. Contract port/Incoterms differences require scope review rather than automatic mismatch.
+- Mass quantities are compared through explicit KG/MT/LB conversion with an explanatory check; raw values and source units are retained. Named-month date punctuation is normalized deterministically.
