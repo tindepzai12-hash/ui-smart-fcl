@@ -1602,7 +1602,7 @@ function App() {
 
               {tab === 'comparison' && <DiscrepancyWorkbench current={current} dict={dict} busy={loading||job?.status==='running'}
                 onSaved={async (b:Any)=>{replace(b);await refresh();notify('Đã lưu · đối chiếu số liệu đã cập nhật');}}
-                onDocuments={(id?:string)=>{if(id&&current.documents.some((d:Any)=>d.id===id)){setSelectedDoc(id);setPage(1);}setTab('documents');}} onSource={chooseSource} onExport={()=>setTab('export')}/>}
+                onDocuments={(id?:string,sourcePage=1)=>{if(id&&current.documents.some((d:Any)=>d.id===id)){setSelectedDoc(id);setPage(sourcePage);}setTab('documents');}} onSource={chooseSource} onExport={()=>setTab('export')}/>}
 
               {tab === 'customs' && (
                 <section className="surface padded commercial-checklist">

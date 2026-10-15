@@ -80,3 +80,13 @@ def test_rejected_attempt_diagnostic_cannot_turn_invented_quote_into_source():
     assert diagnostic['attempted_value'] == '99999'
     assert diagnostic['evidence'] == ''
     assert all(r['raw'] != '99999' for r in records)
+
+
+def test_rejected_item_diagnostic_labels_only_values_actually_proposed():
+    data=result()
+    data.items=[ai.ItemResult(line_number='1',description='Bolts',quantity='999',source_page=1,evidence_text='Bolts 10 PCS')]
+    pages=[{'number':1,'text':PAGES[0]['text']+'\nBolts 10 PCS'}]
+    diagnostics=ai.extraction_diagnostics(data,pages,['items[1]: quantity thiếu bằng chứng'])
+    assert diagnostics[0]['attempted_value']=='Dòng: 1 · Mô tả: Bolts · Số lượng: 999'
+    assert diagnostics[0]['evidence']=='Bolts 10 PCS'
+    assert 'null' not in diagnostics[0]['attempted_value']

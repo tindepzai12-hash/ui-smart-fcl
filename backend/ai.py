@@ -792,8 +792,13 @@ def extraction_diagnostics(result, pages, rejected):
             attempted = str(candidate.get('raw_value') or candidate.get('value') or '')
             if candidate.get('unit'):
                 attempted += ' ' + candidate['unit']
+        elif candidate:
+            names = {'line_number':'Dòng', 'product_code':'Mã hàng', 'description':'Mô tả', 'quantity':'Số lượng',
+                     'unit':'Đơn vị', 'unit_price':'Đơn giá', 'line_amount':'Thành tiền', 'currency':'Tiền tệ',
+                     'origin':'Xuất xứ', 'container_number':'Container', 'seal_number':'Seal', 'container_type':'Loại'}
+            attempted = ' · '.join(f'{label}: {candidate[k]}' for k,label in names.items() if candidate.get(k) not in [None,''])
         else:
-            attempted = encode({k:v for k,v in candidate.items() if k not in ['cell_evidence','evidence_text','evidence_start_line','evidence_end_line','source_page']})
+            attempted = ''
         quotes = [entry.get('resolved_source_quote', ''), entry.get('resolved_unit_quote', '')]
         quotes += list(entry.get('resolved_cell_quotes', {}).values())
         # Diagnostic quotes must also be literal text from the source page.
