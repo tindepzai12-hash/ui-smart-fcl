@@ -99,7 +99,8 @@ def normalize(raw, kind='text'):
                 if len(parts) == 3:
                     first, second = int(parts[0]), int(parts[1])
                     if 1 <= first <= 12 and 1 <= second <= 12 and first != second:
-                        result['warning'] = 'Ngày dạng dd/mm và mm/dd có thể mơ hồ (đang đọc theo dd/mm/yyyy). Hãy đối chiếu bản gốc và lưu dạng YYYY-MM-DD.'
+                        result['text'] = raw
+                        result['warning'] = 'Ngày dạng dd/mm và mm/dd có thể mơ hồ; giữ nguyên chuỗi in trên giấy, không tự chọn thứ tự ngày/tháng.'
         else:
             result['warning'] = 'Định dạng ngày chưa rõ, cần xác minh (khuyên dùng YYYY-MM-DD).'
     return result

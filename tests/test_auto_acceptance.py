@@ -21,6 +21,7 @@ def test_single_source_ai_goes_directly_to_workbook_without_manual_review(monkey
     row=next(r for r in b['records'] if r['key']=='invoice_number')
     assert row['status']=='auto_accepted' and row['evidence']
     assert b['documents'][0]['classification_method']=='OpenAI'
+    assert not any(c['key'].startswith('classification:') for c in b['checks'])
     assert not any('bản ghi chưa' in s for s in b['blockers'])
     response=client.post('/api/cases/'+cid+'/export',headers=H,json={'mode':'Draft'});assert response.status_code==200
     wb=load_workbook(io.BytesIO(client.get(response.json()['download']).content))
@@ -43,11 +44,13 @@ def test_checkbox_saves_without_note_but_never_approves_missing_fields():
     assert client.patch('/api/records/'+row['id'],headers=H,json={'value':'','version':row['version']}).status_code==422
 
 def test_unreadable_dates_units_and_empty_required_values_cannot_auto_pass():
-    for key,raw,kind in [('booking','','text'),('gross_weight','abc','weight'),('gross_weight','1000','weight'),('eta','02/03/2020','date')]:
+    for key,raw,kind in [('booking','','text'),('gross_weight','abc','weight'),('gross_weight','1000','weight'),('eta','31/02/2020','date')]:
         assert not acceptance.readable({'kind':'field','key':key,'value':normalize(raw,kind)})
     assert not acceptance.readable({'kind':'item','value':{'description':'Cargo','quantity':'120','unit':''}})
     assert acceptance.readable({'kind':'field','key':'gross_weight','value':normalize('19,560 KGS','weight')})
     assert normalize('19,560 KGS','weight')['number'] is None  # Accepted as literal text, no guessed numeric conversion.
+    date=normalize('02/03/2020','date')
+    assert acceptance.readable({'kind':'field','key':'eta','value':date}) and date['text']=='02/03/2020'
 
 def test_equal_literal_figures_match_and_single_source_does_not_become_an_exception():
     rows=[{'id':str(i),'document_id':str(i),'page':1,'kind':'field','key':'gross_weight','status':'pending','value':normalize('19,560 KGS','weight')} for i in range(2)]

@@ -5,7 +5,7 @@ from .normalize import decimal_text
 def printed_number(value):
     # The characters are readable even when a numeric separator convention
     # cannot be proved. Export the literal string, never guess a numeric value.
-    return bool(re.fullmatch(r'\d{1,3}(?:,\d{3})+(?:\s+[A-Za-z]{2,8})?',str(value).strip()))
+    return bool(re.fullmatch(r'\d{1,3}(?:[,.]\d{3})+(?:\s+[A-Za-z]{2,8})?',str(value).strip()))
 
 def readable(record):
     value=record['value']
@@ -13,7 +13,9 @@ def readable(record):
         from .dictionary import FIELDS
         if FIELDS.get(record['key'],{}).get('type') in ['weight','quantity'] and not value.get('unit'):return False
         if not str(value.get('text','')).strip() and value.get('number') is None:return False
-        return not value.get('warning') or (str(value['warning']).startswith('Dấu phân cách số') and printed_number(value.get('text','')))
+        return (not value.get('warning')
+                or (str(value['warning']).startswith('Dấu phân cách số') and printed_number(value.get('text','')))
+                or (str(value['warning']).startswith('Ngày dạng dd/mm') and bool(re.fullmatch(r'\d{1,2}[/-]\d{1,2}[/-]\d{4}',value.get('text','')))))
     if record['kind']=='item':
         if not value.get('description') or not value.get('quantity') or not value.get('unit'):return False
         keys=['quantity']+(['unit_price','line_amount'] if value.get('scope','invoice')=='invoice' else [])

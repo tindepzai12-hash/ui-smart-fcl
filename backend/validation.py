@@ -125,7 +125,7 @@ def build_checks(case, documents, records):
                                            'diagnostic_index':i,'review_token':diagnostic_token(entry)})
             if diagnostic_sources or not diagnostics:
                 add('reading:' + d['id'], 'Needs Verification', d['error'], diagnostic_sources or doc_source, severity='error')
-        if not d['type_verified']:
+        if not d['type_verified'] and d.get('classification_method')!='OpenAI':
             add('classification:' + d['id'], 'Needs Verification', 'Nhân viên cần xác nhận loại: ' + d['name'], doc_source)
         if case['mode'] == 'FCL' and d['type'] == 'AWB':
             add('transport:' + d['id'], 'Needs Verification', 'Hồ sơ FCL có AWB; kiểm tra chứng từ nhầm hoặc đổi nghiệp vụ.', doc_source)

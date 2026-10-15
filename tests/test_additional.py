@@ -115,9 +115,9 @@ def test_checklist_exemption_and_required_field_distinction():
     assert res_resolve.status_code == 200
 
 def test_ambiguous_slash_date_and_resolution_guards():
-    # Ambiguous slash date (01/10/2026) keeps parsed text 2026-10-01 AND sets warning for human verification
+    # Readable slash dates retain their exact text instead of guessing date order.
     ambig = normalize('01/10/2026', 'date')
-    assert ambig['text'] == '2026-10-01'
+    assert ambig['text'] == '01/10/2026'
     assert ambig['warning'] is not None
     # Unambiguous slash date (25/10/2026 where day > 12) and ISO date have no warning
     assert normalize('25/10/2026', 'date')['warning'] is None

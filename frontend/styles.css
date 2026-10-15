@@ -435,7 +435,7 @@ blockquote{margin:8px 0;padding:9px 12px;border-left:3px solid #a6c5fa;backgroun
 .exception-row.is-matched .exception-values strong,.exception-stats>div:nth-child(3) strong{color:#067647}
 @media(max-width:600px){.source-zoom-tools .btn{font-size:11px;padding:7px}.source-zoom-viewport{height:320px}}
 .source-box{position:absolute;display:block;background:#155eef26;outline:2px solid #155eef;outline-offset:2px;min-width:2px;min-height:2px;pointer-events:auto}
-.source-box.low{background:#f7900933;outline-color:#b54708}
+.source-box.low{background:#155eef40;outline:3px dashed #155eef}
 .source-legend{font-size:11px;color:#475569;padding:7px 12px;margin:0;line-height:1.5}
 .source-quote{font-size:12px;padding:0 12px;color:#475569;max-height:140px;overflow:auto}
 .source-quote summary{cursor:pointer;padding:4px 0}

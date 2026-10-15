@@ -34,7 +34,7 @@ def test_normalization():
  assert decimal_text('1,000') is None
  assert normalize('100 CARTONS','quantity')['unit']=='CTN'
  assert normalize('00123')['text']=='00123'
- assert normalize('01/10/2026','date')['text']=='2026-10-01'
+ assert normalize('01/10/2026','date')['text']=='01/10/2026'
 def test_classification_priority():assert extraction.classify([{'text':PACKING}])[0]=='Packing List'
 def test_role_separation_and_items():
  r=extraction.extract([{'number':1,'text':INVOICE,'tables':[]}],'Invoice')
