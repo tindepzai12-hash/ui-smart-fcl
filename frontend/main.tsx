@@ -372,7 +372,7 @@ function App() {
     });
   }
 
-  async function loadSampleSet(conflict: boolean, purchaseOrder = false, both = false) {
+  async function loadSampleSet(conflict: boolean, purchaseOrder = false) {
     if (current.documents.length || current.reference_files?.length) {
       setError('Bộ mẫu chỉ nạp vào hồ sơ trống. Tạo hồ sơ riêng để thử nghiệm, tránh trộn với chứng từ đang làm.');
       return;
@@ -1087,7 +1087,7 @@ function App() {
           </div>
           <div className="brand-copy">
             <strong>U&I SMART</strong>
-            <span>FCL Document Workbench</span>
+            <span>Chứng từ FCL</span>
           </div>
         <button
           className="collapse"
@@ -1481,7 +1481,7 @@ function App() {
                       <div className="sample-loader">
                         <details><summary>Chứng từ để kiểm thử</summary>
                         <small>6 tệp TXT giả lập cùng một lô. Chọn bộ dùng Sales Contract hoặc PO; bộ sai lệch có số Invoice tham chiếu trên Packing List khác hóa đơn.</small>
-                        <button className="btn small" disabled={loading || !!current.documents.length || !!current.reference_files?.length} onClick={() => loadSampleSet(false, false, true)}>Bộ mẫu 6 nhóm</button>
+                        <button className="btn small" disabled={loading || !!current.documents.length || !!current.reference_files?.length} onClick={() => loadSampleSet(false)}>Bộ mẫu 6 nhóm</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false, true)}>Bộ mẫu dùng PO</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(true)}>Bộ mẫu sai lệch</button>
                         </details>
