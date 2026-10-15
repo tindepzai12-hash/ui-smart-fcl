@@ -36,7 +36,7 @@ SHIPPING_MARKS_LABEL = r'(?i)\b(?:shipping\s*marks(?:\s*(?:&|and)\s*(?:nos?\.?|n
 CONSIGNEE_LABEL = r'(?i)\b(?:consignee|ship\s*to|deliver\s*to|delivery\s*address)\b|người\s*nhận\s*hàng'
 BUYER_LABEL = r'(?i)\b(?:buyer|purchaser|bill\s*to|sold\s*to)\b|người\s*mua'
 PACKING_NUMBER_LABEL = r'(?i)\bpacking\s*(?:list\s*)?(?:no\.?|number|reference|ref\.?)\b|số\s*(?:phiếu\s*)?đóng\s*gói'
-NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?)|n\.?\s*w\.?)\b|trọng\s*lượng\s*tịnh'
+NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?|kgs?|kgm|lbs?)|n\.?\s*w\.?)\b|trọng\s*lượng\s*tịnh'
 
 def co_header_numbers(page):
     text=page.get('text','')
@@ -538,6 +538,24 @@ def packing_summary_fields(pages):
     for page in pages:
         for table in page.get('tables',[]):
             if not table: continue
+            # A merged TOTAL WEIGHT header binds its Net/Gross subcolumns.
+            # A single printed commodity row is not a calculated sum. Never
+            # substitute the neighbouring per-package weights or sum many rows.
+            if len(table)>2:
+                total_columns=[i for i,h in enumerate(table[0]) if re.search(r'(?i)total\s+weight',h or '')]
+                identity=[i for i,h in enumerate(table[0]) if re.search(r'(?i)description\s+of\s+goods',h or '')]
+                goods=[r for r in table[2:] if any(i<len(r) and r[i] and not re.match(r'(?i)^\s*(?:remarks?|total)\b',r[i]) for i in identity)]
+                for start in total_columns:
+                    end=next((i for i in range(start+1,len(table[0])) if table[0][i]),len(table[0]))
+                    subheaders=[(i,re.sub(r'\s+',' ',table[1][i] or '')) for i in range(start,min(end,len(table[1])))]
+                    if len(goods)!=1 or len(subheaders)!=2: continue
+                    if not re.fullmatch(r'(?i)NET\s+(?:KGS?|KGM|LBS?)',subheaders[0][1]) or not re.fullmatch(r'(?i)GROSS\s+(?:KGS?|KGM|LBS?)',subheaders[1][1]): continue
+                    for key,(i,header) in zip(['net_weight','gross_weight'],subheaders):
+                        raw=goods[0][i] if i<len(goods[0]) else None
+                        if not isinstance(raw,str) or not re.fullmatch(r'\s*\d[\d., ]*\s*',raw): continue
+                        unit=header.split()[-1]
+                        if evidence_ok(raw,raw,page['number'],pages) and evidence_ok(unit,unit,page['number'],pages):
+                            recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw.strip(),unit=unit,unit_evidence=unit,source_page=page['number'],evidence_text=raw))
             columns={}
             quantity_columns=[i for i,h in enumerate(table[0]) if re.fullmatch(r'(?i)\s*(?:quantity|qty\.?)\s*',h or '')]
             unit_columns=[i for i,h in enumerate(table[0]) if re.fullmatch(r'(?i)\s*(?:unit|uom|u/m)\s*',h or '')]
@@ -582,6 +600,8 @@ def packing_summary_fields(pages):
                     if not evidence_ok(raw,raw,page['number'],pages) or not evidence_ok(unit,unit,page['number'],pages): continue
                     recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw.strip(),unit=unit,unit_evidence=unit,source_page=page['number'],evidence_text=raw))
     for page in pages:
+        for m in re.finditer(r'(?i)\bPACKING\s*[:：]\s*(\d[\d,.]*)\s*(DRUMS?|CASKS?|CARTONS?|CTNS?|PACKAGES?|PKGS?|BAGS?)\b',page['text']):
+            recovered.setdefault('packages',[]).append(FieldResult(field_id='packages',raw_value=m.group(1),unit=m.group(2),unit_evidence=m.group(2),source_page=page['number'],evidence_text=m.group(0)))
         for m in re.finditer(r'(?i)\bPACKED\s+IN\b[^\n]{0,100}?\((\d+)\)\s*(CARTONS?|CTNS?|PACKAGES?|PKGS?|BAGS?)\b',page['text']):
             recovered.setdefault('packages',[]).append(FieldResult(field_id='packages',raw_value=m.group(1),unit=m.group(2),unit_evidence=m.group(2),source_page=page['number'],evidence_text=m.group(0)))
     return recovered
@@ -880,7 +900,7 @@ def repair_targets(result, records, rejected, pages):
         fields.update({'gross_weight'} - found)
     if result.document_type in ['Packing List','Invoice & Packing List']:
         if re.search(NET_WEIGHT_LABEL,text): fields.update({'net_weight'} - found)
-        if re.search(r'(?i)\b(?:cartons|number\s+of\s+packages|total\s+packages)\b',text): fields.update({'packages'} - found)
+        if re.search(r'(?i)\b(?:cartons|number\s+of\s+(?:packages|casks|drums)|total\s+packages|packing\s*:)\b',text): fields.update({'packages'} - found)
     if result.document_type=='C/O' and re.search(ORIGIN_LABEL,text): fields.update({'origin'} - found)
     fields = {k for k in fields if result.document_type in FIELDS[k]['documents']}
     if result.document_type in ['Contract','Purchase Order'] and re.search(r'(?i)\b(?:total|amount)\b',text):

@@ -31,10 +31,11 @@ def test_order_bank_consignee_is_never_promoted_to_buyer():
     grounded=ai.ground_source_format(model,[page]);rows,rejected=ai.validated_subset(grounded,[page])
     assert not rows and not rejected
 
-def test_contract_buyer_can_supply_shared_working_field_without_filling_invoice():
+def test_contract_buyer_can_supply_shared_working_field_without_filling_invoice(monkeypatch):
     import json
     from backend.dictionary import default_requirements
     from backend.validation import build_checks
+    monkeypatch.setattr(consistency,'ai_checks',lambda *args:[])
     docs=[{'id':'inv','type':'Invoice','name':'inv.pdf','status':'read','type_verified':0,'classification_method':'OpenAI'}, {'id':'contract','type':'Contract','name':'contract.pdf','status':'read','type_verified':0,'classification_method':'OpenAI'}]
     record={'id':'r','document_id':'contract','page':1,'kind':'field','key':'buyer','status':'auto_accepted','value':normalize('REAL BUYER')}
     checks=build_checks({'id':'case','mode':'FCL','requirements':json.dumps(default_requirements())},docs,[record])
@@ -105,3 +106,20 @@ def test_packing_commodity_comes_from_unique_quantity_bound_cell():
     ambiguous={**page,'tables':[[*page['tables'][0],['ANOTHER COMMODITY','120 DRUMS']]],'text':page['text']+'\nANOTHER COMMODITY'}
     grounded=ai.ground_source_format(model,[ambiguous])
     assert grounded.items[0].description==item['description']  # Do not choose a row by count alone.
+
+
+def test_merged_total_weight_header_keeps_per_drum_weight_separate():
+    table=[['DESCRIPTION OF GOODS','NUMBER OF CASKS','',None,'TOTAL\nWEIGHT (KGS)',None],
+           [None,None,'NET\nKGS','GROSS\nKGS','NET\nKGS','GROSS\nKGS'],
+           ['COCONUT SAP','120 DRUMS','135','163','16,200','19,560'],
+           ['REMARKS','* PACKING : 120 DRUMS\nTOTAL',None,None,None,None]]
+    page={'number':1,'text':'PACKING LIST\n'+ '\n'.join(str(c) for row in table for c in row if c),'tables':[table]}
+    model=ai.DocumentResult.model_validate({'document_type':'Packing List','classification_evidence':'PACKING LIST','fields':[], 'items':[], 'containers':[]})
+    grounded=ai.ground_source_format(model,[page]);records,rejected=ai.validated_subset(grounded,[page])
+    assert not rejected
+    raw={r['key']:r['raw'] for r in records}
+    assert raw=={'net_weight':'16,200','gross_weight':'19,560','packages':'120'}
+    bad=ai.DocumentResult.model_validate({**model.model_dump(),'fields':[{'field_id':'net_weight','raw_value':'135','unit':'KGS','unit_evidence':'KGS','source_page':1,'evidence_text':'NET KGS 135'}]})
+    with pytest.raises(ValueError):ai.validate_result(bad,[page])
+    multi={**page,'tables':[[*table[:3],['OTHER GOODS','20 DRUMS','100','110','2,000','2,200'],table[-1]]]}
+    assert not ai.packing_summary_fields([multi]).get('net_weight')  # Do not sum separate rows.
