@@ -563,6 +563,7 @@ def worker(job_id):
                         )
                 job['stage'] = 'Phân loại / trích xuất ' + ('Local' if mode == 'local' else 'OpenAI')
                 extraction_warning = None
+                reading_diagnostics = []
                 source_grounded = False
                 if d['ext'] == '.pdf' and pdf_bundle.is_mixed(pages):
                     message = 'Đã đọc PDF gồm nhiều loại chứng từ. Chọn “Tách bộ PDF” để phân bổ trang trước khi trích xuất; bản gốc được giữ lại.'
@@ -582,6 +583,7 @@ def worker(job_id):
                     evidence = result.classification_evidence
                     if info['rejected']:
                         extraction_warning = ai.extraction_notice(info['rejected'])
+                        reading_diagnostics = ai.extraction_diagnostics(result, pages, info['rejected'])
                         job['warnings'].append({'document': d['name'], 'message': extraction_warning})
                 else:
                     kind, evidence = extraction.classify(pages)
@@ -622,7 +624,7 @@ def worker(job_id):
                         if any(p['kind'] == r['kind'] and p['key'] == r['key'] and p['page'] == r['page'] and p['raw'] == r['raw'] for p in protected):
                             continue
                         add_record(c, id, d['id'], r)
-                    c.execute("UPDATE documents SET status='read',error=?,extraction_required=0 WHERE id=?", (extraction_warning, d['id']))
+                    c.execute("UPDATE documents SET status='read',error=?,reading_diagnostics=?,extraction_required=0 WHERE id=?", (extraction_warning, db.encode(reading_diagnostics), d['id']))
                     db.audit(c, id, 'Đọc và trích xuất ' + mode, d['id'], after={'type': kind, 'pages': len(pages), 'records': len(records),'source_format_grounded':source_grounded})
             except InterruptedError:
                 raise

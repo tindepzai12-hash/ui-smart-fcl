@@ -16,6 +16,26 @@ const apiSource = fs.readFileSync(path.join(root, 'frontend/api.ts'), 'utf8');
 const apiJs = compileTsx(apiSource, 'api.ts');
 const helper = await import('data:text/javascript;base64,' + Buffer.from(apiJs).toString('base64'));
 
+test('Extraction warnings show excluded attempts, matched rows are green, and untrusted text is escaped',async()=>{
+  const moduleUrl=js=>'data:text/javascript;base64,'+Buffer.from(js).toString('base64');
+  const resolveImports=js=>js.replace(/from ['"]react['"]/g,`from '${import.meta.resolve('react')}'`)
+    .replace(/from ['"]lucide-react['"]/g,`from '${import.meta.resolve('lucide-react')}'`);
+  const viewer=moduleUrl(resolveImports(compileTsx(fs.readFileSync('frontend/SourceImageViewer.tsx','utf8'))));
+  const workbench=moduleUrl(resolveImports(compileTsx(fs.readFileSync('frontend/DiscrepancyWorkbench.tsx','utf8')))
+    .replace("from './api'",`from '${moduleUrl(apiJs)}'`).replace("from './SourceImageViewer'",`from '${viewer}'`));
+  const {DiscrepancyWorkbench}=await import(workbench);
+  const render=issue=>renderToStaticMarkup(React.createElement(DiscrepancyWorkbench,{current:{records:[],consistency:{issues:[issue],gaps:[],matched:[],single_source:[],open_count:1,mismatch_count:0,ai_state:'completed'}},dict:{fields:{}},onDocuments:()=>{}}));
+  const warning=render({key:'reading:doc',result:'Needs Verification',detail:{reason:'Thiếu bằng chứng',sources:[{id:'diagnostic:doc:1',document:'scan.pdf',page:2,diagnostic:true,field_label:'Tổng tiền',attempted_value:'<script>999</script>'}]}});
+  assert.ok(warning.includes('Xem lỗi đọc &amp; bản gốc'));
+  assert.ok(warning.includes('&lt;script&gt;999&lt;/script&gt; (đã loại)'));
+  assert.ok(!warning.includes('<script>999'));
+  const legacy=render({key:'reading:old',result:'Needs Verification',detail:{reason:'Cần đọc lại',sources:[{id:'doc',document:'old.pdf',value:{text:'old.pdf'}}]}});
+  assert.ok(legacy.includes('Cảnh báo đọc tệp; xem chi tiết'));
+  assert.ok(!legacy.includes('<strong>old.pdf</strong>'));
+  const matched=render({key:'field:booking',result:'Matched',detail:{reason:'Khớp',sources:[]}});
+  assert.ok(matched.includes('exception-row is-matched')&&matched.includes('badge good'));
+});
+
 test('Shipment flow focuses exceptions and allows an honest report without verifying every field',()=>{
   const current={case:{revision:2},documents:[{status:'read',type_verified:false}],records:[{status:'pending'}],
     consistency:{ai_state:'completed',open_count:1},exports:[]};

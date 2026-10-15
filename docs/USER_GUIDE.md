@@ -46,7 +46,7 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 **Việc nhân viên làm:** Ưu tiên Sai lệch số liệu, sau đó Cần làm rõ; không duyệt mọi trường.
 
-**Thao tác trên web:** Sai lệch & xử lý → Xem lý do → so sánh các ô cạnh nhau → Hiện bản gốc có đánh dấu.
+**Thao tác trên web:** Sai lệch & xử lý → Xem lý do → so sánh các ô cạnh nhau → Hiện bản gốc có đánh dấu. Dùng +/− để zoom đến 400%, Kính lúp để soi chữ, Vùng đánh dấu để quay lại ô nguồn.
 
 **Kiểm tra trong bộ ví dụ:** Xem đúng nhãn Gross trên PL và tờ khai. Không so gross với net 391.20 hoặc Weight chưa rõ vai trò.
 
@@ -68,7 +68,11 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 **Nếu chưa đạt:** Không có cảnh báo không chứng minh bộ chứng từ đầy đủ, hợp lệ pháp lý hoặc đã được hải quan chấp nhận.
 
-## Ba tình huống để biết phải xử lý thế nào
+## Các tình huống để biết phải xử lý thế nào
+
+### Cần xử lý: AI chưa đủ bằng chứng
+
+Bấm Xem lỗi đọc & bản gốc để xem từng trường, giá trị AI đề xuất đã bị loại, lý do và trích dẫn thật. Đây chưa phải sai lệch giữa hai chứng từ và không phải thông báo tệp nằm ngoài 6 loại. Bấm Xem trang gốc rồi Mở chứng từ để bổ sung đúng giá trị có căn cứ. Lần đọc cũ chưa lưu chi tiết cần đọc lại bằng OpenAI. Mục Khớp có màu xanh lá; mục cần làm rõ màu vàng.
 
 ### Hai Packing List cùng lô ghi gross khác nhau
 

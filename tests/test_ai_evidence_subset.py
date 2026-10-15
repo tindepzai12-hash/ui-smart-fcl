@@ -60,6 +60,23 @@ def test_partial_ai_rejection_is_visible_and_blocks_reviewed(monkeypatch):
         assert [r['raw'] for r in bundle['records']]==['A-001']
         assert bundle['documents'][0]['status']=='read' and bundle['documents'][0]['error']
         assert any(c['key'].startswith('reading:') and c['result']=='Needs Verification' for c in bundle['checks'])
+        warning = next(c for c in bundle['checks'] if c['key'].startswith('reading:'))
+        diagnostic = warning['detail']['sources'][0]
+        assert diagnostic['diagnostic'] is True
+        assert diagnostic['attempted_value'] == '99999'
+        assert diagnostic['page'] == 1 and diagnostic['evidence'] == 'Amount: 120.00'
+        assert diagnostic['document_id'] == bundle['documents'][0]['id']
+        assert diagnostic['field_label'] and 'value' not in diagnostic
         assert all(r['status']=='pending' for r in bundle['records'])
         assert client.post('/api/cases/'+case+'/export',headers=H,json={'mode':'Reviewed'}).status_code==409
     finally:ai.remove()
+
+
+def test_rejected_attempt_diagnostic_cannot_turn_invented_quote_into_source():
+    data = result()
+    data.fields[1].evidence_text = 'TOTAL: 99999 NOT IN THE DOCUMENT'
+    records, rejected = ai.validated_subset(data, PAGES)
+    diagnostic = ai.extraction_diagnostics(data, PAGES, rejected)[0]
+    assert diagnostic['attempted_value'] == '99999'
+    assert diagnostic['evidence'] == ''
+    assert all(r['raw'] != '99999' for r in records)

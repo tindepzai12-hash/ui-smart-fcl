@@ -777,6 +777,34 @@ def repair_diagnostics(result, pages, rejected):
     return diagnostics
 
 
+def extraction_diagnostics(result, pages, rejected):
+    """Untrusted attempts for employee review, kept separate from usable records."""
+    diagnostics = []
+    page_numbers = {p['number'] for p in pages}
+    for entry in repair_diagnostics(result, pages, rejected):
+        candidate = entry.get('failed_candidate', {})
+        field = candidate.get('field_id', '')
+        match = re.match(r'fields\[\d+\] ([a-z_]+):', entry['reason'])
+        if match:
+            field = match.group(1)
+        label = FIELDS.get(field, {}).get('label') or ('Dòng hàng' if entry['reason'].startswith('items[') else 'Dữ liệu chứng từ')
+        if entry['reason'].startswith('fields['):
+            attempted = str(candidate.get('raw_value') or candidate.get('value') or '')
+            if candidate.get('unit'):
+                attempted += ' ' + candidate['unit']
+        else:
+            attempted = encode({k:v for k,v in candidate.items() if k not in ['cell_evidence','evidence_text','evidence_start_line','evidence_end_line','source_page']})
+        quotes = [entry.get('resolved_source_quote', ''), entry.get('resolved_unit_quote', '')]
+        quotes += list(entry.get('resolved_cell_quotes', {}).values())
+        # Diagnostic quotes must also be literal text from the source page.
+        quotes = list(dict.fromkeys(q for q in quotes if q and q != '[invalid source pointer]'
+                                   and evidence_ok(q, q, candidate.get('source_page'), pages)))
+        diagnostics.append({'field_label': label, 'attempted_value': attempted,
+                            'page': candidate.get('source_page') if candidate.get('source_page') in page_numbers else None,
+                            'evidence': '\n'.join(quotes), 'rejection_reason': entry['reason']})
+    return diagnostics
+
+
 def analyze(case_id, document, pages):
     if not key():
         raise ValueError('Chưa cấu hình OpenAI. Bạn có thể tiếp tục bằng chế độ Local.')

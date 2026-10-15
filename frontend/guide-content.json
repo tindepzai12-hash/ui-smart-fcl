@@ -46,7 +46,7 @@
       "id": "resolve",
       "title": "Mở lý do và xử lý chỗ sai lệch",
       "task": "Ưu tiên Sai lệch số liệu, sau đó Cần làm rõ; không duyệt mọi trường.",
-      "action": "Sai lệch & xử lý → Xem lý do → so sánh các ô cạnh nhau → Hiện bản gốc có đánh dấu.",
+      "action": "Sai lệch & xử lý → Xem lý do → so sánh các ô cạnh nhau → Hiện bản gốc có đánh dấu. Dùng +/− để zoom đến 400%, Kính lúp để soi chữ, Vùng đánh dấu để quay lại ô nguồn.",
       "check": "Xem đúng nhãn Gross trên PL và tờ khai. Không so gross với net 391.20 hoặc Weight chưa rõ vai trò.",
       "done": "Nếu OCR/AI đọc sai: nhập lại đúng ô kèm căn cứ; đối chiếu số liệu cập nhật ngay. Nếu hai giấy gốc khác nhau: yêu cầu khách gửi bản sửa hoặc ghi rõ cách xử lý.",
       "problem": "Sửa giá trị làm việc không sửa PDF gốc. Không đổi tất cả nguồn cho khớp. Sau sửa, nhận xét ngữ nghĩa AI sẽ báo cần chạy lại. Khác biệt hợp đồng/booking có thể do phạm vi, giao nhiều đợt hoặc kế hoạch thay đổi."
@@ -62,6 +62,10 @@
     }
   ],
   "examples": [
+    {
+      "title": "Cần xử lý: AI chưa đủ bằng chứng",
+      "action": "Bấm Xem lỗi đọc & bản gốc để xem từng trường, giá trị AI đề xuất đã bị loại, lý do và trích dẫn thật. Đây chưa phải sai lệch giữa hai chứng từ và không phải thông báo tệp nằm ngoài 6 loại. Bấm Xem trang gốc rồi Mở chứng từ để bổ sung đúng giá trị có căn cứ. Lần đọc cũ chưa lưu chi tiết cần đọc lại bằng OpenAI. Mục Khớp có màu xanh lá; mục cần làm rõ màu vàng."
+    },
     {
       "title": "Hai Packing List cùng lô ghi gross khác nhau",
       "action": "Hiện Sai lệch với cả hai nguồn; bấm Xem lý do. Không tự chọn file mới hoặc số xuất hiện nhiều hơn."

@@ -73,7 +73,19 @@ def build_checks(case, documents, records):
         elif d['status'] != 'read':
             add('reading:' + d['id'], 'Needs Verification', d.get('error') or f"Tài liệu {d['name']} chưa đọc xong. Hãy bấm Đọc & trích xuất hoặc thử lại.", doc_source, severity='error')
         elif d.get('error'):
-            add('reading:' + d['id'], 'Needs Verification', d['error'], doc_source, severity='error')
+            diagnostics = d.get('reading_diagnostics') or '[]'
+            if isinstance(diagnostics, str):
+                try:
+                    diagnostics = json.loads(diagnostics)
+                except (ValueError, TypeError):
+                    diagnostics = []
+            diagnostic_sources = []
+            for i, entry in enumerate(diagnostics if isinstance(diagnostics, list) else []):
+                if not isinstance(entry, dict):
+                    continue
+                diagnostic_sources.append({**entry, 'id':f"diagnostic:{d['id']}:{i}", 'document_id':d['id'],
+                                           'document':d['name'], 'type':d['type'], 'diagnostic':True})
+            add('reading:' + d['id'], 'Needs Verification', d['error'], diagnostic_sources or doc_source, severity='error')
         if not d['type_verified']:
             add('classification:' + d['id'], 'Needs Verification', 'Nhân viên cần xác nhận loại: ' + d['name'], doc_source)
         if case['mode'] == 'FCL' and d['type'] == 'AWB':

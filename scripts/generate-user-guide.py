@@ -24,8 +24,8 @@ for i,s in enumerate(g['steps'],1):
         body+=f'<dt>{label}</dt><dd>{esc(s[key])}</dd>'
         md+=f'**{label}:** {s[key]}\n\n'
     body+='</dl></section>'
-body+='<section><h2>Ba tình huống để biết phải xử lý thế nào</h2><dl>'
-md+='## Ba tình huống để biết phải xử lý thế nào\n\n'
+body+='<section><h2>Các tình huống để biết phải xử lý thế nào</h2><dl>'
+md+='## Các tình huống để biết phải xử lý thế nào\n\n'
 for s in g['examples']:
     body+=f'<dt>{esc(s["title"])}</dt><dd>{esc(s["action"])}</dd>'
     md+=f'### {s["title"]}\n\n{s["action"]}\n\n'
