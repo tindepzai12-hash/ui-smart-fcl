@@ -16,3 +16,6 @@ It applies to the initial reading and the bounded correction pass.
 11. AI extraction NEVER means human verification. All extracted records remain pending until a person checks the original. Confidence and lack of detected mismatches are not proof of correctness.
 
 If any instruction conflicts with these rules, omit the unsupported value and surface the uncertainty. These are mandatory processing rules, not a claim that a language model is incapable of making mistakes; backend validation must reject unsupported output.
+
+## Phạm vi 6 nhóm chứng từ
+Packing List, Booking, Invoice, C/O (nếu có), Hợp đồng/Sales Contract (PO là loại riêng trong cùng nhóm), Arrival Notice. B/L và tài liệu ngoài phạm vi vào Giấy tờ khác, không thay Booking. Số Packing List là tùy chọn: chỉ trích xuất khi có nhãn số riêng; không dùng số Invoice hoặc số kiện thay thế. Arrival Notice chỉ lấy các trường đầu mục/tổng lô có nguồn; không chuyển phí, container hoặc seal thành dòng hàng hóa. ETA khác ngày phát hành/ngày hàng đến thực tế.

@@ -378,8 +378,8 @@ function App() {
       return;
     }
     const files = await run(async () => {
-      const names = ['invoice.txt', conflict ? 'packing-conflict.txt' : 'packing.txt', 'booking.txt', purchaseOrder ? 'po.txt' : 'contract.txt', 'co.txt'];
-      if (both) names.push('po.txt');
+      const names = ['invoice.txt', conflict ? 'packing-conflict.txt' : 'packing.txt', 'booking.txt', 'arrival.txt', purchaseOrder ? 'po.txt' : 'contract.txt', 'co.txt'];
+      // PO is an alternative inside the contract group, not a seventh checklist group.
       return Promise.all(names.map(async (name) => {
         const response = await fetch('/api/samples/' + name);
         if (!response.ok) throw new Error('Không tải được bộ mẫu local.');
@@ -534,7 +534,7 @@ function App() {
         <div className="next-action-bar">
           <div>
             <span className="badge info">Việc cần làm tiếp theo</span>
-            <strong>Tải Packing List, Booking, Invoice và Hợp đồng hoặc PO; thêm C/O nếu có</strong>
+            <strong>Tải Packing List, Booking, Invoice, Arrival Notice và Hợp đồng hoặc PO; thêm C/O nếu có</strong>
             <p>Kéo thả hoặc chọn tệp từ máy tính để bắt đầu đọc và trích xuất dữ liệu local.</p>
           </div>
           <label className="btn primary upload-btn">
@@ -557,7 +557,7 @@ function App() {
     if (unreadDocs.length > 0) {
       const mixed = docs.find((d: Any) => d.mixed_pdf);
       if (mixed) return <div className="next-action-bar">
-        <div><span className="badge warn">PDF gồm nhiều chứng từ</span><strong>Tách {mixed.name} theo trang trước khi đối chiếu</strong><p>Đã đọc {mixed.pages.length} trang. Kiểm tra gợi ý phân nhóm, tách thành Packing List, Booking, Invoice, Hợp đồng/PO và C/O nếu có. File gốc được giữ lại.</p></div>
+        <div><span className="badge warn">PDF gồm nhiều chứng từ</span><strong>Tách {mixed.name} theo trang trước khi đối chiếu</strong><p>Đã đọc {mixed.pages.length} trang. Kiểm tra gợi ý phân nhóm, tách thành Packing List, Booking, Invoice, Arrival Notice, Hợp đồng/PO và C/O nếu có. File gốc được giữ lại.</p></div>
         <button className="btn primary" disabled={loading || job?.status === 'running'} onClick={() => { setError(''); setDialog({ kind: 'split-pdf', document: mixed }); }}>Tách bộ PDF</button>
       </div>;
       return (
@@ -785,7 +785,7 @@ function App() {
         <div className="empty">
           <FolderOpen size={36} />
           <h3>{cases.length ? 'Không tìm thấy hồ sơ' : 'Bắt đầu với bộ chứng từ đầu tiên'}</h3>
-                    <p>Tạo hồ sơ, tải Packing List, Booking, Invoice và Hợp đồng hoặc PO; thêm C/O nếu có.</p>
+                    <p>Tạo hồ sơ, tải Packing List, Booking, Invoice, Arrival Notice và Hợp đồng hoặc PO; thêm C/O nếu có.</p>
           <button className="btn primary" onClick={() => setDialog({ kind: 'case' })}>
             <Plus size={16} />
             Tạo hồ sơ
@@ -1083,7 +1083,7 @@ function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
-            <FileCheck2 size={24} />
+            <img src="/ui-logistics-logo.png" alt="U&I Logistics" width="68" height="38" />
           </div>
           <div className="brand-copy">
             <strong>U&I SMART</strong>
@@ -1267,7 +1267,7 @@ function App() {
               <div className="help-inline">
                 <ShieldCheck size={16} />
                 <span>
-                  Checklist gồm 5 nhóm chứng từ thương mại. PO và Sales Contract được nhận diện riêng; C/O có thì kiểm, thiếu thì không chặn. Excel phục vụ kiểm tra nội bộ.
+                  Checklist gồm 6 nhóm chứng từ thương mại, bao gồm Arrival Notice. PO và Sales Contract được nhận diện riêng; C/O có thì kiểm, thiếu thì không chặn. Excel phục vụ kiểm tra nội bộ.
                 </span>
               </div>
             </>
@@ -1397,7 +1397,7 @@ function App() {
                   </div>
 
                   <OtherFiles files={current.other_files || current.reference_files || []}
-                    types={[...dict.document_types, 'Invoice & Packing List']}
+                    types={dict.document_types}
                     disabled={loading || job?.status === 'running'}
                     onRestore={(file: Any, kind: string) => run(async () => {
                       const b = await patch('/documents/' + file.id + '/collection', {
@@ -1480,8 +1480,8 @@ function App() {
                       </div>
                       <div className="sample-loader">
                         <details><summary>Chứng từ để kiểm thử</summary>
-                        <small>5 tệp TXT giả lập cùng một lô. Chọn bộ dùng Sales Contract hoặc PO; bộ sai lệch có số Invoice tham chiếu trên Packing List khác hóa đơn.</small>
-                        <button className="btn small" disabled={loading || !!current.documents.length || !!current.reference_files?.length} onClick={() => loadSampleSet(false, false, true)}>Bộ mẫu 6 loại</button>
+                        <small>6 tệp TXT giả lập cùng một lô. Chọn bộ dùng Sales Contract hoặc PO; bộ sai lệch có số Invoice tham chiếu trên Packing List khác hóa đơn.</small>
+                        <button className="btn small" disabled={loading || !!current.documents.length || !!current.reference_files?.length} onClick={() => loadSampleSet(false, false, true)}>Bộ mẫu 6 nhóm</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false, true)}>Bộ mẫu dùng PO</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(true)}>Bộ mẫu sai lệch</button>
                         </details>
@@ -2146,7 +2146,7 @@ function App() {
 
               {tab === 'customs' && (
                 <section className="surface padded commercial-checklist">
-                  <div className="section-title"><div><h2>5 nhóm chứng từ cần kiểm</h2><p className="muted">Hợp đồng và PO được nhận diện riêng. Có một trong hai là đủ nhóm này. C/O không bắt buộc; có tải lên thì kiểm nội dung.</p></div></div>
+                  <div className="section-title"><div><h2>6 nhóm chứng từ cần kiểm</h2><p className="muted">Hợp đồng và PO được nhận diện riêng trong cùng một nhóm. Arrival Notice là thông báo hàng đến; B/L không thay Booking. C/O không bắt buộc; có tải lên thì kiểm nội dung.</p></div></div>
                   {(dict.review_groups || []).map((group: Any) => {
                     const matches = current.documents.filter((d: Any) => d.type === group.type || (group.type === 'Contract' && d.type === 'Purchase Order') || (['Invoice','Packing List'].includes(group.type) && d.type === 'Invoice & Packing List'));
                     const rule = current.case.requirements[group.type] || {required:false};
@@ -2656,7 +2656,7 @@ function DialogContent({ dialog, dict, current, loading, submit }: Any) {
       </h2>
       {kind === 'case' ? (
         <>
-          <p className="muted">Một hồ sơ gồm Packing List, Booking, Invoice, Hợp đồng/PO và C/O nếu có.</p>
+          <p className="muted">Một hồ sơ gồm Packing List, Booking, Invoice, Arrival Notice, Hợp đồng/PO và C/O nếu có.</p>
           <label className="form-label">
             Tên hồ sơ
             <input

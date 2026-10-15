@@ -1,6 +1,6 @@
 {
   "intro": "5 bước làm việc: tải & nhận diện → kiểm trường → đối chiếu → checklist → duyệt & xuất Excel.",
-  "scope": "Dành cho nhân viên chứng từ U&I/FWD. Phạm vi hiện tại gồm Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng và C/O nếu có. Không yêu cầu dữ liệu container, seal, B/L hay chỉ tiêu khai hải quan.",
+  "scope": "Dành cho nhân viên chứng từ U&I/FWD. Phạm vi hiện tại gồm Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng, Arrival Notice và C/O nếu có. Không yêu cầu dữ liệu container, seal, B/L hay chỉ tiêu khai hải quan.",
   "scenario": {
     "title": "Ví dụ làm việc: hồ sơ sầu riêng nhập khẩu (giả lập)",
     "notice": "Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nút nạp riêng trong hồ sơ trống; đây không phải chứng từ thương mại thật.",
@@ -10,12 +10,12 @@
         "THAI FRUIT DEMO / MINH AN FRUIT DEMO — tên giả lập"
       ],
       [
-        "4 nhóm cần có",
-        "PL-DUR-001 · BK-DUR-001 · INV-DUR-001 · SC-DUR-001 (hoặc PO-DUR-001)"
+        "5 nhóm cần có",
+        "PL-DUR-001 · BK-DUR-001 · INV-DUR-001 · SC-DUR-001 (hoặc PO-DUR-001) · Arrival Notice tham chiếu B/L của lô"
       ],
       [
         "C/O",
-        "CO-DUR-001 nếu khách gửi. Không có C/O vẫn tiếp tục kiểm 4 nhóm còn lại."
+        "CO-DUR-001 nếu khách gửi. Không có C/O vẫn tiếp tục kiểm 5 nhóm còn lại."
       ],
       [
         "Số lượng / đóng gói",
@@ -35,7 +35,7 @@
     {
       "id": "upload",
       "title": "Tải file và xác nhận đúng loại",
-      "task": "Nhận Packing List, Booking, Invoice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.",
+      "task": "Nhận Packing List, Booking, Invoice, Arrival Notice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.",
       "action": "Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → chọn OpenAI, tích đồng ý gửi nội dung → Đọc tệp này. Chỉ tệp vừa chọn được xử lý; thông tin không có nguồn vẫn để thiếu.",
       "check": "Dù file tên 1.pdf, nội dung PACKING LIST phải nhận là Packing List. SALES CONTRACT nhận Contract; PURCHASE ORDER nhận Purchase Order. Không đổi PO thành Contract để đủ checklist.",
       "done": "Các file đã đọc, loại đã được kiểm theo nội dung; mỗi file hoặc nhóm trang chứa đúng một chứng từ.",
@@ -46,7 +46,7 @@
       "title": "Kiểm những gì máy đã đọc",
       "task": "Kiểm trường và dòng hàng từ bản gốc. AI/OCR hỗ trợ đọc, trạng thái chờ xác minh không có nghĩa chứng từ sai.",
       "action": "Mở Xác minh → chọn bản ghi → Xem nguồn. Kiểm trang, câu trích dẫn và vùng được đánh dấu. Sai thì sửa, ghi lý do, lưu rồi Xác minh. Máy không xác định được tọa độ thì kiểm trang/câu nguồn; không coi khung gần đó là bằng chứng chắc chắn. Thông tin chứng từ là các bản ghi theo từng nguồn; Dòng hàng hóa là từng mặt hàng trong bảng, không phải số kiện/container.",
-      "check": "Invoice: số/ngày, người bán/mua, USD, tổng 81.000. PL: số PL, 1.000 thùng, GW 19.500 kg và NW 18.000 kg giữ riêng. Booking: số BK, cảng đi/đến, ETD/ETA nếu ghi. Hợp đồng/PO: số riêng và điều kiện giao dịch nếu ghi.",
+      "check": "Invoice: số/ngày, người bán/mua, USD, tổng 81.000. PL: số PL chỉ kiểm nếu bản gốc có ghi; 1.000 thùng, GW 19.500 kg và NW 18.000 kg giữ riêng. Booking: số BK, cảng đi/đến, ETD/ETA nếu ghi. Arrival Notice: số B/L tham chiếu, tàu/chuyến, ETA nếu có; không thay Booking. Hợp đồng/PO: số riêng và điều kiện giao dịch nếu ghi.",
       "done": "Các bản ghi dùng để xuất đã được nhân viên đối chiếu bản gốc và xác minh; dữ liệu không đọc được đã có nguồn bổ sung.",
       "problem": "Giấy ghi 81.000 nhưng AI ra 87.000: sửa giá trị trích xuất thành 81000, không sửa giấy gốc. Không có dữ liệu thì yêu cầu khách bổ sung, không đoán."
     },
@@ -61,7 +61,7 @@
     },
     {
       "id": "checklist",
-      "title": "Rà 5 nhóm và trường còn thiếu",
+      "title": "Rà 6 nhóm và trường còn thiếu",
       "task": "Xem còn thiếu nhóm chứng từ nào, trường cốt lõi nào. Không yêu cầu mọi trường của mọi mẫu phải có.",
       "action": "Mở Checklist & trường kiểm tra → mở từng nhóm. Xem nguồn để kiểm giá trị, Bổ sung từ nguồn để nhập trường máy bỏ sót; chọn đúng file/trang và ghi căn cứ. Nếu đơn vị không yêu cầu một nhóm trong tình huống cụ thể, ghi lý do tại nhóm đó.",
       "check": "Có Sales Contract hoặc PO là đủ nhóm Hợp đồng/Đơn đặt hàng; có cả hai thì giữ riêng để xem. Không có C/O không chặn. Có C/O thì kiểm số và xuất xứ cùng các dữ liệu đọc được.",
@@ -100,7 +100,7 @@
   "source": {
     "title": "Phạm vi và thao tác U&I SMART",
     "url": "https://ui-smart-fcl.onrender.com/",
-    "note": "Hướng dẫn khớp phạm vi 5 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập."
+    "note": "Hướng dẫn khớp phạm vi 6 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập."
   },
   "problems": [
     [

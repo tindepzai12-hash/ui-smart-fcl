@@ -9,14 +9,14 @@ from test_core import client, H, upload, process
 
 def test_six_main_types_and_unrelated_documents_are_separated():
     cid = create()
-    main = ['invoice','packing','booking','contract','po','co']
+    main = ['invoice','packing','booking','contract','po','co','arrival']
     upload(cid, [(f'{i+1}.txt',sample(name+'.txt')) for i,name in enumerate(main)] + [
         ('7.txt',b'DELIVERY ORDER\nConsignee: UNRELATED COMPANY\nGross Weight: 9999 KG'),
         ('8.txt',b'MEETING AGENDA\nStaff lunch schedule\nLocation: Meeting room A'),
     ])
     b, job = process(cid)
     assert not job['errors']
-    assert {d['type'] for d in b['documents']} == {'Invoice','Packing List','Booking','Contract','Purchase Order','C/O'}
+    assert {d['type'] for d in b['documents']} == {'Invoice','Packing List','Booking','Contract','Purchase Order','C/O','Arrival Notice'}
     assert {d['type'] for d in b['other_files']} == {'Delivery Order','Other'}
     assert all(d['collection_reason'] and d['pages'] for d in b['other_files'])
     others = {d['id'] for d in b['other_files']}
@@ -25,7 +25,7 @@ def test_six_main_types_and_unrelated_documents_are_separated():
     assert not any(c['key'] in ['classification:'+id for id in others] for c in b['checks'])
     assert all(r['value'].get('text') != 'UNRELATED COMPANY' for r in b['records'])
     cases = client.get('/api/cases').json()
-    assert next(c for c in cases if c['id']==cid)['document_count'] == 6
+    assert next(c for c in cases if c['id']==cid)['document_count'] == 7
     for d in b['other_files']:
         assert client.get('/api/documents/'+d['id']+'/original').status_code == 200
         assert client.get('/api/documents/'+d['id']+'/pages/1').status_code == 200
@@ -37,7 +37,7 @@ def test_six_main_types_and_unrelated_documents_are_separated():
     wb.close()
     # An excluded file is not repeatedly sent through OCR/AI on the next run.
     b, job = process(cid)
-    assert len(b['other_files']) == 2 and job['total'] == 6
+    assert len(b['other_files']) == 2 and job['total'] == 7
 
 
 def test_openai_routes_other_and_manual_correction_is_reversible(monkeypatch):

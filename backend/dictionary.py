@@ -124,14 +124,20 @@ FIELDS['po_number']['aliases']+=['po number','purchase order number','po referen
 FIELDS['contract_number']['documents']+=['Purchase Order']
 
 REVIEW_GROUPS=[
-    {'type':'Packing List','label':'Packing List','required_fields':['packing_number','packages','gross_weight'],'fields':['packing_number','packing_date','invoice_number','contract_number','po_number','shipper','consignee','goods_quantity','packages','gross_weight','net_weight','volume','shipping_marks']},
+    {'type':'Packing List','label':'Packing List','required_fields':['packages','gross_weight'],'fields':['packing_number','packing_date','invoice_number','contract_number','po_number','shipper','consignee','goods_quantity','packages','gross_weight','net_weight','volume','shipping_marks']},
     {'type':'Booking','label':'Booking / Booking Confirmation','required_fields':['booking','port_loading','port_discharge'],'fields':['booking','booking_date','carrier','shipper','consignee','notify_party','vessel','voyage','port_loading','port_discharge','place_receipt','place_delivery','etd','eta','cut_off','cargo_description','packages','gross_weight','volume','freight_terms']},
     {'type':'Invoice','label':'Invoice','required_fields':['invoice_number','invoice_date','seller','buyer','currency','invoice_total'],'fields':['invoice_number','invoice_date','seller','seller_address','buyer','buyer_address','contract_number','po_number','currency','incoterms','payment_terms','goods_quantity','invoice_total','origin']},
     {'type':'Contract','label':'Hợp đồng / thỏa thuận mua bán / PO','required_fields':[],'fields':['contract_number','contract_date','po_number','po_date','seller','seller_address','buyer','buyer_address','currency','incoterms','payment_terms','goods_quantity','contract_total','origin']},
     {'type':'C/O','label':'C/O · nếu có','required_fields':['co_number','origin'],'fields':['co_number','co_form','co_date','co_issuer','exporter','exporter_address','importer','importer_address','consignee','invoice_number','origin','origin_criteria','cargo_description','goods_quantity','packages','gross_weight','net_weight']},
 ]
+REVIEW_GROUPS.append({'type':'Arrival Notice','label':'Arrival Notice / Thông báo hàng đến','required_fields':['bl_number'],'fields':['bl_number','shipper','shipper_address','consignee','consignee_address','notify_party','vessel','voyage','port_loading','port_discharge','place_delivery','eta','arrival_date','packages','gross_weight','volume']})
+FIELDS['packing_number']['label']='Số Packing List (nếu có)'
+FIELDS['packing_number']['required']=False
+FIELDS['eta']['aliases'] += ['est. arrival date','estimated arrival date','est arrival date']
 REVIEW_FIELDS=list(dict.fromkeys(key for group in REVIEW_GROUPS for key in group['fields']))
-PROFILE_TYPES=['Packing List','Booking','Invoice','C/O','Contract','Purchase Order']
+PROFILE_TYPES=['Packing List','Booking','Invoice','C/O','Contract','Arrival Notice']
+# Subtypes share a checklist group; they remain distinct when recognized from content.
+PROFILE_VARIANTS=PROFILE_TYPES+['Purchase Order','Invoice & Packing List']
 for spec in FIELDS.values():
     if any(k in spec['documents'] for k in ['Invoice','Packing List']):
         spec['documents']=list(dict.fromkeys([*spec['documents'],'Invoice & Packing List']))
@@ -146,6 +152,7 @@ def default_requirements(mode='FCL'):
             'Booking':{'required':True,'note':'Booking / Booking Confirmation; không thay bằng B/L, số liệu là kế hoạch đặt chỗ'},
             'Invoice':{'required':True,'note':'Bộ kiểm tra nội bộ: hóa đơn thương mại'},
             'Contract':{'required':True,'note':'Sales/Sale Contract, hợp đồng/thỏa thuận mua bán; chấp nhận Purchase Order có căn cứ'},
+            'Arrival Notice':{'required':True,'note':'Thông báo hàng đến; số B/L tham chiếu không thay số Booking. Kiểm thông tin có trên bản gốc'},
             'C/O':{'required':False,'note':'Nếu khách cung cấp thì nhận diện và kiểm tra; thiếu C/O không chặn duyệt nội bộ'},
         }
     return {'Invoice':{'required':True,'note':'Checklist nghiệp vụ'},'Packing List':{'required':True,'note':'Checklist nghiệp vụ'},('AWB' if mode=='AIR' else 'B/L'):{'required':True,'note':'Sea Waybill có thể thay B/L'},'C/O':{'required':False,'note':'Nếu áp dụng chứng minh xuất xứ'},'Import Permit':{'required':False,'note':'Nếu mặt hàng phải có giấy phép'},'Inspection Certificate':{'required':False,'note':'Nếu thuộc kiểm tra chuyên ngành'}}

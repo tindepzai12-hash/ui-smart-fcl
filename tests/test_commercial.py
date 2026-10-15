@@ -16,7 +16,7 @@ def create():
 def sample(name):return (ROOT/'samples'/name).read_bytes()
 def prepared(contract='contract.txt',co=False):
  id=create()
- names=['invoice.txt','packing.txt','booking.txt',contract]+(['co.txt'] if co else [])
+ names=['invoice.txt','packing.txt','booking.txt',contract,'arrival.txt']+(['co.txt'] if co else [])
  # Intentionally content-independent names to verify classification uses content.
  upload(id,[(str(i+1)+'.txt',sample(name)) for i,name in enumerate(names)])
  b,j=process(id)
@@ -25,11 +25,11 @@ def prepared(contract='contract.txt',co=False):
 
 def test_default_profile_and_dictionary():
  id=create();b=bundle(id)
- assert list(b['case']['requirements'])==['Packing List','Booking','Invoice','Contract','C/O']
+ assert list(b['case']['requirements'])==['Packing List','Booking','Invoice','Contract','Arrival Notice','C/O']
  assert not b['case']['requirements']['C/O']['required']
  d=client.get('/api/dictionary').json()
- assert d['document_types']==PROFILE_TYPES and len(d['review_groups'])==5
- assert not {'bl_number','hs_code','equipment_count','equipment_type'} & set(d['review_fields'])
+ assert d['document_types']==PROFILE_TYPES and len(d['review_groups'])==6
+ assert not {'hs_code','equipment_count','equipment_type'} & set(d['review_fields'])
  assert not any(c['key']=='document:C/O' and c['result']=='Missing' for c in b['checks'])
 
 @pytest.mark.parametrize('title,kind',[
@@ -42,7 +42,7 @@ def test_document_headings(title,kind):
 @pytest.mark.parametrize('contract', ['contract.txt','po.txt'])
 def test_four_groups_without_co_or_container_can_be_reviewed(contract):
  id,b=prepared(contract)
- assert {d['type'] for d in b['documents']}=={'Invoice','Packing List','Booking','Contract' if contract=='contract.txt' else 'Purchase Order'}
+ assert {d['type'] for d in b['documents']}=={'Invoice','Packing List','Booking','Arrival Notice','Contract' if contract=='contract.txt' else 'Purchase Order'}
  assert not [r for r in b['records'] if r['kind']=='container']
  assert not [c for c in b['checks'] if c['key'].startswith('missing:')],b['checks']
  assert next(c for c in b['checks'] if c['key']=='document:Contract')['result']=='Matched'
@@ -60,7 +60,7 @@ def test_four_groups_without_co_or_container_can_be_reviewed(contract):
  assert len(wb.sheetnames)==6 and 'THONG_TIN_CHUNG_TU' in wb.sheetnames
  assert 'CONTAINER_VAN_CHUYEN' not in wb.sheetnames
  keys={row[0] for row in wb['THONG_TIN_CHUNG_TU'].iter_rows(min_row=2,values_only=True)}
- assert keys<=set(REVIEW_FIELDS) and 'bl_number' not in keys
+ assert keys<=set(REVIEW_FIELDS) and 'bl_number' in keys
  assert not any(row[1]=='Chuẩn bị khai báo' for row in wb['THIEU_VA_CAN_XAC_MINH'].iter_rows(min_row=2,values_only=True))
  wb.close()
 
@@ -149,3 +149,44 @@ def test_ai_booking_evidence_and_po_semantics():
  assert ai.validate_result(result,pages)[0]['key']=='booking'
  result.fields[0].raw_value='FAKE-NUMBER'
  with pytest.raises(ValueError):ai.validate_result(result,pages)
+
+
+def test_packing_list_without_own_number_is_not_missing():
+ cid=create()
+ payload=sample('packing.txt').decode('utf-8')
+ payload='\n'.join(line for line in payload.splitlines() if not line.lower().startswith('packing list no:'))
+ upload(cid,[('1.txt',payload.encode())])
+ b,j=process(cid)
+ assert not j['errors']
+ assert not any(c['key']=='missing:packing_number' for c in b['checks'])
+ assert not any(r['key']=='packing_number' for r in b['records'])
+
+def test_arrival_notice_is_main_but_bill_does_not_supply_booking():
+ cid=create()
+ upload(cid,[('1.txt',sample('arrival.txt')),('2.txt',sample('bl.txt'))])
+ b,j=process(cid)
+ assert not j['errors']
+ assert [d['type'] for d in b['documents']]==['Arrival Notice']
+ assert [d['type'] for d in b['other_files']]==['B/L']
+ assert any(r['key']=='bl_number' for r in b['records'])
+ assert not any(r['kind']!='field' or r['key']=='booking' for r in b['records'])
+ assert next(c for c in b['checks'] if c['key']=='document:Booking')['result']=='Missing'
+ assert next(c for c in b['checks'] if c['key']=='document:Arrival Notice')['result']=='Matched'
+
+def test_arrival_scope_migration_retains_file_and_waivers():
+ from backend.app import upgrade_arrival_notice_scope
+ cid=create()
+ upload(cid,[('1.txt',sample('arrival.txt'))]);b,j=process(cid)
+ doc=b['documents'][0]
+ rules=b['case']['requirements'];rules.pop('Arrival Notice')
+ rules['Booking']={'required':False,'note':'Customer waived planned booking'}
+ db.execute('UPDATE cases SET requirements=?,reviewed_at=? WHERE id=?',(db.encode(rules),db.now(),cid))
+ db.execute("UPDATE documents SET collection='reference',extraction_required=0 WHERE id=?",(doc['id'],))
+ db.execute('DELETE FROM schema_versions WHERE version=3')
+ upgrade_arrival_notice_scope()
+ after=bundle(cid)
+ assert after['documents'][0]['id']==doc['id'] and after['documents'][0]['extraction_required']
+ assert not after['case']['reviewed_at'] and not after['case']['requirements']['Booking']['required']
+ assert after['case']['requirements']['Arrival Notice']['required']
+ revision=after['case']['revision'];upgrade_arrival_notice_scope()
+ assert bundle(cid)['case']['revision']==revision

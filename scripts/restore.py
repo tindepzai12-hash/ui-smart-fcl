@@ -21,7 +21,7 @@ def restore(archive,data=None,check_server=True):
         with closing(sqlite3.connect(stage/'smart.sqlite')) as c:
             with c:
                 if c.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise ValueError('SQLite integrity check failed')
-                if c.execute('SELECT max(version) FROM schema_versions').fetchone()[0] not in [1,2]:raise ValueError('Schema backup chưa hỗ trợ')
+                if c.execute('SELECT max(version) FROM schema_versions').fetchone()[0] not in [1,2,3]:raise ValueError('Schema backup chưa hỗ trợ')
                 tables=[('documents','files'),('exports','exports'),('templates','templates')]
                 if c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bundle_sources'").fetchone():
                     tables.append(('bundle_sources','files'))

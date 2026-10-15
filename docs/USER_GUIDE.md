@@ -2,15 +2,15 @@
 
 5 bước làm việc: tải & nhận diện → kiểm trường → đối chiếu → checklist → duyệt & xuất Excel.
 
-Dành cho nhân viên chứng từ U&I/FWD. Phạm vi hiện tại gồm Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng và C/O nếu có. Không yêu cầu dữ liệu container, seal, B/L hay chỉ tiêu khai hải quan.
+Dành cho nhân viên chứng từ U&I/FWD. Phạm vi hiện tại gồm Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng, Arrival Notice và C/O nếu có. Không yêu cầu dữ liệu container, seal, B/L hay chỉ tiêu khai hải quan.
 
 ## Ví dụ làm việc: hồ sơ sầu riêng nhập khẩu (giả lập)
 
 Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nút nạp riêng trong hồ sơ trống; đây không phải chứng từ thương mại thật.
 
 - **Người bán / người mua:** THAI FRUIT DEMO / MINH AN FRUIT DEMO — tên giả lập
-- **4 nhóm cần có:** PL-DUR-001 · BK-DUR-001 · INV-DUR-001 · SC-DUR-001 (hoặc PO-DUR-001)
-- **C/O:** CO-DUR-001 nếu khách gửi. Không có C/O vẫn tiếp tục kiểm 4 nhóm còn lại.
+- **5 nhóm cần có:** PL-DUR-001 · BK-DUR-001 · INV-DUR-001 · SC-DUR-001 (hoặc PO-DUR-001) · Arrival Notice tham chiếu B/L của lô
+- **C/O:** CO-DUR-001 nếu khách gửi. Không có C/O vẫn tiếp tục kiểm 5 nhóm còn lại.
 - **Số lượng / đóng gói:** 18.000 kg hàng; 1.000 thùng; NW 18.000 kg; GW 19.500 kg
 - **Trị giá hóa đơn:** 18.000 kg × 4,50 USD/kg = 81.000 USD; CIF Cát Lái, Incoterms 2020
 - **Booking:** Laem Chabang → Cát Lái; thời gian và số lượng là dự kiến, cần kiểm đúng phiên bản.
@@ -18,7 +18,7 @@ Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nú
 
 ## Bước 1. Tải file và xác nhận đúng loại
 
-**Việc nhân viên làm:** Nhận Packing List, Booking, Invoice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.
+**Việc nhân viên làm:** Nhận Packing List, Booking, Invoice, Arrival Notice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.
 
 **Thao tác trên web:** Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → chọn OpenAI, tích đồng ý gửi nội dung → Đọc tệp này. Chỉ tệp vừa chọn được xử lý; thông tin không có nguồn vẫn để thiếu.
 
@@ -36,7 +36,7 @@ Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nú
 
 **Thao tác trên web:** Mở Xác minh → chọn bản ghi → Xem nguồn. Kiểm trang, câu trích dẫn và vùng được đánh dấu. Sai thì sửa, ghi lý do, lưu rồi Xác minh. Máy không xác định được tọa độ thì kiểm trang/câu nguồn; không coi khung gần đó là bằng chứng chắc chắn. Thông tin chứng từ là các bản ghi theo từng nguồn; Dòng hàng hóa là từng mặt hàng trong bảng, không phải số kiện/container.
 
-**Kiểm tra trong ví dụ sầu riêng:** Invoice: số/ngày, người bán/mua, USD, tổng 81.000. PL: số PL, 1.000 thùng, GW 19.500 kg và NW 18.000 kg giữ riêng. Booking: số BK, cảng đi/đến, ETD/ETA nếu ghi. Hợp đồng/PO: số riêng và điều kiện giao dịch nếu ghi.
+**Kiểm tra trong ví dụ sầu riêng:** Invoice: số/ngày, người bán/mua, USD, tổng 81.000. PL: số PL chỉ kiểm nếu bản gốc có ghi; 1.000 thùng, GW 19.500 kg và NW 18.000 kg giữ riêng. Booking: số BK, cảng đi/đến, ETD/ETA nếu ghi. Arrival Notice: số B/L tham chiếu, tàu/chuyến, ETA nếu có; không thay Booking. Hợp đồng/PO: số riêng và điều kiện giao dịch nếu ghi.
 
 **Khi nào chuyển bước?:** Các bản ghi dùng để xuất đã được nhân viên đối chiếu bản gốc và xác minh; dữ liệu không đọc được đã có nguồn bổ sung.
 
@@ -58,7 +58,7 @@ Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nú
 
 
 
-## Bước 4. Rà 5 nhóm và trường còn thiếu
+## Bước 4. Rà 6 nhóm và trường còn thiếu
 
 **Việc nhân viên làm:** Xem còn thiếu nhóm chứng từ nào, trường cốt lõi nào. Không yêu cầu mọi trường của mọi mẫu phải có.
 
@@ -105,7 +105,7 @@ Kiểm cùng đơn vị, trọng lượng cả bì/tịnh, ngày sửa booking v
 
 Đây là checklist chứng từ thương mại do dự án lựa chọn. Kết quả đọc không xác thực chữ ký, C/O hoặc tính hợp pháp của giao dịch. Không phải bộ hồ sơ pháp lý đầy đủ cho mọi lô FCL.
 
-Nguồn: [Phạm vi và thao tác U&I SMART](https://ui-smart-fcl.onrender.com/). Hướng dẫn khớp phạm vi 5 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập.
+Nguồn: [Phạm vi và thao tác U&I SMART](https://ui-smart-fcl.onrender.com/). Hướng dẫn khớp phạm vi 6 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập.
 
 ## Khi gặp vấn đề với web
 

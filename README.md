@@ -57,7 +57,7 @@ Dependency Python nằm trong `vendor/`, tách khỏi Python toàn hệ thống.
 
 ## Checklist thương mại và năm bước sử dụng
 
-5 nhóm: **Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng, C/O (nếu có)**. Nhận diện riêng 6 loại: Packing List, Booking, Invoice, Contract, Purchase Order, C/O. Contract và PO giữ số/ngày, nguồn riêng; có một trong hai đáp ứng nhóm hợp đồng trong checklist nội bộ, không có nghĩa hai giấy tờ tương đương pháp lý. Không yêu cầu B/L, container, seal hoặc chỉ tiêu khai báo trong phạm vi này.
+6 nhóm: **Packing List, Booking, Invoice, Hợp đồng/Đơn đặt hàng, Arrival Notice, C/O (nếu có)**. PO và bản gộp Invoice & Packing List được nhận diện theo nội dung trong nhóm tương ứng. Số Packing List chỉ kiểm khi bản gốc có ghi; không bắt buộc. Arrival Notice lấy số B/L tham chiếu, tàu/chuyến, cảng, ETA và tổng lô có nguồn; không thay Booking. Contract và PO giữ số/ngày, nguồn riêng; có một trong hai đáp ứng nhóm hợp đồng trong checklist nội bộ, không có nghĩa hai giấy tờ tương đương pháp lý. Không yêu cầu B/L, container, seal hoặc chỉ tiêu khai báo trong phạm vi này.
 
 1. **Tải & nhận diện:** Tạo hồ sơ, chọn nhiều tệp cùng lúc. Dùng Local hoặc OpenAI với đồng ý gửi nội dung. Tách PDF nhiều chứng từ; kiểm và xác nhận loại theo nội dung. Bộ mẫu chuẩn/sai lệch là giả lập và chỉ nạp vào hồ sơ trống.
 2. **Kiểm trường:** Xem nguồn từng trường/dòng hàng, sửa lỗi trích xuất có căn cứ, lưu và xác minh. Vai trò bên bán/mua/gửi/nhận giữ riêng.

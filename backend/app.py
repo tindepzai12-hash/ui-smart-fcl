@@ -15,7 +15,7 @@ except ImportError:
 from PIL import Image, ImageOps
 from openpyxl import load_workbook
 from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle, source_locator
-from .dictionary import FIELDS, TYPES, default_requirements, commercial_profile, REVIEW_GROUPS, REVIEW_FIELDS, PROFILE_TYPES, DOCUMENT_LABELS
+from .dictionary import FIELDS, TYPES, default_requirements, commercial_profile, REVIEW_GROUPS, REVIEW_FIELDS, PROFILE_TYPES, PROFILE_VARIANTS, DOCUMENT_LABELS
 from .normalize import normalize
 
 db.migrate()
@@ -353,7 +353,7 @@ def collection(id: str, body: CollectionInput):
     with LOCK:
         doc = require_doc(id)
         busy(doc['case_id'])
-        if body.document_type is not None and (body.collection != 'document' or body.document_type not in PROFILE_TYPES + ['Invoice & Packing List']):
+        if body.document_type is not None and (body.collection != 'document' or body.document_type not in PROFILE_VARIANTS):
             raise HTTPException(422, 'Chọn một trong 6 loại chứng từ chính trước khi đưa vào checklist.')
         if doc.get('collection', 'document') != body.collection:
             with db.connect() as c:
@@ -589,7 +589,7 @@ def worker(job_id):
                     raise InterruptedError()
                 case = require_case(id)
                 commercial = commercial_profile(json.loads(case['requirements']),case['mode'])
-                main_types = PROFILE_TYPES + ['Invoice & Packing List']
+                main_types = PROFILE_VARIANTS
                 # A staff correction is explicit. Keep it in the main set, but flag conflicting AI classification.
                 if commercial and d['type_verified'] and d['type'] in main_types and kind != d['type']:
                     extraction_warning = f'Máy gợi ý {kind}, khác loại {d["type"]} đã được nhân viên xác nhận. Kiểm bản gốc và loại trước khi dùng dữ liệu.'
@@ -614,6 +614,8 @@ def worker(job_id):
                     protected = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE document_id=? AND (status!='pending' OR method LIKE 'Manual%')", (d['id'],))]
                     c.execute("DELETE FROM records WHERE document_id=? AND status='pending' AND method NOT LIKE 'Manual%'", (d['id'],))
                     for r in records:
+                        if commercial and kind == 'Arrival Notice' and r['kind'] != 'field':
+                            continue  # Transport summaries/charges are not commercial item rows.
                         if any(p['kind'] == r['kind'] and p['key'] == r['key'] and p['page'] == r['page'] and p['raw'] == r['raw'] for p in protected):
                             continue
                         add_record(c, id, d['id'], r)
@@ -707,7 +709,7 @@ def job_status(id: str):
 @app.get('/api/samples/{name}')
 def sample_document(name: str):
     # Only synthetic fixtures explicitly shipped for the two UI demo sets.
-    if name not in {'invoice.txt', 'packing.txt', 'packing-conflict.txt', 'booking.txt', 'contract.txt', 'po.txt', 'co.txt'}:
+    if name not in {'invoice.txt', 'packing.txt', 'packing-conflict.txt', 'arrival.txt', 'booking.txt', 'contract.txt', 'po.txt', 'co.txt'}:
         raise HTTPException(404, 'Không có chứng từ mẫu này')
     return FileResponse(db.ROOT / 'samples' / name, filename=name, media_type='application/pdf' if name.endswith('.pdf') else 'text/plain')
 
@@ -1055,6 +1057,28 @@ def upgrade_commercial_checklists():
         c.execute('INSERT INTO schema_versions VALUES(2,?)',(db.now(),))
 
 upgrade_commercial_checklists()
+
+def upgrade_arrival_notice_scope():
+    """Retain source files/waivers; re-read arrival notices previously excluded by scope."""
+    with db.connect() as c:
+        if c.execute('SELECT 1 FROM schema_versions WHERE version=3').fetchone():
+            return
+        for row in c.execute("SELECT * FROM cases WHERE mode='FCL'").fetchall():
+            old=json.loads(row['requirements'])
+            if not commercial_profile(old,row['mode']):
+                continue
+            rules={**old}
+            rules.setdefault('Arrival Notice',default_requirements()['Arrival Notice'])
+            c.execute('UPDATE cases SET requirements=? WHERE id=?',(db.encode(rules),row['id']))
+            for doc in c.execute("SELECT * FROM documents WHERE case_id=? AND type='Arrival Notice' AND collection='reference'",(row['id'],)).fetchall():
+                c.execute("UPDATE documents SET collection='document',collection_reason='',extraction_required=1,error=NULL WHERE id=?",(doc['id'],))
+                db.audit(c,row['id'],'Đưa Arrival Notice vào bộ chính',doc['id'],reason='Phạm vi mới; cần đọc lại theo nguồn trước khi xác minh')
+            db.touch(c,row['id'])
+            db.audit(c,row['id'],'Cập nhật 6 nhóm chứng từ',before=old,after=rules,reason='Thêm Arrival Notice; số Packing List không bắt buộc; B/L không thay Booking')
+            revalidate(c,row['id'])
+        c.execute('INSERT INTO schema_versions VALUES(3,?)',(db.now(),))
+
+upgrade_arrival_notice_scope()
 
 if (db.ROOT / 'dist').exists():
     app.mount('/', StaticFiles(directory=db.ROOT / 'dist', html=True), name='frontend')
