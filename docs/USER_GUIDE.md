@@ -30,17 +30,17 @@ Tình huống đào tạo GIẢ LẬP, không phải hồ sơ thật hay xác nh
 
 
 
-## Bước 2. Tải đúng chứng từ, để ảnh hiện trường riêng
+## Bước 2. Tải đúng chứng từ của cùng lô hàng
 
 **Việc nhân viên làm:** Gom đúng phiên bản giấy tờ của cùng lô. Scan phải đủ trang, đủ mép và đọc được chữ; không trộn Invoice lô khác.
 
 **Thao tác trên web:** Chứng từ → Thêm chứng từ → chọn nhiều file cùng lúc. PDF gộp nhiều loại: tải lên, đọc xong rồi Tách bộ PDF, kiểm tra nhóm trang và xác nhận. Hợp đồng nhiều trang giữ cùng nhóm, không tách máy móc mỗi trang thành một chứng từ.
 
-**Kiểm tra trong ví dụ sầu riêng:** Invoice INV-DUR-DEMO-001; PL dẫn chiếu cùng Invoice; B/L đúng khách/lô. Tên 1.pdf không quyết định loại. Ảnh chụp giấy Invoice/PL/B/L vẫn vào Chứng từ; ảnh cont, seal, hàng hoặc màn hình tra cứu vào Ảnh hiện trường & màn hình.
+**Kiểm tra trong ví dụ sầu riêng:** Invoice INV-DUR-DEMO-001; PL dẫn chiếu cùng Invoice; B/L đúng khách/lô. Tên 1.pdf không quyết định loại. PDF gốc, bản scan và ảnh chụp giấy Invoice/PL/B/L đều tải vào Chứng từ. Chỉ tải giấy tờ liên quan đến hồ sơ.
 
-**Khi nào chuyển bước?:** Danh sách Chứng từ chứa đúng giấy tờ; ảnh hiện trường ở bộ riêng; PDF gộp đã chia đúng nhóm trước khi đối chiếu.
+**Khi nào chuyển bước?:** Danh sách Chứng từ chứa đúng giấy tờ của lô; PDF gộp đã chia đúng nhóm trước khi đối chiếu.
 
-**Nếu chưa đạt:** Ảnh vào nhầm Chứng từ: Thao tác tệp → chuyển sang bộ ảnh riêng. Giấy vào nhầm bộ ảnh: Chuyển về Chứng từ. Thiếu trang/mờ: xin bản rõ, không lấy ảnh màn hình thay giấy cần thiết.
+**Nếu chưa đạt:** Thiếu trang/mờ: xin bản rõ. Nếu AI loại nhầm ảnh chụp giấy, mở Tệp không tham gia đối chiếu trong Chứng từ → tải bản gốc để kiểm tra → Chuyển về Chứng từ → xác nhận loại và đọc lại.
 
 
 
@@ -120,7 +120,7 @@ Tình huống đào tạo GIẢ LẬP, không phải hồ sơ thật hay xác nh
 
 **Thao tác trên web:** Lịch sử để rà lần sửa/xác minh. Có giấy/phiên bản mới: bổ sung đúng hồ sơ, đọc và kiểm lại phần thay đổi. Cài đặt → tải sao lưu nếu cần giữ hồ sơ qua lần máy chủ khởi động.
 
-**Kiểm tra trong ví dụ sầu riêng:** Bàn giao đúng phiên bản, ghi kiểm dịch/ATTP còn chờ gì và ai theo dõi. Cont/seal/màn hình tra cứu vẫn ở bộ ảnh riêng, không thay giấy chứng nhận hoặc lệnh giao hàng.
+**Kiểm tra trong ví dụ sầu riêng:** Bàn giao đúng phiên bản, ghi kiểm dịch/ATTP còn chờ gì và ai theo dõi. Chỉ lưu giấy tờ liên quan đến hồ sơ; ảnh container hoặc màn hình tra cứu không thay giấy chứng nhận hoặc lệnh giao hàng.
 
 **Khi nào chuyển bước?:** Người nhận biết phần đã kiểm và việc chưa hoàn tất. Điều xe, vận hành container lạnh và giao hàng do đầu mối vận tải/giao nhận làm qua công cụ/quy trình của họ.
 

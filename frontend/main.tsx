@@ -21,7 +21,6 @@ import {
 import './styles.css';
 import { TemplateCenter } from './TemplateCenter';
 import { PdfSplit } from './PdfSplit';
-import { ReferenceFiles } from './ReferenceFiles';
 import { SourceInspector } from './SourceInspector';
 import { UserGuide } from './UserGuide';
 
@@ -351,18 +350,18 @@ function App() {
         : b.updated_at.localeCompare(a.updated_at)
     );
 
-  async function upload(files: FileList | File[], collection = 'document') {
+  async function upload(files: FileList | File[]) {
     if (!files.length) return;
     setConsent(false);
     const f = new FormData();
     Array.from(files).forEach((file) => f.append('files', file));
     await run(async () => {
-      const result = await api('/cases/' + current.case.id + (collection === 'reference' ? '/reference-files' : '/documents'), { method: 'POST', body: f });
+      const result = await api('/cases/' + current.case.id + '/documents', { method: 'POST', body: f });
       replace(result.bundle);
       await refresh();
       const failed = result.results.filter((r: Any) => r.status !== 'uploaded');
       if (failed.length) setError(failed.map((r: Any) => r.name + ': ' + r.error).join('\n'));
-      notify('Đã nhận ' + result.results.filter((r: Any) => r.status === 'uploaded').length + ' tệp vào ' + (collection === 'reference' ? 'bộ ảnh riêng' : 'bộ chứng từ'));
+      notify('Đã nhận ' + result.results.filter((r: Any) => r.status === 'uploaded').length + ' tệp vào bộ chứng từ');
     });
   }
 
@@ -1040,7 +1039,6 @@ function App() {
 
   const caseTabs = [
     ['documents', 'Chứng từ'],
-    ['references', 'Ảnh hiện trường & màn hình'],
     ['review', 'Xác minh'],
     ['comparison', 'Đối chiếu'],
     ['customs', 'Chuẩn bị khai báo'],
@@ -1287,13 +1285,13 @@ function App() {
                 </div>
               </div>
 
-              {tab !== 'references' && <>
+              <>
                 <details className="workflow-details"><summary>Quy trình & tổng hợp container · {current.documents.length} chứng từ · {pending} bản ghi chờ kiểm</summary>
                   <StepTracker current={current} onSelectTab={(t: string) => setTab(t)} />
                   <ContainerSummaryBanner records={current.records} documents={current.documents} checks={current.checks} />
                 </details>
                 {!(sourceRecord && tab === 'documents') && renderNextActionBanner()}
-              </>}
+              </>
 
               <nav className="tabs" aria-label="Các phân hệ kiểm tra hồ sơ">
                 {caseTabs.map(([id, title]) => (
@@ -1313,9 +1311,6 @@ function App() {
                 ))}
               </nav>
 
-              {tab === 'references' && <ReferenceFiles files={current.reference_files || []} busy={loading || job?.status === 'running'}
-                onUpload={files => upload(files, 'reference')}
-                onMove={id => update(() => patch('/documents/' + id + '/collection', { collection: 'document', reason: 'Người dùng xác nhận đây là chứng từ' }), 'Đã chuyển về Chứng từ · cần đọc và xác minh lại')} />}
               {tab === 'documents' && (
                 <>
                   <div className="processing-toolbar">
@@ -1384,8 +1379,16 @@ function App() {
                     </div>
                   </div>
 
-                  {!sourceRecord && <details className="collection-guide"><summary>Chứng từ hay ảnh hiện trường?</summary><p><strong>Bộ chứng từ:</strong> PDF gốc, bản scan hoặc ảnh chụp Invoice, Packing List, B/L và chứng từ liên quan.</p>
-                    <button className="text-btn" onClick={() => setTab('references')}>Ảnh container / màn hình tra cứu → Bộ ảnh riêng ({current.reference_files?.length || 0})</button>
+                  {!!current.reference_files?.length && <details className="excluded-files">
+                    <summary>Tệp không tham gia đối chiếu ({current.reference_files.length})</summary>
+                    <p>Tệp lưu từ phiên bản trước hoặc được AI nhận diện là ảnh không chứa chứng từ. Nếu nhận diện nhầm, chuyển về Chứng từ rồi xác nhận loại và đọc lại.</p>
+                    {current.reference_files.map((file: Any) => <div className="excluded-file" key={file.id}>
+                      <div><strong>{file.name}</strong>{file.collection_reason && <p>{file.collection_reason}</p>}</div>
+                      <div className="row">
+                        <a className="btn small" href={`/api/documents/${file.id}/original`} download>Tải bản gốc</a>
+                        <button className="btn small" disabled={loading || job?.status === 'running'} onClick={() => update(() => patch('/documents/' + file.id + '/collection', { collection: 'document', reason: 'Người dùng xác nhận đây là chứng từ' }), 'Đã chuyển về Chứng từ · xác nhận loại rồi đọc lại')}>Chuyển về Chứng từ</button>
+                      </div>
+                    </div>)}
                   </details>}
 
                   {mode === 'openai' && (
@@ -1507,10 +1510,9 @@ function App() {
                               </div>
                             </div>
                           </button>
-                          {selectedDoc === d.id && <details className="file-more"><summary>Thao tác tệp</summary><div className="document-classification">
+                          {selectedDoc === d.id && (d.source || (d.ext === '.pdf' && d.pages?.length > 1)) && <details className="file-more"><summary>Thao tác tệp</summary><div className="document-classification">
                             {d.ext === '.pdf' && d.pages?.length>1 && !d.source && <button className="btn small" disabled={loading || job?.status==='running'} onClick={()=>setDialog({kind:'split-pdf',document:d})}>Tách bộ PDF</button>}
                             {d.source && <a className="text-btn" href={`/api/sources/${d.source.id}/original`} download>Tải PDF gốc</a>}
-                            <button className="text-btn" disabled={loading || job?.status==='running'} onClick={()=>setDialog({kind:'move-reference',document:d})}>Chuyển sang bộ ảnh riêng</button>
                           </div></details>}
 
                           </div>
@@ -2553,14 +2555,7 @@ function App() {
                 {error}
               </div>
             )}
-            {dialog.kind === 'move-reference' ? <div className="stack"><h2>Chuyển sang bộ ảnh riêng?</h2>
-              <p><strong>{dialog.document.name}</strong> sẽ ra khỏi danh sách chứng từ, đối chiếu và bảng kê. Bản gốc và dữ liệu đã đọc được giữ lại để có thể chuyển về.</p>
-              <p>Chỉ dùng cho ảnh hiện trường hoặc màn hình tra cứu. Ảnh chụp giấy Invoice, Packing List, B/L vẫn là chứng từ.</p>
-              <div className="row"><button className="btn" onClick={() => setDialog(null)}>Giữ trong Chứng từ</button><button className="btn primary" disabled={loading} onClick={async () => {
-                const b = await update(() => patch('/documents/' + dialog.document.id + '/collection', { collection: 'reference', reason: 'Người dùng xác nhận ảnh hiện trường hoặc màn hình tra cứu' }), 'Đã chuyển sang bộ ảnh riêng');
-                if (b) { setDialog(null); setTab('references'); }
-              }}>Chuyển sang bộ ảnh riêng</button></div>
-            </div> : dialog.kind === 'split-pdf' ? <PdfSplit document={dialog.document} types={dict.document_types} loading={loading} submit={async (payload: Any) => {
+            {dialog.kind === 'split-pdf' ? <PdfSplit document={dialog.document} types={dict.document_types} loading={loading} submit={async (payload: Any) => {
               const b = await update(() => post('/documents/' + dialog.document.id + '/split', payload), 'Đã tách PDF · xác nhận loại và kiểm tra dữ liệu từng chứng từ');
               if (b) { setDialog(null); setSelectedDoc(b.documents[0]?.id || ''); setPage(1); }
             }} /> : <DialogContent

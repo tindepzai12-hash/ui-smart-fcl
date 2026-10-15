@@ -1,3 +1,11 @@
+# Phạm vi tải chứng từ — cập nhật 15/10/2026
+
+Theo yêu cầu người dùng, bỏ tab ảnh hiện trường/màn hình, chức năng tải ảnh riêng và chuyển chứng từ sang bộ ảnh. Chỉ có một nơi tải lên: Chứng từ, nhận cả PDF gốc, bản scan và ảnh chụp giấy tờ.
+
+Giữ cơ chế backend loại ảnh không chứa chứng từ khỏi đối chiếu và Excel. Khi có tệp cũ hoặc ảnh bị AI loại, mục thu gọn “Tệp không tham gia đối chiếu” xuất hiện ngay trong Chứng từ, hiển thị lý do, cho tải bản gốc và chuyển về nếu nhận diện nhầm. Không xóa, không gộp dữ liệu ảnh vào bảng kê. Không có bộ tải ảnh riêng trên giao diện.
+
+Chi tiết cơ chế backend trước thay đổi giao diện (các thao tác tải/chuyển bộ riêng không còn được cung cấp trên web):
+
 # Phạm vi ảnh và chứng từ
 
 - Chứng từ: PDF có text, PDF scan, ảnh chụp giấy hoặc screenshot đang hiển thị chứng từ thực tế. Phân loại theo nội dung, không theo tên/đuôi tệp.

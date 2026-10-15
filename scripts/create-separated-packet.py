@@ -125,7 +125,7 @@ C/O chỉ kiểm thử nhận diện, không chứng minh đủ điều kiện h
 Bảo hiểm 25894 USD khác invoice 23540 USD: phạm vi khác, không phải lỗi.
 Không thêm giấy phép/kiểm dịch giả để ép checklist qua. Bộ này không xác nhận yêu cầu pháp lý cho một mặt hàng thật.
 
-Ảnh container, seal, hàng hóa, màn hình tra cứu: tải riêng tại Ảnh hiện trường & màn hình.
+Chỉ tải chứng từ của lô; ảnh container, seal, hàng hóa hoặc màn hình tra cứu không nằm trong bộ kiểm thử này.
 Ảnh chụp hoặc scan Invoice/Packing List/B/L vẫn tải tại Chứng từ.
 Bộ kiểm thử giấy tờ này KHÔNG chứa ảnh hiện trường hoặc ảnh màn hình.
 '''

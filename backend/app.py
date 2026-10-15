@@ -513,14 +513,14 @@ def worker(job_id):
             try:
                 uncertain_image = False
                 if mode == 'openai' and d['ext'] in {'.png', '.jpg', '.jpeg', '.tif', '.tiff'} and not d['type_verified']:
-                    job['stage'] = 'Kiểm tra ảnh chứng từ / ảnh hiện trường'
+                    job['stage'] = 'Kiểm tra ảnh có chứa chứng từ'
                     route = ai.route_image(id, d)
                     if job['cancel']:
                         raise InterruptedError()
                     if route.category == 'reference' and route.certainty == 'clear':
                         with db.connect() as c:
                             move_collection(c, d, 'reference', route.reason)
-                        job['warnings'].append({'document': d['name'], 'message': 'Đã chuyển sang bộ ảnh riêng: ' + route.reason})
+                        job['warnings'].append({'document': d['name'], 'message': 'Tệp không tham gia đối chiếu: ' + route.reason + '. Xem mục Tệp không tham gia đối chiếu trong Chứng từ; có thể chuyển về nếu nhận diện nhầm.'})
                         continue
                     uncertain_image = route.category == 'uncertain' or route.certainty != 'clear'
                 if d['status'] in ['read', 'needs_split']:
@@ -549,7 +549,7 @@ def worker(job_id):
                     continue
                 if uncertain_image:
                     kind, evidence, records = 'Other', route.reason, []
-                    extraction_warning = 'Chưa rõ đây là chứng từ hay ảnh hiện trường. Kiểm tra bản gốc, xác nhận loại hoặc chuyển sang bộ ảnh riêng; chưa trích xuất dữ liệu.'
+                    extraction_warning = 'Chưa rõ ảnh có chứa chứng từ. Kiểm tra bản gốc, xác nhận đúng loại chứng từ rồi đọc lại; chưa trích xuất dữ liệu.'
                     job['warnings'].append({'document': d['name'], 'message': extraction_warning})
                 elif mode == 'openai':
                     result, records, info = ai.analyze(id, d, pages)

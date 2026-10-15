@@ -23,12 +23,12 @@
       "problem":"Thiếu Invoice/PL/B/L hoặc thông tin dạng hàng/xuất xứ: yêu cầu khách bổ sung. Chưa rõ điều kiện nhập: chuyển người phụ trách tra cứu. Liên hệ qua kênh làm việc của đơn vị; web không tự gửi email."
     },
     {
-      "id":"upload","title":"Tải đúng chứng từ, để ảnh hiện trường riêng",
+      "id":"upload","title":"Tải đúng chứng từ của cùng lô hàng",
       "task":"Gom đúng phiên bản giấy tờ của cùng lô. Scan phải đủ trang, đủ mép và đọc được chữ; không trộn Invoice lô khác.",
       "action":"Chứng từ → Thêm chứng từ → chọn nhiều file cùng lúc. PDF gộp nhiều loại: tải lên, đọc xong rồi Tách bộ PDF, kiểm tra nhóm trang và xác nhận. Hợp đồng nhiều trang giữ cùng nhóm, không tách máy móc mỗi trang thành một chứng từ.",
-      "check":"Invoice INV-DUR-DEMO-001; PL dẫn chiếu cùng Invoice; B/L đúng khách/lô. Tên 1.pdf không quyết định loại. Ảnh chụp giấy Invoice/PL/B/L vẫn vào Chứng từ; ảnh cont, seal, hàng hoặc màn hình tra cứu vào Ảnh hiện trường & màn hình.",
-      "done":"Danh sách Chứng từ chứa đúng giấy tờ; ảnh hiện trường ở bộ riêng; PDF gộp đã chia đúng nhóm trước khi đối chiếu.",
-      "problem":"Ảnh vào nhầm Chứng từ: Thao tác tệp → chuyển sang bộ ảnh riêng. Giấy vào nhầm bộ ảnh: Chuyển về Chứng từ. Thiếu trang/mờ: xin bản rõ, không lấy ảnh màn hình thay giấy cần thiết."
+      "check":"Invoice INV-DUR-DEMO-001; PL dẫn chiếu cùng Invoice; B/L đúng khách/lô. Tên 1.pdf không quyết định loại. PDF gốc, bản scan và ảnh chụp giấy Invoice/PL/B/L đều tải vào Chứng từ. Chỉ tải giấy tờ liên quan đến hồ sơ.",
+      "done":"Danh sách Chứng từ chứa đúng giấy tờ của lô; PDF gộp đã chia đúng nhóm trước khi đối chiếu.",
+      "problem":"Thiếu trang/mờ: xin bản rõ. Nếu AI loại nhầm ảnh chụp giấy, mở Tệp không tham gia đối chiếu trong Chứng từ → tải bản gốc để kiểm tra → Chuyển về Chứng từ → xác nhận loại và đọc lại."
     },
     {
       "id":"read","title":"Cho web đọc và xác nhận loại giấy",
@@ -74,7 +74,7 @@
       "id":"handover","title":"Phối hợp sau bàn giao, không điều xe trong web",
       "task":"Theo phạm vi hợp đồng, bàn giao đầu mối khai báo/kiểm dịch/giao nhận và theo dõi yêu cầu bổ sung. Xuất Excel chưa phải hoàn thành cả lô hàng.",
       "action":"Lịch sử để rà lần sửa/xác minh. Có giấy/phiên bản mới: bổ sung đúng hồ sơ, đọc và kiểm lại phần thay đổi. Cài đặt → tải sao lưu nếu cần giữ hồ sơ qua lần máy chủ khởi động.",
-      "check":"Bàn giao đúng phiên bản, ghi kiểm dịch/ATTP còn chờ gì và ai theo dõi. Cont/seal/màn hình tra cứu vẫn ở bộ ảnh riêng, không thay giấy chứng nhận hoặc lệnh giao hàng.",
+      "check":"Bàn giao đúng phiên bản, ghi kiểm dịch/ATTP còn chờ gì và ai theo dõi. Chỉ lưu giấy tờ liên quan đến hồ sơ; ảnh container hoặc màn hình tra cứu không thay giấy chứng nhận hoặc lệnh giao hàng.",
       "done":"Người nhận biết phần đã kiểm và việc chưa hoàn tất. Điều xe, vận hành container lạnh và giao hàng do đầu mối vận tải/giao nhận làm qua công cụ/quy trình của họ.",
       "problem":"Giấy sửa sau bàn giao: báo người liên quan qua kênh đơn vị, thay/thu hồi bảng kê cũ theo quy trình. Web không tự cập nhật hải quan, hãng tàu, cảng hay vận tải."
     }
