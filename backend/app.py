@@ -677,7 +677,8 @@ def worker(job_id):
                     if info['rejected']:
                         extraction_warning = ai.extraction_notice(info['rejected'])
                         reading_diagnostics = ai.extraction_diagnostics(result, pages, info['rejected'])
-                        job['warnings'].append({'document': d['name'], 'message': extraction_warning})
+                        if extraction_warning:
+                            job['warnings'].append({'document': d['name'], 'message': extraction_warning})
                 else:
                     kind, evidence = extraction.classify(pages)
                     if d['type_verified'] and not (d['type']=='Contract' and kind=='Purchase Order'):

@@ -868,7 +868,16 @@ def merge_supported_repair(first, repair, pages, targets):
     return DocumentResult.model_validate(merged)
 
 
+def review_rejections(rejected):
+    """Out-of-profile fields stay rejected, but are not staff reading tasks."""
+    return [reason for reason in rejected if not (
+        (match:=re.fullmatch(r'fields\[\d+\] ([a-z_]+): AI trả field ngoài dictionary/loại chứng từ',reason))
+        and match.group(1) in FIELDS)]
+
+
 def extraction_notice(rejected):
+    rejected=review_rejections(rejected)
+    if not rejected:return ''
     details=[]
     for reason in rejected[:5]:
         field=re.match(r'fields\[\d+\] ([a-z_]+):',reason)
@@ -918,6 +927,7 @@ def repair_diagnostics(result, pages, rejected):
 
 def extraction_diagnostics(result, pages, rejected):
     """Untrusted attempts for employee review, kept separate from usable records."""
+    rejected=review_rejections(rejected)
     diagnostics = []
     page_numbers = {p['number'] for p in pages}
     for entry in repair_diagnostics(result, pages, rejected):

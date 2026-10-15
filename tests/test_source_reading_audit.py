@@ -137,3 +137,17 @@ def test_total_quantity_uses_uniform_printed_unit_column_only(units):
         assert row['value']['number']=='1200' and row['value']['unit']=='PCS' and not row['value']['warning']
     else:
         assert row['value']['unit'] is None and row['value']['warning']
+
+def test_out_of_profile_candidates_stay_rejected_without_staff_reading_tasks():
+    quote='Tờ khai hàng hóa xuất khẩu\nNgày phát hành 01/07/2025\nTổng trọng lượng hàng (Gross) 515,08 KGM'
+    candidate=result('01/07/2025',quote=quote,key='invoice_date')
+    candidate.fields.append(ai.FieldResult(field_id='gross_weight',raw_value='515,08',unit='KGM',unit_evidence=quote,source_page=1,evidence_text=quote))
+    pages=[{'number':1,'text':quote}]
+    rows,rejected=ai.validated_subset(candidate,pages)
+    assert [r['key'] for r in rows]==['gross_weight'] and len(rejected)==1
+    assert ai.extraction_notice(rejected)=='' and ai.extraction_diagnostics(candidate,pages,rejected)==[]
+    actual='fields[2] gross_weight: AI trả giá trị không có bằng chứng nguồn'
+    assert ai.review_rejections([*rejected,actual])==[actual]
+    assert ai.extraction_notice([*rejected,actual]) and len(ai.extraction_diagnostics(candidate,pages,[*rejected,actual]))==1
+    unknown='fields[3] unknown_field: AI trả field ngoài dictionary/loại chứng từ'
+    assert ai.review_rejections([unknown])==[unknown]
