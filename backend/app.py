@@ -110,14 +110,19 @@ class NewRecord(Input):
     note: str = Field(min_length=3, max_length=1000)
     document_id: Optional[str] = None
     page: Optional[int] = Field(default=None, ge=1, le=100)
+    confirmed: bool = False
 
 class ResolveInput(Input):
     note: str = Field(min_length=5, max_length=1000)
 
-class CheckReviewInput(ResolveInput):
+class CheckReviewInput(Input):
+    note: str = Field(default='',max_length=1000)
+    confirmed: bool = False
     versions: Dict[str,int]
 
-class DiagnosticReviewInput(ResolveInput):
+class DiagnosticReviewInput(Input):
+    note: str = Field(default='',max_length=1000)
+    confirmed: bool = False
     token: str
     action: Literal['accept','exclude']
     value: Optional[Union[str,Dict[str,Any]]] = None
@@ -215,7 +220,11 @@ def revalidate(c, id):
     case = dict(c.execute('SELECT * FROM cases WHERE id=?', (id,)).fetchone())
     docs = [dict(r) for r in c.execute("SELECT * FROM documents WHERE case_id=? AND collection='document'", (id,))]
     records = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE case_id=? AND (document_id IS NULL OR document_id IN (SELECT id FROM documents WHERE collection='document'))", (id,))]
-    return validation.persist_checks(c, case, docs, records)
+    checks=validation.persist_checks(c, case, docs, records)
+    if commercial_profile(json.loads(case['requirements']),case['mode']):
+        from .acceptance import apply
+        apply(c,id)
+    return checks
 
 def add_record(c, case_id, document_id, r):
     case = dict(c.execute('SELECT * FROM cases WHERE id=?',(case_id,)).fetchone())
@@ -537,7 +546,7 @@ def document_diagnostic(doc,index):
     return entries,entries[index]
 
 @app.get('/api/documents/{id}/review-source')
-def diagnostic_source(id: str, diagnostic: Optional[int]=None, number: int=1):
+def diagnostic_source(id: str, diagnostic: Optional[int]=None, number: int=1,field_id:Optional[str]=None):
     doc=require_working_doc(id)
     raw='';evidence=doc.get('classification_evidence','')
     if diagnostic is not None:
@@ -546,6 +555,13 @@ def diagnostic_source(id: str, diagnostic: Optional[int]=None, number: int=1):
         candidate=entry.get('candidate_raw',{})
         raw=candidate.get('raw_value','') if entry.get('candidate_kind')=='field' else candidate
         evidence=entry.get('evidence','')
+    elif field_id:
+        if field_id not in REVIEW_FIELDS:raise HTTPException(422,'Trường dữ liệu không thuộc phạm vi.')
+        import re
+        aliases=FIELDS[field_id]['aliases']
+        matches=[(p['number'],line) for p in db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number',(id,))
+                 for line in p['text'].splitlines() if any(re.search(r'(?i)(?<!\w)'+re.escape(a)+r'(?!\w)',line) for a in aliases)]
+        if matches:number,evidence=matches[0]
     page=db.one('SELECT number,text,method,quality FROM pages WHERE document_id=? AND number=?',(id,number))
     if not page:raise HTTPException(404,'Trang nguồn chưa đọc được; cần đọc lại tài liệu.')
     busy(doc['case_id'])
@@ -561,7 +577,8 @@ def review_diagnostic(id: str,index: int,body: DiagnosticReviewInput):
         if entry.get('review') or body.token!=source_locator.diagnostic_token(entry):
             raise HTTPException(409,'Kết quả đã thay đổi/đã xử lý. Tải lại trước khi xác nhận.')
         note=body.note.strip()
-        if len(note)<5:raise HTTPException(422,'Cần căn cứ kiểm tra ít nhất 5 ký tự.')
+        if not body.confirmed and len(note)<5:raise HTTPException(422,'Đánh dấu đã kiểm tra bản gốc trước khi lưu.')
+        note=note or ('Nhân viên đã kiểm tra bản gốc và xác nhận giá trị.' if body.action=='accept' else 'Nhân viên đã kiểm tra bản gốc và loại đề xuất.')
         page=entry.get('page')
         if not page or not db.one('SELECT id FROM pages WHERE document_id=? AND number=?',(id,page)):
             raise HTTPException(422,'Thiếu trang nguồn; đọc lại tệp trước khi xác nhận.')
@@ -602,14 +619,16 @@ def review_check(id: str,body: CheckReviewInput):
         rows=[r for r in working_records(check['case_id']) if r['id'] in ids and r['status']!='rejected']
         if not rows or body.versions!={r['id']:r['version'] for r in rows}:
             raise HTTPException(409,'Phiên bản dữ liệu đã thay đổi hoặc không có bản ghi để xác nhận.')
-        if any(r['value'].get('warning') for r in rows):raise HTTPException(422,'Sửa dữ liệu chưa rõ định dạng trước khi xác nhận.')
-        if len(body.note.strip())<5:raise HTTPException(422,'Ghi căn cứ kiểm tra ít nhất 5 ký tự.')
+        from .acceptance import readable
+        if any(not readable(r) for r in rows):raise HTTPException(422,'Nhập lại ô còn trống hoặc chưa đọc rõ trước khi xác nhận.')
+        if not body.confirmed and len(body.note.strip())<5:raise HTTPException(422,'Đánh dấu đã kiểm tra bản gốc trước khi lưu.')
+        note=body.note.strip() or 'Nhân viên đã đối chiếu các nguồn và xác nhận đã kiểm tra.'
         with db.connect() as c:
             for r in rows:
-                c.execute("UPDATE records SET status='verified',note=?,updated_at=?,version=version+1 WHERE id=?",(body.note.strip(),db.now(),r['id']))
-            c.execute('UPDATE checks SET resolution=? WHERE id=?',(body.note.strip(),id))
+                c.execute("UPDATE records SET status='verified',note=?,updated_at=?,version=version+1 WHERE id=?",(note,db.now(),r['id']))
+            c.execute('UPDATE checks SET resolution=? WHERE id=?',(note,id))
             db.touch(c,check['case_id'])
-            db.audit(c,check['case_id'],'Nhân viên xác nhận đã kiểm tra nguồn',id,None,[r['id'] for r in rows],body.note.strip())
+            db.audit(c,check['case_id'],'Nhân viên xác nhận đã kiểm tra nguồn',id,None,[r['id'] for r in rows],note)
     return bundle(check['case_id'])
 
 def worker(job_id):
@@ -710,15 +729,15 @@ def worker(job_id):
                         'UPDATE documents SET type=?,classification_evidence=?,type_verified=? WHERE id=?',
                         (kind, evidence, d['type_verified'] if kind == d['type'] else 0, d['id']),
                     )
-                    protected = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE document_id=? AND (status!='pending' OR method LIKE 'Manual%')", (d['id'],))]
-                    c.execute("DELETE FROM records WHERE document_id=? AND status='pending' AND method NOT LIKE 'Manual%'", (d['id'],))
+                    protected = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE document_id=? AND (status NOT IN ('pending','auto_accepted') OR method LIKE 'Manual%')", (d['id'],))]
+                    c.execute("DELETE FROM records WHERE document_id=? AND status IN ('pending','auto_accepted') AND method NOT LIKE 'Manual%'", (d['id'],))
                     for r in records:
                         if commercial and kind == 'Arrival Notice' and r['kind'] != 'field':
                             continue  # Transport summaries/charges are not commercial item rows.
                         if any(p['kind'] == r['kind'] and p['key'] == r['key'] and p['page'] == r['page'] and p['raw'] == r['raw'] for p in protected):
                             continue
                         add_record(c, id, d['id'], r)
-                    c.execute("UPDATE documents SET status='read',error=?,reading_diagnostics=?,extraction_required=0 WHERE id=?", (extraction_warning, db.encode(reading_diagnostics), d['id']))
+                    c.execute("UPDATE documents SET status='read',error=?,reading_diagnostics=?,extraction_required=0,classification_method=? WHERE id=?", (extraction_warning, db.encode(reading_diagnostics), 'OpenAI' if mode=='openai' else 'Local', d['id']))
                     db.audit(c, id, 'Đọc và trích xuất ' + mode, d['id'], after={'type': kind, 'pages': len(pages), 'records': len(records),'source_format_grounded':source_grounded})
             except InterruptedError:
                 raise
@@ -866,6 +885,10 @@ def manual(id: str, body: NewRecord):
         if commercial_profile(json.loads(case['requirements']),case['mode']) and (body.kind == 'container' or (body.kind == 'field' and body.key not in REVIEW_FIELDS)):
             raise HTTPException(422, 'Chỉ thêm trường chứng từ hoặc dòng hàng trong phạm vi checklist hiện tại')
         value = checked_value(body.kind, body.key, body.value)
+        if body.confirmed:
+            from .acceptance import readable
+            if not readable({'kind':body.kind,'key':body.key,'value':value}):
+                raise HTTPException(422,'Nhập đầy đủ giá trị và đơn vị đọc được trước khi xác nhận.')
         if body.document_id:
             d = require_working_doc(body.document_id)
             if d['case_id'] != id:
@@ -876,6 +899,8 @@ def manual(id: str, body: NewRecord):
             raise HTTPException(422, 'Chọn chứng từ và trang nguồn chứa giá trị cần bổ sung')
         with db.connect() as c:
             add_record(c, id, body.document_id, {'kind': body.kind, 'key': body.key, 'raw': body.value, 'value': value, 'page': body.page, 'evidence': body.note, 'method': 'Manual'})
+            if body.confirmed:
+                c.execute("UPDATE records SET status='verified' WHERE rowid=last_insert_rowid()")
             db.touch(c, id)
             db.audit(c, id, 'Thêm dữ liệu thủ công', after=body.model_dump())
             revalidate(c, id)
@@ -1087,6 +1112,29 @@ def get_backup(id: str):
     if not p.exists():
         raise HTTPException(404)
     return FileResponse(p, filename='UI_SMART_backup_' + id + '.zip')
+
+@app.post('/api/backups/restore-empty')
+async def restore_empty(file: UploadFile = File(...)):
+    """Recover a restarted ephemeral server; never replace existing cases."""
+    data=await file.read(100*1024**2+1)
+    await file.close()
+    if len(data)>100*1024**2 or Path(file.filename or '').suffix.lower()!='.zip':
+        raise HTTPException(422,'Bản sao lưu cần là ZIP dưới 100 MB.')
+    with LOCK:
+        if any(j['status']=='running' for j in JOBS.values()) or db.one('SELECT count(*) n FROM cases')['n']:
+            raise HTTPException(409,'Chỉ khôi phục khi máy chủ chưa có hồ sơ; dữ liệu hiện có được giữ nguyên.')
+        archive=db.ROOT/'tmp'/('restore-upload-'+db.uid()+'.zip')
+        archive.parent.mkdir(exist_ok=True)
+        archive.write_bytes(data)
+        try:
+            from scripts.restore import restore
+            restore(archive,db.DATA,check_server=False)
+            for folder in ['files','exports','backups','templates']:(db.DATA/folder).mkdir(exist_ok=True)
+            db.migrate()
+            return {'restored':db.one('SELECT count(*) n FROM cases')['n']}
+        except (ValueError,zipfile.BadZipFile,sqlite3.Error) as exc:
+            raise HTTPException(422,'Bản sao lưu không hợp lệ; không thể khôi phục.') from None
+        finally:archive.unlink(missing_ok=True)
 
 # Experimental generic template mapper, explicitly internal and not a customs software import certification.
 @app.post('/api/templates')

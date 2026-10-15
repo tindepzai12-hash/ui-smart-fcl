@@ -39,6 +39,8 @@ def migrate():
             c.execute('ALTER TABLE documents ADD COLUMN extraction_required INTEGER NOT NULL DEFAULT 0')
         if 'reading_diagnostics' not in columns:
             c.execute("ALTER TABLE documents ADD COLUMN reading_diagnostics TEXT NOT NULL DEFAULT '[]'")
+        if 'classification_method' not in columns:
+            c.execute("ALTER TABLE documents ADD COLUMN classification_method TEXT NOT NULL DEFAULT ''")
         c.execute('PRAGMA journal_mode=WAL')
         c.execute('CREATE TABLE IF NOT EXISTS packet_reviews (case_id TEXT PRIMARY KEY REFERENCES cases(id) ON DELETE CASCADE, signature TEXT NOT NULL, payload TEXT NOT NULL, error TEXT NOT NULL, created_at TEXT NOT NULL)')
         # Recover work interrupted by an application restart. Files are retained.

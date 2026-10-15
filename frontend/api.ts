@@ -58,13 +58,14 @@ export const statusLabel: Record<string, string> = {
   Exported: 'Đã xuất Reviewed',
   pending: 'Chờ xác minh',
   verified: 'Đã xác minh',
+  auto_accepted: 'AI đã nhận',
   rejected: 'Đã từ chối',
   Matched: 'Khớp',
   Mismatch: 'Sai lệch',
   Missing: 'Thiếu',
   'Needs Verification': 'Cần kiểm tra',
   'Not Applicable': 'Không áp dụng',
-  'Not Yet Checked': 'Chưa đủ nguồn',
+  'Not Yet Checked': 'Đã nhận · một nguồn / chưa so sánh',
   uploaded: 'Đã tải',
   read: 'Đã đọc',
   error: 'Lỗi',
@@ -78,7 +79,7 @@ export const statusLabel: Record<string, string> = {
 export const label = (s: string): string => statusLabel[s] || s;
 
 export const tone = (s: string): string =>
-  ['verified', 'Matched', 'Reviewed', 'Exported', 'read', 'saved'].includes(s)
+  ['verified', 'auto_accepted', 'Matched', 'Reviewed', 'Exported', 'read', 'saved'].includes(s)
     ? 'good'
     : ['Mismatch', 'error', 'rejected', 'save_error'].includes(s)
     ? 'bad'
@@ -192,8 +193,8 @@ export function computeStepStates(current: any) {
   const records = (current?.records || []).filter((r: any) => r.status !== 'rejected');
   const checks = current?.checks || [];
   const hasDocs = docs.length > 0;
-  const allRead = hasDocs && docs.every((d: any) => d.status === 'read' && !!d.type_verified);
-  const pending = records.filter((r: any) => r.status !== 'verified' || r.value?.warning).length;
+  const allRead = hasDocs && docs.every((d: any) => d.status === 'read' && (!!d.type_verified || d.classification_method==='OpenAI'));
+  const pending = records.filter((r: any) => !['verified','auto_accepted'].includes(r.status) || (r.value?.warning&&r.status!=='auto_accepted')).length;
   const unresolved = checks.filter((c: any) => ['Mismatch', 'Missing', 'Needs Verification'].includes(c.result) && !c.resolution);
   const prepared = records.length > 0 && !unresolved.some((c: any) => c.key.startsWith('missing:'));
   const reviewed = !!current?.case?.reviewed_at && (current?.blockers || []).length === 0;

@@ -57,12 +57,12 @@ def ai_checks(case_id,documents,records):
 
 def semantic_difference(check,records):
     """AI prose cannot override equal, typed source values (including cached reviews)."""
-    from .validation import field_comparable
+    from .validation import comparison_values
     index={r['id']:r for r in records if r['status']!='rejected'}
     group=[index[s['id']] for s in check['detail'].get('sources',[]) if s['id'] in index]
     if len(group)<2:return False
     if all(r['kind']=='field' for r in group):
-        values=[field_comparable(r['key'],r['value']) for r in group]
+        values=comparison_values(group[0]['key'],group,list(index.values()))
         if all(v is not None for v in values) and len(set(values))==1:return False
     return True
 
@@ -81,7 +81,7 @@ def report(case,documents,records,checks):
     saved=db.one('SELECT signature,error,created_at FROM packet_reviews WHERE case_id=?',(case['id'],))
     state='not_run' if not saved else 'stale' if saved['signature']!=signature(documents,records) else 'error' if saved['error'] else 'completed'
     return {'issues':issues,'matched':matched,'single_source':single,'gaps':gaps,
-            'open_count':sum(not c.get('resolution') for c in issues),'mismatch_count':sum(c['result']=='Mismatch' and not c.get('resolution') for c in issues),
+            'open_count':sum(not c.get('resolution') for c in issues),'mismatch_count':sum((c['result']=='Mismatch' or c['detail'].get('category')=='difference') and not c.get('resolution') for c in issues),
             'ai_state':state,'ai_error':saved['error'] if saved and state=='error' else '',
             'scope':'Một hồ sơ = một lô hàng. Nguồn kế hoạch, hợp đồng giao nhiều đợt và dữ liệu chưa rõ đơn vị được cảnh báo riêng, không tự kết luận sai.'}
 
@@ -122,7 +122,7 @@ def run_ai_review(case_id,documents,records):
             if issue.field_id in seen:continue
             seen.add(issue.field_id)
             check={'key':'ai-semantic:'+issue.field_id,'result':'Needs Verification','severity':'warning',
-                   'detail':{'reason':'AI gợi ý cần so sánh: '+issue.reason,'sources':sources(group,documents),'method':'OpenAI semantic suggestion'}}
+                   'detail':{'reason':'AI gợi ý cần so sánh: '+issue.reason,'sources':sources(group,documents),'method':'OpenAI semantic suggestion','category':'difference'}}
             if semantic_difference(check,active):output.append(check)
     except Exception as exc:
         error=str(exc)[:500] if isinstance(exc,ValueError) else ai.safe_error(exc)

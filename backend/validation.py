@@ -34,6 +34,41 @@ def field_comparable(key, value):
     return comparison
 
 
+def comparison_values(key, group, records):
+    values=[field_comparable(key,r['value']) for r in group]
+    if any(v is None for v in values):
+        from .acceptance import readable
+        if all(readable(r) for r in group):
+            # Literal agreement is sufficient to accept readable strings. Do not
+            # convert an ambiguous comma to a fabricated numeric Excel value.
+            printed=[(re.sub(r'\s+',' ',r['value'].get('text','')).upper().strip(),r['value'].get('unit')) for r in group]
+            return [('literal',*p) for p in printed]
+        return values
+    if key in ['port_loading','port_discharge']:
+        # Formatting only: retain an explicit conflicting country. Never equate
+        # a city with its individual ports or expand an "ANY PORT" clause.
+        parts=[]
+        for r in group:
+            tokens=[x.strip() for x in r['value'].get('text','').upper().rstrip('.').split(',')]
+            name=re.sub(r'\bPORT\b','',tokens[0]);name=' '.join(name.split())
+            country=' '.join(tokens[1:]).replace('VIET NAM','VIETNAM').strip()
+            parts.append((name,country))
+        if len({n for n,_ in parts})==1 and len({c for _,c in parts if c})<=1:
+            return [parts[0][0]]*len(parts)
+    if key=='vessel':
+        # Only remove a suffix if another source explicitly has that same
+        # vessel AND a separate voyage field. Preserve every raw source value.
+        pairs=set()
+        for vessel in group:
+            for voyage in records:
+                if (voyage['key']=='voyage' and voyage['status']!='rejected'
+                        and voyage['document_id']==vessel['document_id'] and voyage['page']==vessel['page']
+                        and not voyage['value'].get('warning')):
+                    pairs.add((str(field_comparable('vessel',vessel['value'])),str(field_comparable('voyage',voyage['value']))))
+        return [next((name for name,voyage in pairs if v==name+' '+voyage),v) for v in values]
+    return values
+
+
 def build_checks(case, documents, records):
     checks = []
     active = [r for r in records if r['status'] != 'rejected']
@@ -127,8 +162,11 @@ def build_checks(case, documents, records):
                 field_docs = [d for d in matching if kind != 'Contract' or d['type'] == ('Purchase Order' if key == 'po_number' else 'Contract')]
                 missing_docs=[d for d in field_docs if not any(r['document_id']==d['id'] for r in fields.get(key,[]))]
                 if not field_docs or missing_docs:
+                    missing_sources=[{'id':'missing:'+d['id']+':'+key,'document_id':d['id'],'document':d['name'],'type':d['type'],
+                        'missing_field':key,'field_label':FIELDS[key]['label'],'value':{'text':''},'page':1} for d in missing_docs]
                     add('missing:' + key, 'Missing' if required(rule) or matching else 'Needs Verification',
                         f"Chưa có {FIELDS[key]['label']} có nguồn từ {group['label']}" + (': '+', '.join(d['name'] for d in missing_docs) if missing_docs else '') + '. Kiểm bản gốc và bổ sung; không tự đoán.', severity='error')
+                    checks[-1]['detail']['sources']=missing_sources
     for key, doc_kind, rule in core_specs:
         if not fields.get(key):
             if required(rule):
@@ -166,10 +204,16 @@ def build_checks(case, documents, records):
             'value': r['value'],
             'page': r['page'],
         } for r in group]
-        values = [field_comparable(key,r['value']) for r in group]
+        values = comparison_values(key,group,active)
         if any(v is None for v in values):
+            from .acceptance import readable
+            if len(group)==1 and readable(group[0]):
+                add('field:'+key,'Not Yet Checked','Đã nhận giá trị đọc rõ từ một nguồn; đưa nguyên văn vào Excel, không yêu cầu kiểm lại.',sources)
+                continue
             result = 'Needs Verification'
-            reason = 'Có đơn vị/số/ngày chưa rõ. Giữ nguyên giá trị gốc.'
+            same_print=len(group)>1 and len({' '.join(r['value'].get('text','').upper().split()) for r in group})==1
+            reason = ('Các nguồn ghi giống nhau; không phát hiện khác biệt chữ/số. Cần xác nhận cách viết số trước khi dùng làm số liệu Excel. Sửa và lưu từng ô nguồn.'
+                      if same_print else 'Cần xác nhận định dạng số/ngày hoặc đơn vị, không phải kết luận chứng từ sai. Mở nguồn, sửa ô chưa rõ rồi lưu.')
         elif len(group) == 1:
             result = 'Not Yet Checked'
             reason = 'Chỉ có một nguồn; chưa có dữ liệu độc lập để đối chiếu. Không coi đây là sai lệch.'
@@ -211,6 +255,8 @@ def build_checks(case, documents, records):
             delta=max(v[0] for v in values)-min(v[0] for v in values)
             reason+=f" Chênh lệch lớn nhất giữa các nguồn: {format(delta,'f')} KG."
         add('field:' + key, result, reason, sources)
+        if result=='Needs Verification' and len(group)>1 and all(v is not None for v in values):
+            checks[-1]['detail']['category']='difference'
 
     # Invoice arithmetic is per document, never across all invoices.
     for d in documents:
@@ -228,7 +274,10 @@ def build_checks(case, documents, records):
                 good = Decimal(nums[0]) * Decimal(nums[1]) == Decimal(nums[2])
                 add('arithmetic:' + r['id'], 'Matched' if good else 'Mismatch', f"Kiểm tra số lượng × đơn giá = thành tiền ({item_desc}; không tự điều chỉnh thuế/chiết khấu).", item_sources)
             else:
-                add('arithmetic:' + r['id'], 'Needs Verification', f"Thiếu số lượng/đơn giá/thành tiền ở dòng hàng ({item_desc}) để kiểm tra số học.", item_sources)
+                from .acceptance import readable
+                clear=readable(r)
+                add('arithmetic:' + r['id'], 'Not Yet Checked' if clear else 'Needs Verification',
+                    ('Đã đọc nguyên văn các số. Chưa tính số học vì dấu phân cách chưa được quy thành số; Excel giữ nguyên chuỗi nguồn.' if clear else f"Thiếu hoặc chưa đọc rõ số lượng/đơn giá/thành tiền ({item_desc}). Nhập lại ô bắt buộc."), item_sources)
         amounts = [decimal_text(r['value'].get('line_amount', '')) for r in items]
         if items and totals and all(v is not None for v in amounts) and totals[0]['value'].get('number') is not None:
             sum_val = sum((Decimal(v) for v in amounts), Decimal(0))
@@ -339,10 +388,10 @@ def blockers(case, docs, records, checks):
         result.append('Chưa có chứng từ')
     if not any(r['status'] != 'rejected' for r in records):
         result.append('Chưa có dữ liệu để xác minh')
-    pending = [r for r in records if r['status'] not in ['verified', 'rejected']]
+    pending = [r for r in records if r['status'] not in ['verified', 'auto_accepted', 'rejected']]
     if pending:
         result.append(f'{len(pending)} bản ghi chưa được xác minh')
-    if any(d['status'] != 'read' or not d['type_verified'] for d in docs):
+    if any(d['status'] != 'read' or not (d['type_verified'] or d.get('classification_method')=='OpenAI') for d in docs):
         result.append('Còn tài liệu chưa đọc hoặc chưa xác nhận loại')
     for check in checks:
         if check['result'] in ['Missing', 'Mismatch', 'Needs Verification'] and not check.get('resolution'):

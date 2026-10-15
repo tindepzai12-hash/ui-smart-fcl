@@ -12,6 +12,11 @@ def classify(pages):
             return 'Invoice & Packing List',next(q for k,q in parts if k=='Packing List')
     # Only document headings, never a contract's list of required attachments or a B/L reference label.
     lines=[line.strip() for p in pages[:1] for line in p['text'].splitlines() if line.strip()]
+    # A contract continuation lists required attachments; those names are not
+    # document headings. A new document with a real title above the clauses
+    # still follows the ordinary classification path.
+    if lines and re.match(r'(?i)^ARTICLE\s+\d+\b',lines[0]):
+        return 'Other','Trang điều khoản tiếp nối; giữ cùng chứng từ trước.'
     for line in lines:
         if len(line) > 100 or re.search(r'(?i)required|original signed|detailed|shipped on board|^\d+[.)]|^\[',line):
             continue

@@ -24,8 +24,8 @@ _key = None
 _model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
 _tested = False
 _checked_at = None
-DISCHARGE_LABEL = r'(?i)\b(?:port\s+of\s+discharge|discharge\s+port)\s*[:：]?'
-ORIGIN_LABEL = r'(?i)\b(?:country\s+of\s+(?:origin|manufacture)|origin\s+of\s+(?:goods|products)|made\s+in|all\s+the\s+products\s+were\s+produced\s+in|origin\s*[:：])|(?:nước\s+)?xuất\s*xứ'
+DISCHARGE_LABEL = r'(?i)\b(?:port\s+of\s+discharge|discharge\s+port|cảng\s+d/c|cảng\s+dỡ(?:\s+hàng)?)\s*[:：]?'
+ORIGIN_LABEL = r'(?i)\b(?:country\s+of\s+(?:origin|manufacture)|origin\s+of\s+(?:(?:goods|products)\b\s*[:：]?)?|made\s+in|all\s+the\s+products\s+were\s+produced\s+in|origin\s*[:：])|(?:nước\s+)?xuất\s*xứ'
 
 def origin_supported(value, quote):
     # Require the country in the same labelled source span, never a party address.
@@ -36,6 +36,22 @@ SHIPPING_MARKS_LABEL = r'(?i)\b(?:shipping\s*marks(?:\s*(?:&|and)\s*(?:nos?\.?|n
 CONSIGNEE_LABEL = r'(?i)\b(?:consignee|ship\s*to|deliver\s*to|delivery\s*address)\b|người\s*nhận\s*hàng'
 PACKING_NUMBER_LABEL = r'(?i)\bpacking\s*(?:list\s*)?(?:no\.?|number|reference|ref\.?)\b|số\s*(?:phiếu\s*)?đóng\s*gói'
 NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?)|n\.?\s*w\.?)\b|trọng\s*lượng\s*tịnh'
+
+def co_header_numbers(page):
+    text=page.get('text','')
+    if not re.search(r'(?i)certificate\s+of\s+origin',text):return []
+    header=re.split(r'(?i)\bmeans\s+of\s+transport\b|\bnumber\s+of\s+invoice\b',text,maxsplit=1)[0]
+    return re.findall(r'(?i)\bNUMBER\s*[:：]\s*([A-Za-z0-9][A-Za-z0-9/_.-]*)',header)
+
+def co_declaration_dates(page):
+    # Exporter-issued origin declarations can date the certification paragraph.
+    # Invoice dates above that paragraph never qualify.
+    text=page.get('text','');out=[]
+    for m in re.finditer(r'(?is)\bhere\s*by\s+certifies\b.{0,300}?\b[A-Za-z]{3,9}[,. ]+\d{1,2}(?:st|nd|rd|th)?[, .]+\d{4}\b',text):
+        for date in re.finditer(r'(?i)\b[A-Za-z]{3,9}[,. ]+\d{1,2}(?:st|nd|rd|th)?[, .]+\d{4}\b',m.group(0)):
+            raw=date.group(0)
+            if not normalize(raw,'date')['warning']:out.append((raw,m.group(0)))
+    return list({normalize(raw,'date')['text']:(raw,quote) for raw,quote in out}.values())
 
 def party_cell_support(field_id, value, page):
     """A labelled form cell binds a party role; adjacent columns do not."""
@@ -374,7 +390,8 @@ def validate_result(result, pages):
             if values and f.raw_value not in values:
                 raise ValueError('Số kiện không thuộc ô tổng/số carton được ghi rõ; không lấy số thứ tự')
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','po_number','co_number','packing_number','do_number','booking']:
-            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}', f.raw_value):
+            identifier_pattern = r'[A-Za-z0-9][A-Za-z0-9/_. -]{0,99}' if f.field_id=='contract_number' else r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}'
+            if not re.fullmatch(identifier_pattern, f.raw_value):
                 raise ValueError('Số chứng từ phải là một định danh; không nhận dòng chứa container/seal hoặc nhãn')
             if not re.search(r'(?<![A-Za-z0-9/_-])'+re.escape(f.raw_value)+r'(?![A-Za-z0-9/_-])',field_evidence,re.I):
                 raise ValueError('Số chứng từ chỉ khớp một phần định danh nguồn; không cắt mất ký tự/số')
@@ -426,11 +443,11 @@ def validate_result(result, pages):
         if f.field_id=='gross_weight' and result.document_type=='Customs Declaration' and not (re.search(r'(?i)\bgross\b|trọng\s*lượng\s*cả\s*bì',field_evidence) or gross_form_binding):
             raise ValueError('Tờ khai phải ghi rõ Gross/cả bì trong bằng chứng; không tự đổi trọng lượng chung thành gross')
         if result.document_type=='C/O':
-            if f.field_id=='co_number' and not any(f.raw_value == m.group(1).rstrip('.') for m in re.finditer(r'(?i)(?:reference|certificate|c/o)\s*(?:no\.?|number)\s*[:：]?\s*([^\s,;]+)',source_page.get('text',''))):
+            if f.field_id=='co_number' and not (co_header_numbers(source_page)==[f.raw_value] or any(f.raw_value == m.group(1).rstrip('.') for m in re.finditer(r'(?i)(?:reference|certificate|c/o)\s*(?:no\.?|number)\s*[:：]?\s*([^\s,;]+)',source_page.get('text','')))):
                 raise ValueError('Số C/O cần nhãn Reference/Certificate No; không lấy số serial/barcode cuối trang')
             if f.field_id=='co_date':
                 sections=re.findall(r'(?is)(?:12\s*[.]?\s*Certification|(?:certificate\s+)?issue\s*date\s*[:：])(.*?)(?:13\s*[.,]|\[OCR|$)',source_page.get('text',''))
-                if not any(evidence_ok(f.raw_value,s,f.source_page,pages) for s in sections):
+                if not (any(evidence_ok(f.raw_value,s,f.source_page,pages) for s in sections) or any(raw==f.raw_value and evidence_ok(quote,quote,f.source_page,pages) for raw,quote in co_declaration_dates(source_page))):
                     raise ValueError('Ngày C/O thiếu căn cứ trong phần chứng nhận/ngày phát hành; không lấy ngày Invoice/ngày khởi hành')
             if f.field_id=='origin_criteria' and re.search(r'(?i)criterion|criteria|notes|applied|weight|value',f.raw_value):
                 raise ValueError('Tiêu chí xuất xứ phải là giá trị của dòng hàng; không lấy hướng dẫn mẫu RVC criterion')
@@ -571,6 +588,27 @@ def ground_source_format(result, pages):
     """Ground formatting and explicit price-header terms in literal source evidence."""
     from .normalize import decimal_text
     grounded = DocumentResult.model_validate(result.model_dump())
+    # Missing is not a rejected fabricated value. Empty model slots create no
+    # record and no employee action; required missing fields remain in checklist.
+    grounded.fields=[f for f in grounded.fields if f.raw_value.strip()]
+    # An absent discharge label means this optional role was not supplied.
+    # FROM/TO alone describe a route and must not become discharge-port data.
+    # Keep a genuine rejected reading when the role label does exist.
+    grounded.fields=[f for f in grounded.fields if f.field_id!='port_discharge' or any(
+        p['number']==f.source_page and re.search(DISCHARGE_LABEL,p['text']) for p in pages)]
+    if grounded.document_type=='Booking':
+        grounded.fields=[f for f in grounded.fields if not (f.field_id=='packages' and re.fullmatch(r'(?i)\s*\d+\s*[x×]\s*(?:20|40|45)\s*(?:DC|GP|HC|HQ|RF)\s*',f.raw_value))]
+    if grounded.document_type=='C/O':
+        # These phrases identify a country/declaration, not an absent authority
+        # name or an origin-criterion code. Omit them rather than ask staff to
+        # approve a value of the wrong role.
+        grounded.fields=[f for f in grounded.fields if not (
+            (f.field_id=='co_issuer' and re.match(r'(?i)^issued\s+in\b',f.raw_value)) or
+            (f.field_id=='origin_criteria' and re.fullmatch(r'(?i)[A-Za-z]+\s+origin\.?',f.raw_value)))]
+        dates=[(raw,quote,p['number']) for p in pages for raw,quote in co_declaration_dates(p)]
+        if len(dates)==1:
+            raw,quote,page=dates[0]
+            grounded.fields=[f for f in grounded.fields if f.field_id!='co_date']+[FieldResult(field_id='co_date',raw_value=raw,source_page=page,evidence_text=quote)]
     # Recover only labelled TOTAL or footer-bounded aggregate cells. The printed raw value
     # and header unit must also exist literally in this page's text. This does not
     # reconstruct rows, guess separators, or mark any value verified.
@@ -649,6 +687,11 @@ def ground_source_format(result, pages):
                 f.unit=row.group(1);f.unit_evidence=row.group(0).strip();f.unit_line=None
         if f.field_id=='currency' and f.raw_value in currencies and not evidence_ok(f.raw_value,quote,f.source_page,pages):
             header=explicit_currency(f.source_page,f.raw_value)
+            if not header:
+                source=next((p['text'] for p in pages if p['number']==f.source_page),'')
+                printed={m.group(0).upper() for m in re.finditer(r'\b[A-Z]{3}\b',source)} & currencies
+                amount=re.search(r'(?i)\b'+re.escape(f.raw_value)+r'\s+\d[\d.,]*\b',source)
+                if printed=={f.raw_value} and amount:header=amount.group(0)
             if header:
                 f.evidence_text=header;f.evidence_start_line=None;f.evidence_end_line=None
         if FIELDS[f.field_id]['type'] in ['number','weight','quantity']:
@@ -658,6 +701,8 @@ def ground_source_format(result, pages):
             except ValueError: unit_quote=''
             if not evidence_ok(f.unit,unit_quote,f.source_page,pages):
                 header=explicit_currency(f.source_page,f.unit)
+                adjacent=re.search(r'(?i)\b'+re.escape(f.unit)+r'\s*'+re.escape(f.raw_value)+r'(?![\d.,])',quote)
+                if not header and adjacent and evidence_ok(adjacent.group(0),quote,f.source_page,pages):header=adjacent.group(0)
                 if header: f.unit_evidence=header;f.unit_line=None
         elif f.unit and FIELDS[f.field_id]['type'] in ['quantity','weight','number']:
             try: unit_quote=source_quote(f.source_page,f.unit_evidence,f.unit_line,None,pages)
@@ -680,6 +725,19 @@ def ground_source_format(result, pages):
         # on this page. Never locate a number by searching unrelated rows.
         source_page=next((p for p in pages if p['number']==item.source_page),{})
         bindings=[]
+        if not item.product_code and item.quantity and item.unit and grounded.document_type in ['Packing List','Invoice & Packing List']:
+            for table in source_page.get('tables',[]):
+                if not table:continue
+                description_columns=[i for i,h in enumerate(table[0]) if h and re.search(r'(?i)description\s+of\s+goods',h)]
+                quantity_columns=[i for i,h in enumerate(table[0]) if h and re.search(r'(?i)quantity|number\s+of\s+(?:casks|drums|cartons|packages)',h)]
+                if len(description_columns)!=1 or len(quantity_columns)!=1:continue
+                di,qi=description_columns[0],quantity_columns[0]
+                for row in table[1:]:
+                    if max(di,qi)>=len(row) or not row[di] or not row[qi]:continue
+                    if not re.fullmatch(re.escape(item.quantity)+r'\s*'+re.escape(item.unit),row[qi].strip(),re.I):continue
+                    description=re.split(r'(?i)\borigin\s+of\b',row[di],maxsplit=1)[0].strip()
+                    if description and evidence_ok(description,description,item.source_page,pages) and evidence_ok(row[qi],row[qi],item.source_page,pages):
+                        bindings.append({'description':description,'quantity':row[qi],'unit':row[qi]})
         if item.product_code:
             for table in source_page.get('tables',[]):
                 if not table:continue
@@ -702,11 +760,25 @@ def ground_source_format(result, pages):
         unique={json.dumps(c,sort_keys=True,ensure_ascii=False):c for c in bindings}
         if len(unique)==1:
             cells=next(iter(unique.values()))
-            item.evidence_text=cells['product_code'];item.evidence_start_line=None;item.evidence_end_line=None
+            item.evidence_text=cells.get('product_code',cells['description']);item.evidence_start_line=None;item.evidence_end_line=None
+            if not item.product_code:item.description=cells['description']
             for attribute,quote in cells.items():
                 item.cell_evidence=[c for c in item.cell_evidence if c.attribute!=attribute]+[CellEvidence(attribute=attribute,evidence_text=quote)]
         try: quote=source_quote(item.source_page,item.evidence_text,item.evidence_start_line,item.evidence_end_line,pages)
         except ValueError: continue
+        if item.quantity and item.unit:
+            # Repair the unit pointer only at this item's literal quantity,
+            # including joined forms such as 16,200KG. Never use a price unit.
+            adjacent=re.search(r'(?i)(?<![\d.,])'+re.escape(item.quantity)+r'\s*'+re.escape(item.unit)+r'(?!\w)',quote)
+            cell=next((c for c in item.cell_evidence if c.attribute=='unit'),None)
+            try: unit_quote=source_quote(item.source_page,cell.evidence_text,cell.start_line,cell.end_line,pages) if cell else quote
+            except ValueError: unit_quote=''
+            if adjacent and not evidence_ok(item.unit,unit_quote,item.source_page,pages) and evidence_ok(adjacent.group(0),quote,item.source_page,pages):
+                item.cell_evidence=[c for c in item.cell_evidence if c.attribute!='unit']+[CellEvidence(attribute='unit',evidence_text=adjacent.group(0))]
+        if item.currency in currencies and item.line_amount:
+            adjacent=re.search(r'(?i)\b'+re.escape(item.currency)+r'\s*'+re.escape(item.line_amount)+r'(?![\d.,])',quote)
+            if adjacent and evidence_ok(adjacent.group(0),quote,item.source_page,pages):
+                item.cell_evidence=[c for c in item.cell_evidence if c.attribute!='currency']+[CellEvidence(attribute='currency',evidence_text=adjacent.group(0))]
         if item.origin:
             source=next((p['text'] for p in pages if p['number']==item.source_page),'')
             headers=list(re.finditer(r'(?im)\bcountry\s+of\s+origin\s*[:：][ \t]*([^\n]+)',source))
@@ -1007,6 +1079,7 @@ def analyze(case_id, document, pages):
         'Staff classification context: '+encode({'selected_type':document['type'],'confirmed':bool(staff_type),'independent_support_quote':manual_quote})+'. '
         'Only when confirmed=true AND the content classifier is Other: use selected_type as the extraction target if independent_support_quote is nonempty; otherwise keep Other with no data. Quote existing identifying business labels for classification_evidence; never invent a title. When the content classifier is not Other, preserve its type, including a clear title conflicting with the staff choice. '
         'No tools/actions. Never infer HS, declaration/tax/customs codes. No invented values. '
+        'Omit absent fields entirely; never return an empty raw_value or a placeholder for a missing ETA, voyage or actual arrival date. '
         'Keep seller, exporter, shipper, buyer, importer and consignee roles separate. '
         'Party name fields contain only the company/person name; addresses and telephone belong in separate fields. '
         'Origin at field and item level requires a printed Country of Origin / Origin: / Made in label and the country in the SAME evidence quote. Seller address, port, company name and certificate issuer country never prove goods origin. If no origin label is printed, omit origin on all fields and items. '
@@ -1017,6 +1090,7 @@ def analyze(case_id, document, pages):
         'Packing List: re-read the NUMBER OF CARTONS/packages and NET WEIGHT columns as separate header fields even if the item quantity uses cartons. Do not include CONT/SEAL labels, numbers or bank information in item descriptions. A standalone No.: directly under the Packing List title can be its own packing_number; an Invoice No. cannot. '
         'For OCR packing summary table_hints, Net and Gross are bound to distinct physical columns. Read only the literal cell under that column; Total (kgs) alone never proves Net. Warehouse Receipt: STT/No. is a row index, not the Quantity. In a row No., Unit, Quantity, Weight, Volume use the Quantity cell and its printed packing unit, never No. or Lan nhap. '
         'C/O: co_number is the labelled Reference/Certificate No, not an unlabelled serial or barcode. co_date belongs to Certification/Issue Date, not the Invoice date in box 10 or Departure date. origin_criteria is the actual row code in box 8, not the form instructions RVC criterion. co_issuer must be the named certifying organization, not the Issued in country. The exporter declaration that all products were produced in a named country can support origin; an exporter address cannot. If a stamp or OCR makes the code/date/reference unreadable, omit it and never repair a character by guessing. '
+        'An exporter-issued origin declaration may label its certificate header NUMBER and date its final here-by-certifies paragraph. Read the date in that paragraph, not the referenced invoice date. It may have no authority-issued co_issuer or origin_criteria code; omit those fields when absent. Cảng D/C is a discharge-port label; Cảng đích and TO alone are not. '
         'Return independent line items. For the commercial document review profile, containers MUST be an empty array: do not extract container numbers, seals or per-container cargo. Every nonempty value must occur literally in its evidence on its source page. '
         'Copy raw_value EXACTLY as written, including spaces, punctuation, date format and separators. Never normalize a number/date/unit in raw_value. '
         'Evidence must be one contiguous quote from the page text (line breaks may become spaces), not a concatenation of separate cells. '

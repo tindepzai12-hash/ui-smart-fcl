@@ -22,7 +22,8 @@ test('Extraction warnings show excluded attempts, matched rows are green, and un
     .replace(/from ['"]lucide-react['"]/g,`from '${import.meta.resolve('lucide-react')}'`);
   const viewer=moduleUrl(resolveImports(compileTsx(fs.readFileSync('frontend/SourceImageViewer.tsx','utf8'))));
   const workbench=moduleUrl(resolveImports(compileTsx(fs.readFileSync('frontend/DiscrepancyWorkbench.tsx','utf8')))
-    .replace("from './api'",`from '${moduleUrl(apiJs)}'`).replace("from './SourceImageViewer'",`from '${viewer}'`));
+    .replace("from './api'",`from '${moduleUrl(apiJs)}'`).replace("from './SourceImageViewer'",`from '${viewer}'`)
+    .replace("from './review'",`from '${moduleUrl(compileTsx(fs.readFileSync('frontend/review.ts','utf8'),'review.ts'))}'`));
   const {DiscrepancyWorkbench}=await import(workbench);
   const render=issue=>renderToStaticMarkup(React.createElement(DiscrepancyWorkbench,{current:{records:[],consistency:{issues:[issue],gaps:[],matched:[],single_source:[],open_count:1,mismatch_count:0,ai_state:'completed'}},dict:{fields:{}},onDocuments:()=>{}}));
   const warning=render({key:'reading:doc',result:'Needs Verification',detail:{reason:'Thiếu bằng chứng',sources:[{id:'diagnostic:doc:1',document:'scan.pdf',page:2,diagnostic:true,field_label:'Tổng tiền',attempted_value:'<script>999</script>'}]}});
@@ -34,6 +35,20 @@ test('Extraction warnings show excluded attempts, matched rows are green, and un
   assert.ok(!legacy.includes('<strong>old.pdf</strong>'));
   const matched=render({key:'field:booking',result:'Matched',detail:{reason:'Khớp',sources:[]}});
   assert.ok(matched.includes('exception-row is-matched')&&matched.includes('badge good'));
+});
+
+test('Staff sees the precise save prerequisite; number formatting is an explicit suggestion only',async()=>{
+  const js=compileTsx(fs.readFileSync('frontend/review.ts','utf8'),'review.ts');
+  const {numberFormatSuggestion,reviewBlockReason}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+  const ready={busy:false,saving:false,checked:true,note:'Đã đối chiếu bản gốc',unclear:false};
+  assert.equal(reviewBlockReason(ready),'');
+  assert.equal(reviewBlockReason({...ready,note:''}),'');
+  assert.match(reviewBlockReason({...ready,checked:false}),/Đánh dấu/);
+  assert.match(reviewBlockReason({...ready,unclear:true}),/từng nguồn/);
+  assert.match(reviewBlockReason({...ready,busy:true}),/Chờ/);
+  assert.equal(numberFormatSuggestion('19,560 KGS'),'19560 KGS');
+  assert.equal(numberFormatSuggestion('16,200 KG'),'16200 KG');
+  for(const v of ['19,56 KG','19.560 KG','19,560','19,560.00 KGS','Chưa đọc được'])assert.equal(numberFormatSuggestion(v),null);
 });
 
 test('Shipment flow focuses exceptions and allows an honest report without verifying every field',()=>{

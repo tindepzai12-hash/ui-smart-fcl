@@ -24,7 +24,7 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 **Khi nào chuyển bước?:** Đủ các tệp khách thực tế gửi; tài liệu không liên quan được giữ riêng.
 
-**Nếu chưa đạt:** Không lấy chứng từ lô khác để lấp mục thiếu. Nếu PDF gộp nhiều loại ngoài PL+Invoice, tách trang theo gợi ý rồi đọc.
+**Nếu chưa đạt:** Không lấy chứng từ lô khác để lấp mục thiếu. Hợp đồng nhiều trang được đọc liền một tệp, không phải tách từng trang. Chỉ tách PDF khi thật sự gộp nhiều chứng từ khác loại.
 
 
 
@@ -36,7 +36,7 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 **Kiểm tra trong bộ ví dụ:** Máy đọc riêng gross 489.00 và gross 515,08, giữ đúng trang nguồn.
 
-**Khi nào chuyển bước?:** Tác vụ hoàn tất; tự chuyển sang Sai lệch & xử lý.
+**Khi nào chuyển bước?:** Tác vụ hoàn tất; dữ liệu đọc rõ có nguồn tự được nhận và đưa vào Excel, kể cả chỉ có một nguồn. Tự chuyển sang Sai lệch & xử lý.
 
 **Nếu chưa đạt:** Nếu lỗi key/kết nối, chưa coi AI đã kiểm xong. Local vẫn có đối chiếu số liệu đã đọc; thông báo phạm vi rõ trên màn hình.
 
@@ -50,7 +50,7 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 **Kiểm tra trong bộ ví dụ:** Xem đúng nhãn Gross trên PL và tờ khai. Không so gross với net 391.20 hoặc Weight chưa rõ vai trò.
 
-**Khi nào chuyển bước?:** Nếu OCR/AI đọc sai: nhập lại đúng ô kèm căn cứ. Nếu hai giấy gốc khác nhau: ghi phương án xin bản sửa. Tích Tôi đã đối chiếu các nguồn hiển thị → Xác nhận đã kiểm tra & lưu. Dữ liệu được ghi trạng thái đã xác nhận, có căn cứ trong Excel; sai lệch gốc vẫn được giữ.
+**Khi nào chuyển bước?:** Tích Tôi đã đối chiếu các nguồn hiển thị → Xác nhận đã kiểm tra & lưu; không bắt buộc gõ ghi chú. Nếu ô bắt buộc chưa đọc được: nhập tay giá trị đúng từ bản gốc trước khi tích xác nhận; ô trống không được duyệt. Hai giấy gốc khác nhau vẫn giữ sai lệch và cần liên hệ khách khi cần sửa chứng từ.
 
 **Nếu chưa đạt:** Sửa giá trị làm việc không sửa PDF gốc. Không đổi tất cả nguồn cho khớp. Sau sửa, nhận xét ngữ nghĩa AI sẽ báo cần chạy lại. Khác biệt hợp đồng/booking có thể do phạm vi, giao nhiều đợt hoặc kế hoạch thay đổi.
 
@@ -58,7 +58,7 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 ## Bước 4. Xuất báo cáo và bàn giao
 
-**Việc nhân viên làm:** Xem Thiếu nguồn và Một nguồn để biết phần chưa đối chiếu được.
+**Việc nhân viên làm:** Xem Thiếu nguồn để bổ sung phần bắt buộc. Đã nhận gồm dữ liệu một nguồn, tự đi vào Excel và không yêu cầu kiểm lại.
 
 **Thao tác trên web:** Xuất Excel → Tải báo cáo Excel.
 
@@ -72,11 +72,11 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 ### Cần xử lý: AI chưa đủ bằng chứng
 
-Bấm Xem lỗi đọc & bản gốc: mỗi đề xuất có trang gốc mở sẵn và vùng chữ định vị được đánh dấu. Đây là cảnh báo bằng chứng, không phải lỗi phân loại hoặc hai chứng từ sai nhau. Sửa ô Giá trị đã kiểm tra, ghi căn cứ, tích đã đối chiếu rồi Xác nhận giá trị & lưu vào hồ sơ; hoặc Loại đề xuất, lưu lý do. Giá trị bị loại không vào dữ liệu xuất; giá trị nhân viên chấp nhận vào Excel với trạng thái đã xác nhận. Nếu không định vị được, kiểm nguyên trang và nhãn; hệ thống không tự vẽ vùng nguồn giả. Lần đọc cũ thiếu chi tiết cần đọc lại OpenAI.
+Bấm Xem lỗi đọc & bản gốc: vùng chữ cần kiểm được bôi xanh, có phóng to và kính lúp. Sửa ô Giá trị đã kiểm tra nếu AI đọc sai, tích đã kiểm tra rồi lưu; ghi chú không bắt buộc. Trường bắt buộc còn trống không thể duyệt. Nếu chữ biến dạng không định vị chính xác được, xem vùng nhãn hoặc yêu cầu bản rõ hơn; không tạo trích dẫn giả. Lần đọc cũ cần chạy lại OpenAI để dùng workflow mới.
 
 ### Hai nguồn giống nhau và số lượng 1,200 PCS
 
-56 CT và 56 CTN được chuẩn hóa cùng đơn vị carton; số tờ khai giống nhau được xếp Khớp màu xanh lá. 1,200 PCS là 1200 chiếc, không tự tạo cảnh báo dấu phân cách. Chỉ một nguồn vẫn ghi Một nguồn, không coi là đã đối chiếu. Dấu phân cách trọng lượng/tiền chưa rõ vẫn cần căn cứ.
+56 CT và 56 CTN cùng đơn vị carton; số tờ khai giống nhau xếp Khớp màu xanh lá. Dữ liệu một nguồn đọc rõ được nhận thẳng vào Excel. 19,560 KGS giống nhau ở hai nguồn không tạo yêu cầu kiểm tay chỉ vì dấu phẩy: giữ chuỗi gốc nếu chưa đủ căn cứ chuyển thành số Excel.
 
 ### Đã kiểm tra / ghi cách xử lý có nghĩa gì?
 
@@ -88,11 +88,11 @@ Hiện Sai lệch với cả hai nguồn; bấm Xem lý do. Không tự chọn f
 
 ### Hợp đồng cho nhiều lần giao, Invoice chỉ một lần
 
-Giữ cảnh báo Cần làm rõ phạm vi; đọc điều khoản shipment/partial delivery. Không ép tổng hợp đồng bằng một Invoice.
+Hiện ở Sai lệch / khác phạm vi để xem điều khoản partial delivery; khác tổng hợp đồng và một Invoice chưa chứng minh giấy tờ sai. Không ép các giá trị bằng nhau.
 
 ### Chỉ có một nguồn hoặc chữ scan không rõ
 
-Ghi Một nguồn hoặc Cần làm rõ. Không coi là khớp và không đoán giá trị thiếu.
+Một nguồn đọc rõ: tự nhận vào Excel, không cần kiểm lại. Chữ scan quá mờ/biến dạng: Cần làm rõ, mở vùng xanh để nhập tay. Hai trạng thái này khác nhau.
 
 ## Phần việc thực hiện bên ngoài U&I SMART
 
@@ -101,7 +101,7 @@ Ghi Một nguồn hoặc Cần làm rõ. Không coi là khớp và không đoán
 
 AI hỗ trợ đọc và gợi ý ngữ nghĩa. Đối chiếu số học dùng quy tắc và đơn vị rõ ràng. Nhân viên quyết định nguồn đúng; web không tự sửa giấy gốc hoặc tự nộp tờ khai.
 
-Nguồn: [Phạm vi và thao tác U&I SMART](https://ui-smart-fcl.onrender.com/). Hướng dẫn khớp phạm vi 6 nhóm chứng từ của phiên bản này; bộ mẫu trên web là giả lập.
+Nguồn: [Phạm vi và thao tác U&I SMART](https://ui-smart-fcl.onrender.com/). Bộ dừa VinaTrain gồm 5 chứng từ công khai và Arrival Notice giả lập có ghi rõ nhãn, chỉ để kiểm thử. Bộ AB2507002 do người dùng cung cấp là chứng từ thật.
 
 ## Khi gặp vấn đề với web
 

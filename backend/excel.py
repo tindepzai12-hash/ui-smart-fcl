@@ -162,7 +162,7 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
             if commercial:
                 missing_check = next((c for c in warnings if c['key'] == 'missing:' + key), None)
                 # An absent extraction is not proof that a printed field is inapplicable.
-                uncertain_documents = any(d['status'] != 'read' or not d['type_verified'] or d['type'] == 'Other' for d in documents)
+                uncertain_documents = any(d['status'] != 'read' or not (d['type_verified'] or d.get('classification_method')=='OpenAI') or d['type'] == 'Other' for d in documents)
                 applicable_documents = any(supports(d['type'], kind) for d in documents for kind in FIELDS[key]['documents'])
                 blank_status = missing_check['result'] if missing_check else ('Not Yet Checked' if uncertain_documents or applicable_documents or not documents else 'Not Applicable')
             data.append([
@@ -178,7 +178,7 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
                     else 'Chưa ghi nhận; kiểm bản gốc trước khi kết luận không áp dụng' if commercial else 'Chưa trích xuất'),
             ])
     ws = sheet(wb, names[1], ['Field ID', 'Tên chỉ tiêu', 'Giá trị', 'Đơn vị', 'Nguồn', 'Trạng thái', 'Phương pháp', 'Ghi chú'], data)
-    dv = DataValidation(type='list', formula1='"pending,verified,rejected,Missing,Needs Verification,Not Yet Checked,Not Applicable"')
+    dv = DataValidation(type='list', formula1='"pending,auto_accepted,verified,rejected,Missing,Needs Verification,Not Yet Checked,Not Applicable"')
     ws.add_data_validation(dv)
     dv.add(f'F2:F{max(2, ws.max_row)}')
     items = []
@@ -186,7 +186,7 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
         if r['kind'] != 'item':
             continue
         v = r['value']
-        verified = r['status'] == 'verified'
+        verified = r['status'] in ['verified','auto_accepted']
         items.append(
             [
                 v.get(k, '') if k not in ['quantity', 'unit_price', 'line_amount'] else numeric(v.get(k, ''), verified)

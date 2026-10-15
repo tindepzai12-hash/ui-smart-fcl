@@ -10,7 +10,7 @@ UNITS = {
     'CARTONS': 'CTN', 'CTNS': 'CTN', 'CARTON': 'CTN', 'CTN': 'CTN', 'CT':'CTN',
     'PALLETS': 'PLT', 'PALLET': 'PLT',
     'PKGS': 'PKG', 'PACKAGES': 'PKG', 'PACKAGE': 'PKG',
-    'SETS': 'SET', 'CBM': 'CBM', 'M3': 'CBM',
+    'SETS': 'SET', 'DRUMS':'DRUM', 'DRUM':'DRUM', 'CBM': 'CBM', 'M3': 'CBM',
 }
 
 def decimal_text(raw):
@@ -77,9 +77,11 @@ def normalize(raw, kind='text'):
     elif kind == 'currency':
         result['text'] = raw.upper()
     elif kind == 'date':
+        # An English ordinal does not introduce a day/month ordering guess.
+        date_raw = re.sub(r'(?i)\b(\d{1,2})(?:st|nd|rd|th)\b', r'\1', raw)
         # Month names make this printed punctuation unambiguous; retain raw separately.
-        named_date = re.fullmatch(r'(?:\d{1,2}[, .-]+[A-Za-z]{3,9}[,. ]+\d{4}|[A-Za-z]{3,9}[,. ]+\d{1,2}[,. ]+\d{4})',raw)
-        date_text = re.sub(r'[,\.]', ' ', raw) if named_date else raw
+        named_date = re.fullmatch(r'(?:\d{1,2}[, .-]+[A-Za-z]{3,9}[,. ]+\d{4}|[A-Za-z]{3,9}[,. ]+\d{1,2}[,. ]+\d{4})',date_raw)
+        date_text = re.sub(r'[,\.]', ' ', date_raw) if named_date else raw
         date_text = re.sub(r'\s+',' ',date_text).strip()
         found = None
         matched_fmt = None

@@ -332,11 +332,11 @@ function App() {
       const term = recordSearch.trim().toLocaleLowerCase('vi');
       if (term && ![dict.fields[r.key]?.label, r.key, textValue(r.value), JSON.stringify(r.raw)].join(' ').toLocaleLowerCase('vi').includes(term)) return false;
       const blockedByCheck = current?.checks.some((c: Any) => ['Missing', 'Mismatch', 'Needs Verification'].includes(c.result) && !c.resolution && c.detail.sources?.some((s: Any) => s.id === r.id));
-      if (recordFilter === 'blocked') return r.status !== 'rejected' && (r.status !== 'verified' || !!r.value?.warning || blockedByCheck);
+      if (recordFilter === 'blocked') return r.status !== 'rejected' && (!['verified','auto_accepted'].includes(r.status) || (!!r.value?.warning&&r.status!=='auto_accepted') || blockedByCheck);
       if (recordFilter === 'pending') return r.status === 'pending';
       if (recordFilter === 'edited') return r.method?.startsWith('Manual');
       if (recordFilter === 'warning') return r.status !== 'rejected' && (!!r.value?.warning || blockedByCheck);
-      if (recordFilter === 'verified') return r.status === 'verified';
+      if (recordFilter === 'verified') return ['verified','auto_accepted'].includes(r.status);
       return true;
     });
   const activeRecords = filterRecordsFn(scopedRecords);
@@ -784,7 +784,7 @@ function App() {
   function handleBlockerAction(blockerText: string) {
     const key = current.checks.find((c: Any) => blockerText === c.title + ': chưa xử lý')?.key || '';
     if (blockerText.includes('tài liệu chưa đọc hoặc chưa xác nhận loại') || key.startsWith('classification:') || key.startsWith('reading:')) {
-      const targetDoc = current.documents.find((d: Any) => d.status !== 'read' || !d.type_verified);
+      const targetDoc = current.documents.find((d: Any) => d.status !== 'read' || (!d.type_verified&&d.classification_method!=='OpenAI'));
       if (targetDoc) {
         setSelectedDoc(targetDoc.id);
         setPage(1);
