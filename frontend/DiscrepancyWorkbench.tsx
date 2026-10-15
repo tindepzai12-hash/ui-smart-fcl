@@ -6,19 +6,25 @@ import {SourceImageViewer} from './SourceImageViewer';
 function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false}:any){
   const [value,setValue]=useState(textValue(record?.value||source.value));
   const [note,setNote]=useState('');const [error,setError]=useState('');const [saving,setSaving]=useState(false);
-  const [data,setData]=useState<any>(null);const [show,setShow]=useState(false);
+  const [data,setData]=useState<any>(null);const [show,setShow]=useState(true);
+  const [draft,setDraft]=useState<any>(()=>source.candidate_kind==='item'?Object.fromEntries(Object.entries(source.candidate_raw||{}).filter(([k])=>k!=='raw_value')):(source.attempted_value||''));
+  const [checked,setChecked]=useState(false);
   const imageType=/\.(pdf|png|jpe?g|tiff?)$/i.test(source.document||'');
   useEffect(()=>{setValue(textValue(record?.value||source.value));setError('');},[record?.version,source.id]);
   useEffect(()=>{if(!show)return;let active=true;setError('');setData(null);
     if(!record){
       const id=source.document_id||source.id,page=source.page||1;
       if(!imageType){api(`/documents/${id}/pages/${page}`).then(v=>{if(active)setData({...v,document_id:id,page,boxes:[],textOnly:true});}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};}
-      setData({document_id:id,page,boxes:[],message:reading?'Bản gốc để kiểm tra. Chưa có vùng bằng chứng được xác minh cho dữ liệu bị loại.':'Bản gốc của chứng từ trong checklist; mục này xác nhận đã có tệp, không phải một giá trị trích xuất.'});return;
+      api(`/documents/${id}/review-source?number=${page}${source.diagnostic?'&diagnostic='+source.diagnostic_index:''}`).then(v=>{if(active)setData(v);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};
     }
     api('/records/'+record.id+'/source').then(v=>{if(active)setData(v);}).catch(e=>{if(active)setError(e.message);});
     return()=>{active=false;};},[show,record?.id,record?.version,source.id]);
   async function save(e:React.FormEvent){e.preventDefault();setSaving(true);setError('');try{
     const b=await patch('/records/'+record.id,{value,note:note.trim(),version:record.version});await onSaved(b);setNote('');
+  }catch(e:any){setError(e.message);}finally{setSaving(false);}}
+  async function reviewAttempt(action:string){setSaving(true);setError('');try{
+    const edited=source.candidate_kind==='item'?{...draft,scope:source.candidate_scope||'invoice'}:draft;
+    await onSaved(await post(`/documents/${source.document_id}/diagnostics/${source.diagnostic_index}/review`,{token:source.review_token,action,value:action==='accept'?edited:null,note:note.trim()}));
   }catch(e:any){setError(e.message);}finally{setSaving(false);}}
   return <article className="conflict-source">
     <header><FileText size={17}/><div><strong>{source.document}</strong><small>{documentLabel||source.type} · Trang {source.page||'—'}</small></div></header>
@@ -40,6 +46,14 @@ function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false}
         <button className="btn primary small" disabled={disabled||saving||note.trim().length<5||record.kind!=='field'}>{saving?'Đang lưu…':'Lưu & đối chiếu lại'}</button>
         {record.kind!=='field'&&<p className="muted">Dùng “Mở chứng từ” để sửa từng ô dòng hàng.</p>}
       </form></details>}
+    {reading&&source.diagnostic&&<form className="conflict-edit" onSubmit={e=>{e.preventDefault();reviewAttempt('accept');}}>
+      <h3>Nhân viên kiểm tra và quyết định</h3><p className="muted">Đối chiếu vùng đánh dấu trên giấy. Chỉ giá trị bạn xác nhận dưới đây mới được đưa vào dữ liệu và Excel.</p>
+      {source.candidate_kind==='item'?['product_code','description','quantity','unit','unit_price','line_amount','currency','origin'].map(k=><label className="form-label" key={k}>{({product_code:'Mã hàng',description:'Mô tả hàng',quantity:'Số lượng',unit:'Đơn vị',unit_price:'Đơn giá',line_amount:'Thành tiền',currency:'Tiền tệ',origin:'Xuất xứ'} as any)[k]}<input value={draft[k]||''} onChange={e=>setDraft({...draft,[k]:e.target.value})}/></label>):<label className="form-label">Giá trị đã kiểm tra<input value={typeof draft==='string'?draft:''} onChange={e=>setDraft(e.target.value)}/></label>}
+      {!source.candidate_kind&&<p className="alert warn">Kết quả cũ chưa có cấu trúc ô. Đọc lại bằng OpenAI để xác nhận giá trị tại đây; vẫn có thể loại đề xuất kèm lý do.</p>}
+      <label className="form-label">Căn cứ kiểm tra / lý do loại<textarea required minLength={5} value={note} onChange={e=>setNote(e.target.value)}/></label>
+      <label className="row"><input type="checkbox" required checked={checked} onChange={e=>setChecked(e.target.checked)}/> Tôi đã đối chiếu với bản gốc.</label>
+      <div className="row"><button className="btn primary small" disabled={disabled||saving||!source.candidate_kind||!checked||note.trim().length<5||!data}>{saving?'Đang lưu…':'Xác nhận giá trị & lưu vào hồ sơ'}</button><button type="button" className="btn small" disabled={disabled||saving||!checked||note.trim().length<5||!data} onClick={()=>reviewAttempt('exclude')}>Loại đề xuất, lưu lý do</button></div>
+    </form>}
     {error&&<p className="alert bad" role="alert">{error}</p>}
   </article>;
 }
@@ -52,22 +66,22 @@ export function DiscrepancyWorkbench({current,dict,busy,onSaved,onDocuments,onSo
   const all=[...report.issues,...report.gaps,...report.matched,...report.single_source];
   const chosen=all.find((c:any)=>c.key===selected);
   const reading=chosen?.key.startsWith('reading:');
-  const list=filter==='gaps'?report.gaps:filter==='matched'?report.matched:filter==='single'?report.single_source:filter==='resolved'?report.issues.filter((c:any)=>c.resolution):report.issues.filter((c:any)=>!c.resolution&&(filter!=='mismatch'||c.result==='Mismatch'));
+  const list=filter==='gaps'?report.gaps:filter==='matched'?report.matched:filter==='single'?report.single_source:filter==='resolved'?all.filter((c:any)=>c.resolution):report.issues.filter((c:any)=>!c.resolution&&(filter!=='mismatch'||c.result==='Mismatch'));
   const title=(c:any)=>c.title||dict.fields[c.key.replace(/^(?:field|ai-semantic|missing):/,'')]?.label||c.key;
   function close(){setSelected('');setNote('');setError('');opener.current?.focus();}
   useEffect(()=>{if(!selected)return;dialog.current?.focus();const key=(e:KeyboardEvent)=>{
     if(e.key==='Escape'){e.preventDefault();close();}
     if(e.key==='Tab'){const elements=Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input,textarea,summary,a[href]')||[]).filter(e=>e.getClientRects().length>0);const first=elements[0],last=elements[elements.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}
   };document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key);},[selected]);
-  async function resolve(e:React.FormEvent){e.preventDefault();setSaving(true);setError('');try{await onSaved(await post('/checks/'+chosen.id+'/resolve',{note:note.trim()}));close();}catch(e:any){setError(e.message);}finally{setSaving(false);}}
+  async function resolve(e:React.FormEvent){e.preventDefault();setSaving(true);setError('');try{const ids=new Set((chosen.detail.sources||[]).map((s:any)=>s.id));const rows=current.records.filter((r:any)=>ids.has(r.id)&&r.status!=='rejected');await onSaved(await post('/checks/'+chosen.id+'/review',{note:note.trim(),versions:Object.fromEntries(rows.map((r:any)=>[r.id,r.version]))}));close();}catch(e:any){setError(e.message);}finally{setSaving(false);}}
   return <div className="discrepancy-workbench">
     <section className="surface padded exception-heading"><div><span className="badge info">Kết quả sau khi đọc chứng từ</span><h2>Sai lệch & xử lý</h2><p>AI đọc nội dung, hệ thống đối chiếu các nguồn trong cùng hồ sơ. Bạn chỉ cần xử lý những điểm khác nhau hoặc chưa đủ chắc chắn.</p></div><button className="btn" onClick={onExport}><Download size={16}/> Xuất báo cáo</button></section>
     <div className="exception-stats" aria-live="polite"><div><strong>{report.mismatch_count}</strong><span>Sai lệch</span></div><div><strong>{report.open_count-report.mismatch_count}</strong><span>Cần làm rõ</span></div><div><strong>{report.matched.length}</strong><span>Chỉ tiêu khớp</span></div><div><strong>{report.single_source.length}</strong><span>Mới có một nguồn</span></div></div>
     {running?<p className="alert" role="status">AI đang đọc và đối chiếu toàn bộ hồ sơ. Danh sách dưới đây chưa phải kết quả cuối; chờ hoàn tất trước khi xử lý.</p>:report.ai_state!=='completed'&&<p className="alert warn" role="status">{report.ai_state==='stale'?'Dữ liệu đã sửa: đối chiếu số liệu đã cập nhật; chạy AI lại để cập nhật nhận xét ngữ nghĩa.':report.ai_state==='error'?`Chưa hoàn tất đối chiếu ngữ nghĩa AI: ${report.ai_error}`:'Chưa chạy đối chiếu ngữ nghĩa OpenAI cho hồ sơ này. Kết quả dưới đây là đối chiếu dữ liệu đã đọc.'}</p>}
-    <div className="filter-pills">{[['open',`Cần xử lý (${report.open_count})`],['mismatch',`Sai lệch (${report.mismatch_count})`],['gaps',`Thiếu nguồn (${report.gaps.length})`],['matched',`Khớp (${report.matched.length})`],['single',`Một nguồn (${report.single_source.length})`],['resolved','Đã ghi nhận']].map(([id,text])=><button key={id} className={'pill-btn '+(filter===id?'active':'')} onClick={()=>setFilter(id)}>{text}</button>)}</div>
+    <div className="filter-pills">{[['open',`Cần xử lý (${report.open_count})`],['mismatch',`Sai lệch (${report.mismatch_count})`],['gaps',`Thiếu nguồn (${report.gaps.length})`],['matched',`Khớp (${report.matched.length})`],['single',`Một nguồn (${report.single_source.length})`],['resolved','Đã kiểm tra / ghi cách xử lý']].map(([id,text])=><button key={id} className={'pill-btn '+(filter===id?'active':'')} onClick={()=>setFilter(id)}>{text}</button>)}</div>
     <section className="exception-list" aria-label="Danh sách điểm cần xử lý">
       {list.map((c:any)=><article key={c.key} className={'surface exception-row '+(c.result==='Mismatch'?'is-mismatch':c.result==='Matched'?'is-matched':'')}>
-        <div><span className={'badge '+(c.resolution||c.result==='Matched'?'good':c.result==='Mismatch'?'bad':'warn')}>{c.resolution?'Đã ghi nhận':label(c.result)}</span><h3>{title(c)}</h3><p>{c.detail.reason}</p>
+        <div><span className={'badge '+(c.result==='Matched'?'good':c.result==='Mismatch'?'bad':'warn')}>{label(c.result)}</span>{c.resolution&&<span className="badge info">Đã kiểm tra · có căn cứ</span>}<h3>{title(c)}</h3><p>{c.detail.reason}</p>
           <div className="exception-values">{(c.detail.sources||[]).slice(0,3).map((s:any)=><span key={s.id}><small>{s.document} · tr.{s.page||'—'}</small><strong>{c.key.startsWith('reading:')?(s.diagnostic?`${s.field_label}: ${s.attempted_value||'Chưa đọc được'} (đã loại)`:'Cảnh báo đọc tệp; xem chi tiết'):(textValue(s.value)||'—')}</strong></span>)}</div>
           {c.resolution&&<p className="muted">Căn cứ đã ghi: {c.resolution}</p>}
         </div><button className="btn" onClick={e=>{opener.current=e.currentTarget;setSelected(c.key);setNote(c.resolution||'');}}><Eye size={16}/> {c.key.startsWith('reading:')?'Xem lỗi đọc & bản gốc':'Xem lý do'}</button>
@@ -76,11 +90,11 @@ export function DiscrepancyWorkbench({current,dict,busy,onSaved,onDocuments,onSo
     </section>
     {chosen&&<div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)close();}}><div ref={dialog} className="conflict-dialog" role="dialog" aria-modal="true" aria-labelledby="conflict-title" tabIndex={-1}>
       <header className="conflict-head"><div><span className="badge warn">{reading?'Dữ liệu AI chưa đủ bằng chứng':'So sánh bằng chứng'}</span><h2 id="conflict-title">{title(chosen)}</h2></div><button className="icon-btn" aria-label="Đóng so sánh" onClick={close}><X size={21}/></button></header>
-      <p className="conflict-reason">{chosen.detail.reason}</p><p className="muted">{reading?'Đây là cảnh báo trích xuất, không phải hai chứng từ sai lệch. Giá trị bị loại không được dùng để đối chiếu hoặc xuất dữ liệu. Xem trang gốc rồi bổ sung giá trị có căn cứ trong Chứng từ.':'Mỗi ô bên dưới giữ riêng tài liệu, trang và giá trị gốc. Không tự chọn nguồn đúng và không sửa đồng loạt các chứng từ để làm cho khớp.'}</p>
+      <p className="conflict-reason">{chosen.detail.reason}</p><p className="muted">{reading?'Đây là cảnh báo trích xuất, không phải hai chứng từ sai lệch. Đối chiếu bản gốc rồi sửa và xác nhận giá trị bên dưới, hoặc loại đề xuất kèm căn cứ. Giá trị chưa xác nhận vẫn không được dùng.':'Mỗi ô bên dưới giữ riêng tài liệu, trang và giá trị gốc. Không tự chọn nguồn đúng và không sửa đồng loạt các chứng từ để làm cho khớp.'}</p>
       <div className="conflict-grid">{(chosen.detail.sources||[]).map((s:any)=><SourceCard key={s.id} source={s} reading={reading} documentLabel={dict.document_labels?.[s.type]} record={current.records.find((r:any)=>r.id===s.id)} onSaved={onSaved} disabled={busy}/>)}</div>
       {!(chosen.detail.sources||[]).length&&<p className="alert warn">Chưa có đủ trường nguồn. Tải bổ sung chứng từ hoặc mở tệp gốc để nhập giá trị có căn cứ.</p>}
       <div className="row"><button className="btn" onClick={()=>{const s=chosen.detail.sources?.[0];close();onDocuments(s?.document_id||(!current.records.some((r:any)=>r.id===s?.id)?s?.id:undefined),s?.page||1);}}>Mở chứng từ</button>{(chosen.detail.sources||[]).filter((s:any)=>current.records.some((r:any)=>r.id===s.id)).map((s:any)=><button key={s.id} className="text-btn" onClick={()=>{close();onSource(current.records.find((r:any)=>r.id===s.id));}}>Mở vùng nguồn · {s.document}</button>)}</div>
-      {['Mismatch','Needs Verification'].includes(chosen.result)&&!chosen.key.startsWith('reading:')&&<form className="conflict-resolution" onSubmit={resolve}><h3>Hai bản gốc thực sự khác nhau?</h3><p>Yêu cầu khách gửi bản sửa, hoặc ghi rõ lý do chấp nhận khác biệt về phạm vi / phiên bản. Ghi nhận không làm thay đổi các giá trị gốc.</p><label className="form-label">Lý do và căn cứ xử lý<textarea required minLength={5} value={note} onChange={e=>setNote(e.target.value)}/></label><button className="btn" disabled={busy||saving||note.trim().length<5}>{saving?'Đang lưu…':'Ghi nhận cách xử lý'}</button></form>}
+      {!reading&&(chosen.detail.sources||[]).some((s:any)=>current.records.some((r:any)=>r.id===s.id))&&<form className="conflict-resolution" onSubmit={resolve}><h3>Xác nhận đã kiểm tra nguồn</h3><p>{chosen.result==='Mismatch'?'Hai bản gốc vẫn khác nhau: ghi phương án yêu cầu bản sửa hoặc căn cứ chấp nhận khác biệt. Việc xác nhận không đổi kết quả thành Khớp.':'Kiểm nhãn, số và đơn vị trên vùng đánh dấu. Nếu máy đọc sai, sửa giá trị làm việc trước khi xác nhận.'} Trạng thái và căn cứ được lưu cùng dữ liệu xuất Excel.</p><label className="form-label">Kết quả kiểm tra và căn cứ<textarea required minLength={5} value={note} onChange={e=>setNote(e.target.value)}/></label><label className="row"><input type="checkbox" required/> Tôi đã đối chiếu các nguồn hiển thị.</label><button className="btn primary" disabled={busy||saving||note.trim().length<5}>{saving?'Đang lưu…':'Xác nhận đã kiểm tra & lưu'}</button></form>}
       {error&&<p className="alert bad" role="alert">{error}</p>}
     </div></div>}
   </div>;

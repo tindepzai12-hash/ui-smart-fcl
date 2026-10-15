@@ -46,11 +46,11 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 **Việc nhân viên làm:** Ưu tiên Sai lệch số liệu, sau đó Cần làm rõ; không duyệt mọi trường.
 
-**Thao tác trên web:** Sai lệch & xử lý → Xem lý do → so sánh các ô cạnh nhau → Hiện bản gốc có đánh dấu. Dùng +/− để zoom đến 400%, Kính lúp để soi chữ, Vùng đánh dấu để quay lại ô nguồn.
+**Thao tác trên web:** Sai lệch & xử lý → Xem lý do: bản gốc và vùng đánh dấu mở sẵn cạnh từng giá trị. Dùng +/− để zoom đến 400%, Kính lúp để soi chữ, Vùng đánh dấu để quay lại ô nguồn.
 
 **Kiểm tra trong bộ ví dụ:** Xem đúng nhãn Gross trên PL và tờ khai. Không so gross với net 391.20 hoặc Weight chưa rõ vai trò.
 
-**Khi nào chuyển bước?:** Nếu OCR/AI đọc sai: nhập lại đúng ô kèm căn cứ; đối chiếu số liệu cập nhật ngay. Nếu hai giấy gốc khác nhau: yêu cầu khách gửi bản sửa hoặc ghi rõ cách xử lý.
+**Khi nào chuyển bước?:** Nếu OCR/AI đọc sai: nhập lại đúng ô kèm căn cứ. Nếu hai giấy gốc khác nhau: ghi phương án xin bản sửa. Tích Tôi đã đối chiếu các nguồn hiển thị → Xác nhận đã kiểm tra & lưu. Dữ liệu được ghi trạng thái đã xác nhận, có căn cứ trong Excel; sai lệch gốc vẫn được giữ.
 
 **Nếu chưa đạt:** Sửa giá trị làm việc không sửa PDF gốc. Không đổi tất cả nguồn cho khớp. Sau sửa, nhận xét ngữ nghĩa AI sẽ báo cần chạy lại. Khác biệt hợp đồng/booking có thể do phạm vi, giao nhiều đợt hoặc kế hoạch thay đổi.
 
@@ -72,7 +72,15 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 ### Cần xử lý: AI chưa đủ bằng chứng
 
-Bấm Xem lỗi đọc & bản gốc để xem từng trường, giá trị AI đề xuất đã bị loại, lý do và trích dẫn thật. Đây chưa phải sai lệch giữa hai chứng từ và không phải thông báo tệp nằm ngoài 6 loại. Bấm Xem trang gốc rồi Mở chứng từ để bổ sung đúng giá trị có căn cứ. Lần đọc cũ chưa lưu chi tiết cần đọc lại bằng OpenAI. Mục Khớp có màu xanh lá; mục cần làm rõ màu vàng.
+Bấm Xem lỗi đọc & bản gốc: mỗi đề xuất có trang gốc mở sẵn và vùng chữ định vị được đánh dấu. Đây là cảnh báo bằng chứng, không phải lỗi phân loại hoặc hai chứng từ sai nhau. Sửa ô Giá trị đã kiểm tra, ghi căn cứ, tích đã đối chiếu rồi Xác nhận giá trị & lưu vào hồ sơ; hoặc Loại đề xuất, lưu lý do. Giá trị bị loại không vào dữ liệu xuất; giá trị nhân viên chấp nhận vào Excel với trạng thái đã xác nhận. Nếu không định vị được, kiểm nguyên trang và nhãn; hệ thống không tự vẽ vùng nguồn giả. Lần đọc cũ thiếu chi tiết cần đọc lại OpenAI.
+
+### Hai nguồn giống nhau và số lượng 1,200 PCS
+
+56 CT và 56 CTN được chuẩn hóa cùng đơn vị carton; số tờ khai giống nhau được xếp Khớp màu xanh lá. 1,200 PCS là 1200 chiếc, không tự tạo cảnh báo dấu phân cách. Chỉ một nguồn vẫn ghi Một nguồn, không coi là đã đối chiếu. Dấu phân cách trọng lượng/tiền chưa rõ vẫn cần căn cứ.
+
+### Đã kiểm tra / ghi cách xử lý có nghĩa gì?
+
+Đây là quyết định nhân viên đã lưu cùng căn cứ, thời điểm và phiên bản dữ liệu. Mở nhóm này để xem lại. Khác biệt 489 KG và 515,08 KG vẫn là Sai lệch dù đã ghi phương án xử lý; xác nhận không sửa chứng từ gốc. Nếu sửa dữ liệu hoặc đọc lại, cần xem kết quả đối chiếu mới.
 
 ### Hai Packing List cùng lô ghi gross khác nhau
 

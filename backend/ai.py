@@ -573,6 +573,13 @@ def ground_source_format(result, pages):
     for f in grounded.fields:
         try: quote=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         except ValueError: continue
+        if grounded.document_type=='Warehouse Receipt' and f.field_id=='packages':
+            source=next((p['text'] for p in pages if p['number']==f.source_page),'')
+            rows=list(re.finditer(r'(?im)^[ \t]*\d+[ \t]+(CT|CTN|CARTONS?|PKG|BAGS?)[ \t]+(\d+)[ \t]+\d[\d.,]*[ \t]+\d[\d.,]*[ \t]*$',source))
+            matching=[m for m in rows if m.group(2)==f.raw_value]
+            if len({m.group(0).strip() for m in matching})==1:
+                row=matching[0];f.evidence_text=row.group(0).strip();f.evidence_start_line=None;f.evidence_end_line=None
+                f.unit=row.group(1);f.unit_evidence=row.group(0).strip();f.unit_line=None
         if f.field_id=='currency' and f.raw_value in currencies and not evidence_ok(f.raw_value,quote,f.source_page,pages):
             header=explicit_currency(f.source_page,f.raw_value)
             if header:
@@ -588,6 +595,26 @@ def ground_source_format(result, pages):
     for item in grounded.items:
         try: quote=source_quote(item.source_page,item.evidence_text,item.evidence_start_line,item.evidence_end_line,pages)
         except ValueError: continue
+        if item.origin:
+            source=next((p['text'] for p in pages if p['number']==item.source_page),'')
+            headers=list(re.finditer(r'(?im)\bcountry\s+of\s+origin\s*[:：][ \t]*([^\n]+)',source))
+            values={re.sub(r'\s+',' ',m.group(1)).casefold().strip() for m in headers}
+            if len(values)==1 and headers and evidence_ok(item.origin,headers[0].group(0),item.source_page,pages):
+                item.cell_evidence=[c for c in item.cell_evidence if c.attribute!='origin']+[CellEvidence(attribute='origin',evidence_text=headers[0].group(0))]
+        # Columns can interrupt a model's combined description. Keep a literal
+        # commodity fragment from that row quote, never concatenate distant cells.
+        cell=next((c for c in item.cell_evidence if c.attribute=='description'),None)
+        try: description_quote=source_quote(item.source_page,cell.evidence_text,cell.start_line,cell.end_line,pages) if cell else quote
+        except ValueError: description_quote=''
+        if description_quote and not evidence_ok(item.description,description_quote,item.source_page,pages):
+            words=item.description.split();fragment=None
+            for length in range(len(words)-1,2,-1):
+                for start in range(len(words)-length+1):
+                    candidate=' '.join(words[start:start+length])
+                    if sum(w.isalpha() for w in words[start:start+length])<3:continue
+                    if evidence_ok(candidate,description_quote,item.source_page,pages):fragment=candidate;break
+                if fragment:break
+            if fragment:item.description=fragment
         for attribute in ['quantity','unit_price','line_amount']:
             value=getattr(item,attribute)
             if value is None: continue
@@ -735,7 +762,7 @@ def extraction_notice(rejected):
         field=re.match(r'fields\[\d+\] ([a-z_]+):',reason)
         if field:
             label=FIELDS.get(field.group(1),{}).get('label','Một thông tin chứng từ')
-            explanation=('chưa chứng minh được đúng nhãn cảng dỡ' if field.group(1)=='port_discharge'
+            explanation=('chỉ tiêu chưa được hỗ trợ cho loại chứng từ này' if 'ngoài dictionary' in reason else 'chưa chứng minh được đúng nhãn cảng dỡ' if field.group(1)=='port_discharge'
                          else 'chưa có nhãn chứng minh xuất xứ hàng hóa' if field.group(1)=='origin'
                          else 'giá trị hoặc đơn vị chưa khớp trích dẫn nguồn')
             details.append(label+' — '+explanation)
@@ -804,7 +831,12 @@ def extraction_diagnostics(result, pages, rejected):
         # Diagnostic quotes must also be literal text from the source page.
         quotes = list(dict.fromkeys(q for q in quotes if q and q != '[invalid source pointer]'
                                    and evidence_ok(q, q, candidate.get('source_page'), pages)))
-        diagnostics.append({'field_label': label, 'attempted_value': attempted,
+        item_type=classify([p for p in pages if p['number']==candidate.get('source_page')])[0] if result.document_type=='Invoice & Packing List' else result.document_type
+        diagnostics.append({'field_label': label, 'field_id':field,
+                            'candidate_kind':'item' if entry['reason'].startswith('items[') else 'field',
+                            'candidate_scope':'invoice' if supports(item_type,'Invoice') else 'contract' if item_type in ['Contract','Purchase Order'] else 'packing',
+                            'candidate_raw':{k:v for k,v in candidate.items() if k in ['raw_value','unit','line_number','product_code','description','quantity','unit_price','line_amount','currency','origin']},
+                            'attempted_value': attempted,
                             'page': candidate.get('source_page') if candidate.get('source_page') in page_numbers else None,
                             'evidence': '\n'.join(quotes), 'rejection_reason': entry['reason']})
     return diagnostics
@@ -822,7 +854,7 @@ def analyze(case_id, document, pages):
     digest = hashlib.sha256(('schema-v28-ocr-form-role-binding|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
-        result = DocumentResult.model_validate_json(cached['payload'])
+        result = ground_source_format(DocumentResult.model_validate_json(cached['payload']),pages)
         records, rejected = validated_subset(result, pages)
         return result, records, {'source': 'cache', 'rejected': rejected}
     content_type, content_quote = classify(pages)

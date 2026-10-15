@@ -83,9 +83,13 @@ def build_checks(case, documents, records):
             for i, entry in enumerate(diagnostics if isinstance(diagnostics, list) else []):
                 if not isinstance(entry, dict):
                     continue
+                if entry.get('review'):continue
+                from .source_locator import diagnostic_token
                 diagnostic_sources.append({**entry, 'id':f"diagnostic:{d['id']}:{i}", 'document_id':d['id'],
-                                           'document':d['name'], 'type':d['type'], 'diagnostic':True})
-            add('reading:' + d['id'], 'Needs Verification', d['error'], diagnostic_sources or doc_source, severity='error')
+                                           'document':d['name'], 'type':d['type'], 'diagnostic':True,
+                                           'diagnostic_index':i,'review_token':diagnostic_token(entry)})
+            if diagnostic_sources or not diagnostics:
+                add('reading:' + d['id'], 'Needs Verification', d['error'], diagnostic_sources or doc_source, severity='error')
         if not d['type_verified']:
             add('classification:' + d['id'], 'Needs Verification', 'Nhân viên cần xác nhận loại: ' + d['name'], doc_source)
         if case['mode'] == 'FCL' and d['type'] == 'AWB':

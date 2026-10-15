@@ -53,7 +53,18 @@ def ai_checks(case_id,documents,records):
     if not case_id:return []
     saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
     if not saved or saved['signature']!=signature(documents,records):return []
-    return json.loads(saved['payload'])
+    return [c for c in json.loads(saved['payload']) if semantic_difference(c,records)]
+
+def semantic_difference(check,records):
+    """AI prose cannot override equal, typed source values (including cached reviews)."""
+    from .validation import field_comparable
+    index={r['id']:r for r in records if r['status']!='rejected'}
+    group=[index[s['id']] for s in check['detail'].get('sources',[]) if s['id'] in index]
+    if len(group)<2:return False
+    if all(r['kind']=='field' for r in group):
+        values=[field_comparable(r['key'],r['value']) for r in group]
+        if all(v is not None for v in values) and len(set(values))==1:return False
+    return True
 
 def report(case,documents,records,checks):
     byid={r['id']:r for r in records};issues=[];matched=[];single=[];gaps=[]
@@ -110,8 +121,9 @@ def run_ai_review(case_id,documents,records):
                 if '' in codes or len(codes)!=1:continue
             if issue.field_id in seen:continue
             seen.add(issue.field_id)
-            output.append({'key':'ai-semantic:'+issue.field_id,'result':'Needs Verification','severity':'warning',
-                           'detail':{'reason':'AI gợi ý cần so sánh: '+issue.reason,'sources':sources(group,documents),'method':'OpenAI semantic suggestion'}})
+            check={'key':'ai-semantic:'+issue.field_id,'result':'Needs Verification','severity':'warning',
+                   'detail':{'reason':'AI gợi ý cần so sánh: '+issue.reason,'sources':sources(group,documents),'method':'OpenAI semantic suggestion'}}
+            if semantic_difference(check,active):output.append(check)
     except Exception as exc:
         error=str(exc)[:500] if isinstance(exc,ValueError) else ai.safe_error(exc)
     db.execute('INSERT OR REPLACE INTO packet_reviews VALUES (?,?,?,?,?)',(case_id,sig,db.encode(output),error,db.now()))

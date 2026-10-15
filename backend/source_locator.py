@@ -1,11 +1,27 @@
 """Locate literal source values. OCR confidence is not a probability of correctness."""
-import io, re, threading
+import io, re, threading, hashlib, json
 from functools import lru_cache
 from pathlib import Path
 from PIL import Image, ImageOps
 from . import reader
 
 _lock = threading.RLock()
+
+def diagnostic_token(entry):
+    return hashlib.sha256(json.dumps({k:v for k,v in entry.items() if k!='review'},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+
+def quote_boxes(words,evidence):
+    """Highlight literal context fragments, never an invented position/value."""
+    quote=tokens(evidence);out=[]
+    for layer in dict.fromkeys(w['layer'] for w in words):
+        stream=[(t,i) for i,w in enumerate(words) if w['layer']==layer for t in tokens(w['text'])]
+        for start in range(len(stream)-2):
+            phrase=[t[0] for t in stream[start:start+3]]
+            if any(quote[j:j+3]==phrase for j in range(len(quote)-2)):
+                for i in dict.fromkeys(t[1] for t in stream[start:start+3]):
+                    if not any(b['layer']==layer and b['x']==words[i]['x'] and b['y']==words[i]['y'] for b in out):
+                        out.append({**words[i],'attribute':'source_context','evidence_only':True})
+    return out
 
 def tokens(text):
     return re.findall(r'\w+', str(text).casefold(), re.UNICODE)
@@ -108,7 +124,17 @@ def inspect(doc, record, page):
     method=page['method'] + (' sparse' if '[OCR sparse layer' in page['text'] else '')
     boxes=[]; message=''
     try:
-        boxes=locate(layout(doc['path'],page['number'],method),record['raw'],record['evidence'])
+        words=layout(doc['path'],page['number'],method)
+        boxes=locate(words,record['raw'],record['evidence'])
+        if not boxes and record['evidence']:
+            raw=record['raw']
+            candidate=' '.join(str(v) for k,v in raw.items() if v is not None and k not in {'line_number','scope'}) if isinstance(raw,dict) else str(raw)
+            # A rejected value can combine distant cells. Highlight only its
+            # literal fragments, not every word in a page-wide evidence quote.
+            boxes=quote_boxes(words,candidate)
+            if not boxes and len(tokens(record['evidence']))<=100:
+                boxes=quote_boxes(words,record['evidence'])
+            if boxes:message='Đánh dấu đoạn trích dẫn để kiểm tra ngữ cảnh; chưa chứng minh giá trị AI đúng.'
     except (ValueError, RuntimeError, IndexError, OSError) as exc:
         message=str(exc)[:300]
     low=[b for b in boxes if b['confidence'] is not None and b['confidence']<70]
@@ -121,5 +147,5 @@ def inspect(doc, record, page):
     return {'document_id':doc['id'],'name':doc['name'],'ext':doc['ext'],'page':page['number'],
         'method':page['method'],'quality':page['quality'],'text':page['text'],
         'raw':record['raw'],'evidence':record['evidence'],'boxes':boxes,'low_confidence_words':low,
-        'ambiguous':any(b['ambiguous'] for b in boxes),'message':message,
+        'ambiguous':any(b.get('ambiguous',False) for b in boxes),'message':message,
         'confidence_note':'Độ tin cậy OCR chỉ phản ánh khả năng nhận chữ, không xác nhận giá trị đúng nghiệp vụ.'}

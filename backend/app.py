@@ -114,6 +114,14 @@ class NewRecord(Input):
 class ResolveInput(Input):
     note: str = Field(min_length=5, max_length=1000)
 
+class CheckReviewInput(ResolveInput):
+    versions: Dict[str,int]
+
+class DiagnosticReviewInput(ResolveInput):
+    token: str
+    action: Literal['accept','exclude']
+    value: Optional[Union[str,Dict[str,Any]]] = None
+
 class RequirementInput(Input):
     required: bool
     note: str = Field(min_length=3, max_length=1000)
@@ -171,6 +179,9 @@ def bundle(id):
     docs = db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document' ORDER BY rowid", (id,))
     for d in docs:
         d.pop('path')
+        diagnostics=json.loads(d.get('reading_diagnostics') or '[]')
+        if diagnostics and all(e.get('review') for e in diagnostics):
+            d['reviewed_reading_warning']=d['error'];d['error']=''
         d['pages'] = db.rows('SELECT number,method,quality,length(text) characters FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
         if d['ext'] == '.pdf' and len(d['pages']) > 1:
             text_pages = db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
@@ -185,6 +196,7 @@ def bundle(id):
     for c in checks:
         c['detail'] = json.loads(c.pop('detail_json'))
         c['title'] = validation.human_check_label(c['key'], {d['id']: d for d in docs})
+    checks=[c for c in checks if not c['key'].startswith('ai-semantic:') or consistency.semantic_difference(c,records)]
     case['requirements'] = json.loads(case['requirements'])
     return {
         'case': case,
@@ -518,6 +530,87 @@ def record_source(id: str):
     if any(j['status']=='running' for j in JOBS.values()):
         raise HTTPException(409,'Đang đọc chứng từ. Chờ hoàn tất rồi mở vùng nguồn để tránh quá tải OCR.')
     return source_locator.inspect(doc,record,page)
+
+def document_diagnostic(doc,index):
+    entries=json.loads(doc.get('reading_diagnostics') or '[]')
+    if index<0 or index>=len(entries):raise HTTPException(404,'Mục đọc lại không còn tồn tại; tải lại hồ sơ.')
+    return entries,entries[index]
+
+@app.get('/api/documents/{id}/review-source')
+def diagnostic_source(id: str, diagnostic: Optional[int]=None, number: int=1):
+    doc=require_working_doc(id)
+    raw='';evidence=doc.get('classification_evidence','')
+    if diagnostic is not None:
+        _,entry=document_diagnostic(doc,diagnostic)
+        number=entry.get('page') or number
+        candidate=entry.get('candidate_raw',{})
+        raw=candidate.get('raw_value','') if entry.get('candidate_kind')=='field' else candidate
+        evidence=entry.get('evidence','')
+    page=db.one('SELECT number,text,method,quality FROM pages WHERE document_id=? AND number=?',(id,number))
+    if not page:raise HTTPException(404,'Trang nguồn chưa đọc được; cần đọc lại tài liệu.')
+    busy(doc['case_id'])
+    result=source_locator.inspect(doc,{'raw':raw,'evidence':evidence,'method':'OpenAI diagnostic'},page)
+    result['message']=('Vùng đánh dấu là chữ/đoạn trích dẫn có thật để nhân viên kiểm tra; giá trị bị loại chưa được xác nhận. '+result['message']).strip()
+    return result
+
+@app.post('/api/documents/{id}/diagnostics/{index}/review')
+def review_diagnostic(id: str,index: int,body: DiagnosticReviewInput):
+    with LOCK:
+        doc=require_working_doc(id);busy(doc['case_id'])
+        entries,entry=document_diagnostic(doc,index)
+        if entry.get('review') or body.token!=source_locator.diagnostic_token(entry):
+            raise HTTPException(409,'Kết quả đã thay đổi/đã xử lý. Tải lại trước khi xác nhận.')
+        note=body.note.strip()
+        if len(note)<5:raise HTTPException(422,'Cần căn cứ kiểm tra ít nhất 5 ký tự.')
+        page=entry.get('page')
+        if not page or not db.one('SELECT id FROM pages WHERE document_id=? AND number=?',(id,page)):
+            raise HTTPException(422,'Thiếu trang nguồn; đọc lại tệp trước khi xác nhận.')
+        rid=None
+        with db.connect() as c:
+            if body.action=='accept':
+                kind=entry.get('candidate_kind');key=entry.get('field_id') if kind=='field' else 'goods_item'
+                if kind not in ['field','item'] or (kind=='field' and key not in REVIEW_FIELDS):
+                    raise HTTPException(422,'Lần đọc cũ thiếu cấu trúc dữ liệu. Đọc lại bằng OpenAI trước.')
+                value=checked_value(kind,key,body.value)
+                if value.get('warning'):raise HTTPException(422,'Giá trị chưa rõ định dạng; sửa số/đơn vị trước khi xác nhận.')
+                if kind=='item':
+                    from .normalize import decimal_text
+                    if decimal_text(value.get('quantity','')) is None or not value.get('unit'):
+                        raise HTTPException(422,'Dòng hàng cần số lượng và đơn vị rõ ràng.')
+                    if value.get('scope','invoice')=='invoice' and any(decimal_text(value.get(k,'')) is None for k in ['unit_price','line_amount']):
+                        raise HTTPException(422,'Dòng hóa đơn cần đơn giá và thành tiền rõ ràng.')
+                rid=db.uid()
+                c.execute('INSERT INTO records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (rid,doc['case_id'],id,kind,key,db.encode(entry.get('candidate_raw',{})),db.encode(value),page,
+                     (entry.get('evidence','')+'\n[Nhân viên kiểm tra] '+note).strip(),'Manual review','verified',note,db.now(),1))
+            entry['review']={'action':body.action,'note':note,'at':db.now(),'record_id':rid}
+            c.execute('UPDATE documents SET reading_diagnostics=? WHERE id=?',(db.encode(entries),id))
+            db.touch(c,doc['case_id'])
+            db.audit(c,doc['case_id'],'Kiểm tra dữ liệu AI bị loại',id+':'+str(index),None,entry['review'],note)
+            revalidate(c,doc['case_id'])
+    return bundle(doc['case_id'])
+
+@app.post('/api/checks/{id}/review')
+def review_check(id: str,body: CheckReviewInput):
+    with LOCK:
+        check=db.one('SELECT * FROM checks WHERE id=?',(id,))
+        if not check:raise HTTPException(404,'Kết quả đã thay đổi. Mở lại mục cần kiểm tra.')
+        busy(check['case_id'])
+        if check['key'].startswith(('reading:','classification:')) or check['result']=='Missing':
+            raise HTTPException(422,'Mục này cần bổ sung/kiểm tra từng dữ liệu nguồn.')
+        ids={s['id'] for s in json.loads(check['detail_json']).get('sources',[])}
+        rows=[r for r in working_records(check['case_id']) if r['id'] in ids and r['status']!='rejected']
+        if not rows or body.versions!={r['id']:r['version'] for r in rows}:
+            raise HTTPException(409,'Phiên bản dữ liệu đã thay đổi hoặc không có bản ghi để xác nhận.')
+        if any(r['value'].get('warning') for r in rows):raise HTTPException(422,'Sửa dữ liệu chưa rõ định dạng trước khi xác nhận.')
+        if len(body.note.strip())<5:raise HTTPException(422,'Ghi căn cứ kiểm tra ít nhất 5 ký tự.')
+        with db.connect() as c:
+            for r in rows:
+                c.execute("UPDATE records SET status='verified',note=?,updated_at=?,version=version+1 WHERE id=?",(body.note.strip(),db.now(),r['id']))
+            c.execute('UPDATE checks SET resolution=? WHERE id=?',(body.note.strip(),id))
+            db.touch(c,check['case_id'])
+            db.audit(c,check['case_id'],'Nhân viên xác nhận đã kiểm tra nguồn',id,None,[r['id'] for r in rows],body.note.strip())
+    return bundle(check['case_id'])
 
 def worker(job_id):
     job = JOBS[job_id]

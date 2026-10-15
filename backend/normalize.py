@@ -56,6 +56,11 @@ def normalize(raw, kind='text'):
         num = decimal_text(m.group(1))
         unit = raw[m.end():].strip().upper().rstrip('.')
         unit = UNITS.get(unit, unit or None)
+        # Countable pieces cannot be fractional. A comma-grouped integer in PCS
+        # is unambiguous here; weights, money and unknown units stay conservative.
+        if num is None and kind=='quantity' and unit=='PCS' and re.fullmatch(r'\d{1,3}(?:,\d{3})+',m.group(1)):
+            num=m.group(1).replace(',','')
+            result['normalization_note']='Dấu phẩy nhóm nghìn trong số lượng PCS; giữ nguyên chuỗi nguồn.'
         if kind == 'weight' and unit == 'MT' and num is not None:
             num = format(Decimal(num) * 1000, 'f')
             unit = 'KG'
