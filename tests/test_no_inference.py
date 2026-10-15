@@ -162,3 +162,41 @@ def test_commercial_comparison_preserves_real_differences_and_explains_unit_conv
     records[-2]['value']=normalize('22.0 MT','quantity')
     checks=build_checks({'mode':'FCL','requirements':default_requirements()},docs,records)
     assert next(c for c in checks if c['key']=='field:goods_quantity')['result']=='Needs Verification'
+
+
+def test_source_format_recovery_uses_unique_literal_and_explicit_currency_not_symbols():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nAmount(USD)\nTOTAL US$20,160.00\nBLUE BOLTS 21000 0.96 20160'}]
+    first=output('Invoice','COMMERCIAL INVOICE',[ai.FieldResult(field_id='invoice_total',raw_value='20160.00',source_page=1,
+        evidence_text='TOTAL US$20,160.00',unit='USD',unit_evidence='TOTAL US$20,160.00')])
+    first.items=[ai.ItemResult(line_number='1',description='BLUE BOLTS',quantity='21000',unit_price='0.96',line_amount='20160',currency='USD',source_page=1,
+        evidence_text='BLUE BOLTS 21000 0.96 20160',cell_evidence=[ai.CellEvidence(attribute='currency',evidence_text='TOTAL US$20,160.00')])]
+    grounded=ai.ground_source_format(first,pages)
+    records,rejected=ai.validated_subset(grounded,pages)
+    assert not rejected and records[0]['raw']=='20,160.00' and records[0]['value']['unit']=='USD'
+    assert records[1]['raw']['currency']=='USD' and '[currency] Amount(USD' in records[1]['evidence']
+    assert first.fields[0].raw_value=='20160.00' # input and raw model reading remain separate
+    first.fields[0].raw_value='99999.00'
+    assert ai.ground_source_format(first,pages).fields[0].raw_value=='99999.00'
+    pages[0]['text']+='\nAmount(EUR)'
+    assert ai.ground_source_format(first,pages).fields[0].unit_evidence=='TOTAL US$20,160.00'
+    pages[0]['text']=pages[0]['text'].replace('Amount(USD)\n','').replace('\nAmount(EUR)','')
+    assert ai.ground_source_format(first,pages).items[0].cell_evidence[0].evidence_text=='TOTAL US$20,160.00'
+
+
+def test_source_format_recovery_refuses_ambiguous_or_invented_quotes():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nTOTAL 20,160.00 or 20160.000'}]
+    first=output('Invoice','COMMERCIAL INVOICE',[field('invoice_total','20160.0','TOTAL 20,160.00 or 20160.000')])
+    assert ai.ground_source_format(first,pages).fields[0].raw_value=='20160.0'
+    first.fields[0].evidence_text='TOTAL 20,160.00 (invented quote)'
+    assert ai.ground_source_format(first,pages).fields[0].raw_value=='20160.0'
+
+
+def test_numeric_and_document_identifier_prefixes_are_not_literal_values():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nInvoice No: INV-1000\nTOTAL: 1000.00\nDate: 2026-08-13'}]
+    assert not ai.evidence_ok('100','TOTAL: 1000.00',1,pages)
+    assert not ai.evidence_ok('1000','TOTAL: 1000.00',1,pages)
+    assert not ai.evidence_ok('2026-08-1','Date: 2026-08-13',1,pages)
+    candidate=output('Invoice','COMMERCIAL INVOICE',[field('invoice_number','INV-100','Invoice No: INV-1000')])
+    with pytest.raises(ValueError,match='định danh nguồn'):ai.validate_result(candidate,pages)
+    candidate.fields[0]=field('invoice_number','INV-1000','Invoice No: INV-1000')
+    assert ai.validate_result(candidate,pages)[0]['raw']=='INV-1000'

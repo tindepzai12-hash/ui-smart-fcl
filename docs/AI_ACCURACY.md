@@ -32,3 +32,5 @@ Nguồn đối chiếu: [OpenAI — Model optimization](https://developers.opena
 - Bounded re-reading may fill a missing unit from a printed quantity header without changing the accepted raw number.
 - Party/address comparisons ignore punctuation, case and address labels but retain all word/number tokens. Contract port/Incoterms differences require scope review rather than automatic mismatch.
 - Mass quantities are compared through explicit KG/MT/LB conversion with an explanatory check; raw values and source units are retained. Named-month date punctuation is normalized deterministically.
+
+- Source-format grounding: if the model changes numeric punctuation, recover the uniquely equal numeric literal only inside its existing valid source quote. Multiple alternatives or ambiguous numbers stay rejected. Currency evidence may use a printed Amount/Currency/Unit-price header only when the page has one unambiguous currency; symbols alone are insufficient. The unchanged validator still checks the result.

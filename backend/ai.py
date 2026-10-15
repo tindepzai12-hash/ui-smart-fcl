@@ -259,7 +259,13 @@ def safe_error(exc):
 def evidence_ok(value, evidence, page, pages):
     source = next((p['text'] for p in pages if p['number'] == page), '')
     norm = lambda s: re.sub(r'\s+', ' ', str(s)).casefold().strip()
-    return bool(evidence.strip()) and norm(evidence) in norm(source) and norm(value) in norm(evidence)
+    if not evidence.strip() or norm(evidence) not in norm(source): return False
+    literal=norm(value); quote=norm(evidence)
+    if re.fullmatch(r'[+-]?\d[\d., ]*',literal):
+        return bool(re.search(r'(?<![\d.,])'+re.escape(literal)+r'(?![\d.,])',quote))
+    if literal and literal[0].isdigit() and literal[-1].isdigit():
+        return bool(re.search(r'(?<!\d)'+re.escape(literal)+r'(?!\d)',quote))
+    return literal in quote
 
 
 def source_quote(page, existing, start, end, pages):
@@ -299,6 +305,8 @@ def validate_result(result, pages):
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','po_number','co_number','packing_number','do_number','booking']:
             if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}', f.raw_value):
                 raise ValueError('Số chứng từ phải là một định danh; không nhận dòng chứa container/seal hoặc nhãn')
+            if not re.search(r'(?<![A-Za-z0-9/_-])'+re.escape(f.raw_value)+r'(?![A-Za-z0-9/_-])',field_evidence,re.I):
+                raise ValueError('Số chứng từ chỉ khớp một phần định danh nguồn; không cắt mất ký tự/số')
             if f.field_id == 'bl_number' and re.fullmatch(r'[A-Z]{4}\d{7}', f.raw_value):
                 raise ValueError('Giá trị giống số container; cần đối chiếu nhãn số vận đơn')
         if f.field_id in ['seller','buyer','shipper','consignee','notify_party','exporter','importer'] and re.search(r'(?i)\b(?:ADD(?:RESS)?\s*:|TEL\s*:|FAX\s*:)', f.raw_value):
@@ -383,6 +391,61 @@ def validate_result(result, pages):
     return records
 
 
+def ground_source_format(result, pages):
+    """Recover only printed formatting / explicit global currency headers, never missing values."""
+    from .normalize import decimal_text
+    grounded = DocumentResult.model_validate(result.model_dump())
+    currencies = {'USD','EUR','GBP','CNY','RMB','JPY','VND','AUD','CAD','SGD','HKD','CHF','THB','KRW','INR','MYR','IDR','TWD','PHP'}
+    def explicit_currency(page, value):
+        text=next((p['text'] for p in pages if p['number']==page),'')
+        headers=[]
+        for line in text.splitlines():
+            for match in re.finditer(r'(?i)\b(?:amount|currency|unit[- ]?price)\s*[:(（]?\s*([A-Z]{3})\b',line):
+                code=match.group(1).upper()
+                if code in currencies: headers.append((code,match.group(0)))
+        # A second currency anywhere prevents choosing a global header automatically.
+        printed={m.group(0).upper() for m in re.finditer(r'(?i)\b[A-Z]{3}\b',text)} & currencies
+        return next((quote for code,quote in headers if code==value),None) if printed=={value} else None
+    def exact_number(value, quote, page):
+        if evidence_ok(value,quote,page,pages): return value
+        number=decimal_text(value)
+        if number is None: return value
+        matches={m.group(0) for m in re.finditer(r'(?<![\w./-])[+-]?\d[\d.,]*(?![\w./-])',quote)
+                 if decimal_text(m.group(0)) is not None and decimal_text(m.group(0))==number}
+        # Verify the entire candidate quote first; never search the rest of the page for a number.
+        return next(iter(matches)) if len(matches)==1 and evidence_ok(quote,quote,page,pages) else value
+    for f in grounded.fields:
+        try: quote=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
+        except ValueError: continue
+        if FIELDS[f.field_id]['type'] in ['number','weight','quantity']:
+            f.raw_value=exact_number(f.raw_value,quote,f.source_page)
+        if f.unit in currencies:
+            try: unit_quote=source_quote(f.source_page,f.unit_evidence,f.unit_line,None,pages)
+            except ValueError: unit_quote=''
+            if not evidence_ok(f.unit,unit_quote,f.source_page,pages):
+                header=explicit_currency(f.source_page,f.unit)
+                if header: f.unit_evidence=header;f.unit_line=None
+    for item in grounded.items:
+        try: quote=source_quote(item.source_page,item.evidence_text,item.evidence_start_line,item.evidence_end_line,pages)
+        except ValueError: continue
+        for attribute in ['quantity','unit_price','line_amount']:
+            value=getattr(item,attribute)
+            if value is None: continue
+            cell=next((c for c in item.cell_evidence if c.attribute==attribute),None)
+            try: cell_quote=source_quote(item.source_page,cell.evidence_text,cell.start_line,cell.end_line,pages) if cell else quote
+            except ValueError: continue
+            setattr(item,attribute,exact_number(value,cell_quote,item.source_page))
+        if item.currency in currencies:
+            cell=next((c for c in item.cell_evidence if c.attribute=='currency'),None)
+            try: cell_quote=source_quote(item.source_page,cell.evidence_text,cell.start_line,cell.end_line,pages) if cell else quote
+            except ValueError: cell_quote=''
+            if not evidence_ok(item.currency,cell_quote,item.source_page,pages):
+                header=explicit_currency(item.source_page,item.currency)
+                if header:
+                    item.cell_evidence=[c for c in item.cell_evidence if c.attribute!='currency']+[CellEvidence(attribute='currency',evidence_text=header)]
+    return grounded
+
+
 def validated_subset(result, pages):
     """Validate classification and each record; rejected values never enter records."""
     base = {'document_type': result.document_type, 'classification_evidence': result.classification_evidence,
@@ -423,6 +486,8 @@ def repair_targets(result, records, rejected, pages):
     fields = {k for k in fields if result.document_type in FIELDS[k]['documents']}
     if result.document_type in ['Contract','Purchase Order'] and re.search(r'(?i)\b(?:total|amount)\b',text):
         fields.update({'contract_total','currency'} - found if result.document_type=='Contract' else {'currency'} - found)
+    if result.document_type in FIELDS['incoterms']['documents'] and re.search(r'(?i)\b(?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF)\b',text):
+        fields.update({'incoterms'} - found)
     # Re-read missing units only when a quantity header exists; the model must quote it.
     quantity_header = bool(re.search(r'(?is)\b(?:quantity|qty)\b.{0,180}?(?<![A-Za-z])(?:KGS?|KGM|MT|PCS|SETS?|BAGS?)\b', text))
     if quantity_header:
@@ -536,7 +601,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v14-role-evidence-units|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v15-source-literal-format|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -582,6 +647,7 @@ def analyze(case_id, document, pages):
         'A unit or currency printed in a table column header can be copied with a cell_evidence quote of that header. Use null if not printed. Never combine two different rows. '
         'For numeric fields with units/currency in a separate cell, raw_value is the exact number, unit is the printed unit/currency, unit_evidence quotes that separate cell on the SAME page. Otherwise unit and unit_evidence=null. '
         'packing_number requires an explicit Packing List No / Packing No / Packing Number label and its value in the same quote. A Packing List may have only Invoice No: keep that as invoice_number, omit packing_number. Package counts such as 840BAGS are never document numbers. '
+        'When another column interrupts a description in the source text, copy a contiguous commodity-name fragment with its own source quote; do not concatenate fragments or omit an otherwise supported row. Missing description details remain for human review in the original. '
         'For Contract and Purchase Order, read independent item rows and their quantity/price/currency headers as printed, including MT quantities and USD/MT prices. Retain source units without converting raw values. '
         'Document numbers must contain only the identifier, without NO: or other labels; container and seal identifiers are separate attributes, never a bl_number. '
         'container_number contains exactly four uppercase letters followed by seven digits, even if a printed container type or slash touches it with no space. Copy the 11-character substring; seal_number and container_type are separate. '
@@ -624,6 +690,11 @@ def analyze(case_id, document, pages):
         if staff_type and content_type=='Other' and not manual_quote:
             # Selecting Invoice must never turn a meeting note into invoice values.
             result = DocumentResult.model_validate({**result.model_dump(),'document_type':'Other','fields':[],'items':[],'containers':[]})
+        if result.document_type not in ['Invoice','Invoice & Packing List','Packing List','Booking','Contract','Purchase Order','C/O']:
+            result = DocumentResult.model_validate({**result.model_dump(),'fields':[],'items':[],'containers':[]})
+        grounded = ground_source_format(result,pages)
+        source_grounded = grounded.model_dump()!=result.model_dump()
+        result = grounded
         base = {**result.model_dump(), 'fields': [], 'items': [], 'containers': []}
         validate_result(DocumentResult.model_validate(base), pages)
         try:
@@ -650,7 +721,9 @@ def analyze(case_id, document, pages):
                     (uid(), case_id, now(), _model, getattr(usage,'input_tokens',None), getattr(usage,'output_tokens',None), 'repair_received'))
                 if retry.output_parsed is None:
                     raise ValueError('Lượt đọc lại chưa trả dữ liệu có cấu trúc')
-                result = merge_supported_repair(result, retry.output_parsed, pages, targets)
+                grounded = ground_source_format(retry.output_parsed,pages)
+                source_grounded |= grounded.model_dump()!=retry.output_parsed.model_dump()
+                result = merge_supported_repair(result, grounded, pages, targets)
             except Exception as exc:
                 repair_error = str(exc) if isinstance(exc, ValueError) else safe_error(exc)
         records, rejected = validated_subset(result, pages)
@@ -658,7 +731,7 @@ def analyze(case_id, document, pages):
             rejected.append('Lượt đọc lại chưa hoàn tất; giữ dữ liệu đã có bằng chứng. '+repair_error)
         else:
             execute('INSERT OR REPLACE INTO ai_cache VALUES (?,?,?)', (digest, result.model_dump_json(), now()))
-        return result, records, {'source': 'api', 'rejected': rejected, 'repair_requested': targets}
+        return result, records, {'source': 'api', 'rejected': rejected, 'repair_requested': targets, 'source_grounded': source_grounded}
     except ValueError:
         raise
     except Exception as exc:
