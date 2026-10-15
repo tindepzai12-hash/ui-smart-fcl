@@ -95,3 +95,22 @@ def test_failed_repair_keeps_supported_initial_data_and_does_not_cache(monkeypat
         assert len(calls) == 4
     finally:
         ai.remove()
+
+
+def test_repair_diagnostics_resolve_bad_currency_pointer_without_supplying_an_answer():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nAmount (EUR)\nTOTAL US$120.00'}]
+    candidate=field('currency','EUR',3)
+    first=result([candidate])
+    diagnostics=ai.repair_diagnostics(first,pages,['fields[1] currency: unsupported quote'])
+    assert diagnostics[0]['failed_candidate']['raw_value']=='EUR'
+    assert diagnostics[0]['resolved_source_quote']=='TOTAL US$120.00'
+    assert 'Amount (EUR)' not in str(diagnostics)  # No expected correction injected.
+
+
+def test_payment_sentence_cannot_enter_incoterms_despite_literal_evidence():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nTT 100% after copy documents\nCIF Example Port'}]
+    first=result([field('incoterms','TT 100% after copy documents',2)])
+    with pytest.raises(ValueError,match='Incoterms'):
+        ai.validate_result(first,pages)
+    first.fields[0]=ai.FieldResult(**field('incoterms','CIF Example Port',3))
+    assert ai.validate_result(first,pages)[0]['raw']=='CIF Example Port'

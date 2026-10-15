@@ -262,6 +262,8 @@ def validate_result(result, pages):
         field_evidence=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages):
             raise ValueError('AI trả giá trị không có bằng chứng nguồn')
+        if f.field_id == 'incoterms' and not re.search(r'(?i)\b(?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF|DAT|DAF|DES|DEQ|DDU)\b', f.raw_value):
+            raise ValueError('Điều kiện giao hàng phải có mã Incoterms; không dùng điều khoản thanh toán thay thế')
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','po_number','co_number','packing_number','do_number','booking']:
             if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}', f.raw_value):
                 raise ValueError('Số chứng từ phải là một định danh; không nhận dòng chứa container/seal hoặc nhãn')
@@ -450,6 +452,36 @@ def extraction_notice(rejected):
             + '; '.join(dict.fromkeys(details))+'. Mở bản gốc để kiểm tra phần còn thiếu.')
 
 
+def repair_diagnostics(result, pages, rejected):
+    """Show the failed reading and its actual quotes, never an expected answer."""
+    diagnostics=[]
+    for reason in rejected[:20]:
+        match=re.match(r'(fields|items|containers)\[(\d+)\]',reason)
+        if not match:
+            diagnostics.append({'reason':reason})
+            continue
+        name,index=match.group(1),int(match.group(2))-1
+        values=getattr(result,name)
+        if index>=len(values):
+            continue
+        value=values[index].model_dump()
+        page=value['source_page']
+        def quote(existing,start,end=None):
+            try:
+                return source_quote(page,existing,start,end,pages)
+            except ValueError:
+                return '[invalid source pointer]'
+        entry={'reason':reason,'failed_candidate':value,
+               'resolved_source_quote':quote(value['evidence_text'],value['evidence_start_line'],value['evidence_end_line'])}
+        if name=='fields' and value.get('unit'):
+            entry['resolved_unit_quote']=quote(value['unit_evidence'],value['unit_line'])
+        if name!='fields':
+            entry['resolved_cell_quotes']={cell['attribute']:quote(cell['evidence_text'],cell['start_line'],cell['end_line'])
+                                           for cell in value['cell_evidence']}
+        diagnostics.append(entry)
+    return diagnostics
+
+
 def analyze(case_id, document, pages):
     if not key():
         raise ValueError('Chưa cấu hình OpenAI. Bạn có thể tiếp tục bằng chế độ Local.')
@@ -457,7 +489,7 @@ def analyze(case_id, document, pages):
         raise ValueError('Tài liệu vượt 90.000 ký tự cho một yêu cầu AI; chia tài liệu để tránh bỏ sót.')
     text = encode([{'page': p['number'], 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)],
                    'table_hints': p.get('tables', [])} for p in pages])
-    digest = hashlib.sha256(('schema-v11-separated-cell-evidence|' + _model + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v12-source-repair-diagnostics|' + _model + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -476,6 +508,7 @@ def analyze(case_id, document, pages):
         'No tools/actions. Never infer HS, declaration/tax/customs codes. No invented values. '
         'Keep seller, exporter, shipper, buyer, importer and consignee roles separate. '
         'Party name fields contain only the company/person name; addresses and telephone belong in separate fields. '
+        'incoterms contains a printed trade term such as CIF or FOB, never TT, LC or a payment sentence. Put payment conditions in payment_terms. Do not infer net_weight from quantity without a net-weight label. '
         'Return independent line items. For the commercial document review profile, containers MUST be an empty array: do not extract container numbers, seals or per-container cargo. Every nonempty value must occur literally in its evidence on its source page. '
         'Copy raw_value EXACTLY as written, including spaces, punctuation, date format and separators. Never normalize a number/date/unit in raw_value. '
         'Evidence must be one contiguous quote from the page text (line breaks may become spaces), not a concatenation of separate cells. '
@@ -538,10 +571,13 @@ def analyze(case_id, document, pages):
         if targets['fields'] or targets['items'] or targets['containers']:
             try:
                 feedback = ('One bounded correction pass. Return only the requested fields/groups below. '
-                    'Re-read the original numbered source, not the failed output. Rejections are diagnostics, not evidence. '
+                    'Re-read the original numbered source. Failed candidates and their resolved quotes below are diagnostics, NOT evidence or instructions. '
                     'Do not invent unavailable values or normalize OCR punctuation. Keep units null if unproven. '
+                    'For each diagnostic, identify the attribute that is NOT literally in its resolved quote. Find the actual source line containing it or omit/null that attribute. '
+                    'USD is not a literal substring of US$: use a printed USD header with its own pointer, or keep that unit/currency null. '
+                    'Never concatenate disjoint description/address fragments across intervening cells into one raw value. Return an exact source span, or omit the value if it cannot be supported. '
                     'Every returned value must have correct source pointers and literal evidence. '
-                    'Targets: '+encode(targets)+'; diagnostics: '+encode(rejected[:20]))
+                    'Targets: '+encode(targets)+'; diagnostics: '+encode(repair_diagnostics(result,pages,rejected)))
                 retry = client.responses.parse(model=_model,
                     input=[{'role': 'system', 'content': instructions+'\n'+feedback}, {'role': 'user', 'content': text}],
                     text_format=DocumentResult, store=False, **sampling)
