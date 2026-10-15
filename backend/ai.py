@@ -632,7 +632,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v18-explicit-price-terms|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v19-pdf-cell-order|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -700,6 +700,7 @@ def analyze(case_id, document, pages):
         'For vessel/voyage, prefer the main Ocean vessel / Voy No block; a T/S PORT or VSL/VOY remark is a separate transshipment reference. Do not substitute it. '
         'Use vessel for the vessel NAME only and voyage for the separate voyage identifier. Only extract port_discharge when its Port of Discharge label is readable; Final Destination and Port of Destination are not a Port of Discharge label. Omit port_discharge when excluded from the supplied dictionary. Place of issue/freight payable/loading are not discharge ports. '
         'If text includes [OCR image layer], original selectable text precedes it. Use OCR for missing labels/heading, but preserve original selectable numeric values/codes if OCR differs. Do not silently repair scan-only OCR spelling. '
+        'A [PDF content-order layer] preserves the original PDF text sequence before geometric sorting. It is a second reading of the SAME page, not another document or another row. Use its contiguous description/address spans and separate numeric/header lines when sorted text interleaves columns. Never merge readings into invented values or duplicate a row across layers. '
         'If [OCR sparse layer] exists, it is a second reading of the SAME page for disconnected table cells. Use an existing quote from either layer for missing cells, but never synthesize or normalize a value by combining readings. '
         'Content classifier result (not filename or staff hint): '+encode({'type':content_type,'quote':content_quote})+'. If type is not Other, preserve that content-supported type. '
         'Never correct inconsistent source data. Never use codes/legal classifications. Empty unavailable values=null. Fields allowed: ' + encode(permitted)

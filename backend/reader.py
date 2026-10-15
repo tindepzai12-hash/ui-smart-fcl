@@ -217,6 +217,19 @@ def render_pdf_page_png(path, page_number, scale=1.5):
     finally:
         pdf.close()
 
+def preserve_pdf_content_order(page, text, tables):
+    """Keep a second verbatim reading when geometric sorting interleaves table cells."""
+    if not tables:
+        return text
+    original = page.get_text('text', sort=False)
+    # No guessed column reconstruction, numeric cleanup or source overwriting.
+    # Large documents keep the existing reading rather than silently truncating it.
+    if (original.strip() and len(original)<=20000
+            and ' '.join(original.split())!=' '.join(text.split())):
+        return text+'\n\n[PDF content-order layer — same page, original text sequence]\n'+original
+    return text
+
+
 def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
     path = Path(path)
     ext = path.suffix.lower()
@@ -247,6 +260,7 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                             tables = [t.extract() for t in page.find_tables().tables]
                         except Exception:
                             pass
+                        text = preserve_pdf_content_order(page, text, tables)
                         if page.get_images():
                             pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72))
                             add(*hybrid_text(text, Image.open(io.BytesIO(pix.tobytes('png'))), tables))

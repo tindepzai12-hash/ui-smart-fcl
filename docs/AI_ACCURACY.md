@@ -38,3 +38,5 @@ Nguồn đối chiếu: [OpenAI — Model optimization](https://developers.opena
 - Optional Packing List roles stay conservative: an account/risk party is not automatically a consignee, and a neighboring commodity description is not shipping marks. Ambiguous table marks remain for human review rather than being forced into a field.
 
 - A missing Incoterms field may be read deterministically from one unique printed unit-price annotation such as `(CIF Example Port USD/MT)`. It requires the price header, explicit trade code and currency/unit; conflicting terms/locations are left unresolved. The literal term and original annotation remain available as evidence. Destination/payment wording never supplies a missing Incoterm.
+
+- For text PDFs with detected tables, preserve the original PDF content sequence as a labeled second reading when geometric sorting interleaves cells. Both readings are verbatim and remain on the same source page. This restores contiguous descriptions/addresses without guessing missing characters or joining fragments across columns. AI must not duplicate rows across readings; all evidence checks still apply.
