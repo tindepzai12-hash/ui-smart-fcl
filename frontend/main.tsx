@@ -767,7 +767,7 @@ function App() {
         <div className="empty">
           <FolderOpen size={36} />
           <h3>{cases.length ? 'Không tìm thấy hồ sơ' : 'Bắt đầu với bộ chứng từ đầu tiên'}</h3>
-          <p>Tạo hồ sơ, tải Invoice, Packing List và vận đơn để kiểm tra.</p>
+                    <p>Tạo hồ sơ, tải Packing List, Booking, Invoice và Hợp đồng hoặc PO; thêm C/O nếu có.</p>
           <button className="btn primary" onClick={() => setDialog({ kind: 'case' })}>
             <Plus size={16} />
             Tạo hồ sơ
@@ -2828,7 +2828,7 @@ function SettingsPage({ health, refresh, run, notify }: Any) {
         <div className="section-title">
           <div>
             <h2>Kết nối OpenAI</h2>
-            <p className="muted">AI hỗ trợ từ bước 3. Local vẫn dùng được khi chưa có key.</p>
+            <p className="muted">AI hỗ trợ đọc và nhận diện chứng từ. Local vẫn dùng được khi chưa có key.</p>
           </div>
           <Link2 size={22} />
         </div>
