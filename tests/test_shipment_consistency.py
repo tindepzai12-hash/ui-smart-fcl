@@ -74,6 +74,35 @@ def test_supporting_document_titles_not_other():
                        ('YÊU CẦU NHẬP KHO','Warehouse Receipt')]:
         assert extraction.classify([{'text':title}])[0]==kind
 
+
+def test_ocr_lost_accents_preserve_supporting_heading_role():
+    assert extraction.classify([{'text':'Tờ khai hang hóa xuất khẩu (thông quan)'}])[0]=='Customs Declaration'
+    assert extraction.classify([{'text':'DU DIEU KIỆN QUA KHU VỰC GIÁM SAT HAI QUAN\nTờ khai không phải niêm phong'}])[0]=='Customs Release'
+    assert extraction.classify([{'text':'Hợp đồng yêu cầu khách gửi to khai hang hoa xuat khau'}])[0]=='Other'
+
+
+def test_scanned_packing_net_cannot_take_neighbor_gross_even_if_number_is_in_source():
+    import pytest
+    from backend import ai
+    pages=[{'number':1,'text':'PACKING LIST\nNet Wt.\nGross Wt.\n(kgs)\n56 391.20 489.00\nTare Weight (kgs):',
+            'tables':[[['CTN','Description','Net Wt. (kgs)','Gross Wt. (kgs)'],['56','','391.20','489.00'],['Tare Weight (kgs):','','','']]]}]
+    base={'document_type':'Packing List','classification_evidence':'PACKING LIST','items':[],'containers':[]}
+    wrong=ai.DocumentResult.model_validate({**base,'fields':[{'field_id':'net_weight','raw_value':'489.00','unit':'kgs','unit_evidence':'kgs','source_page':1,'evidence_text':'489.00'}]})
+    with pytest.raises(ValueError,match='đúng cột'):
+        ai.validate_result(wrong,pages)
+    grounded=ai.ground_source_format(wrong,pages)
+    assert next(f for f in grounded.fields if f.field_id=='net_weight').raw_value=='391.20'
+
+
+def test_warehouse_row_number_cannot_become_package_quantity():
+    import pytest
+    from backend import ai
+    text='YÊU CẦU NHẬP KHO\nNo. Unit Quantity Weight Volume\n1 CT 56 515.080 7.380'
+    base={'document_type':'Warehouse Receipt','classification_evidence':'YÊU CẦU NHẬP KHO','items':[],'containers':[]}
+    result=ai.DocumentResult.model_validate({**base,'fields':[{'field_id':'packages','raw_value':'1','unit':'CT','unit_evidence':'CT','source_page':1,'evidence_text':'1 CT 56 515.080 7.380'}]})
+    with pytest.raises(ValueError,match='Quantity'):
+        ai.validate_result(result,[{'number':1,'text':text}])
+
 def test_printed_month_dates_compare_without_guessing_day_month_order():
     assert normalize('JUL. 07, 2025','date')['text']=='2025-07-07'
     assert not normalize('JUL. 07, 2025','date')['warning']

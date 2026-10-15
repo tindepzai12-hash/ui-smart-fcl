@@ -333,6 +333,17 @@ def validate_result(result, pages):
             raise ValueError('Điều kiện giao hàng phải có mã Incoterms; không dùng điều khoản thanh toán thay thế')
         if f.field_id == 'net_weight' and not any(re.search(NET_WEIGHT_LABEL,p['text']) for p in pages if p['number']==f.source_page):
             raise ValueError('Trọng lượng tịnh thiếu nhãn Net Weight/N.W.; không suy ra từ số lượng hàng')
+        if f.field_id in ['net_weight','gross_weight'] and result.document_type in ['Packing List','Invoice & Packing List']:
+            bound=[v for v in packing_summary_fields(pages).get(f.field_id,[]) if v.source_page==f.source_page]
+            if bound and f.raw_value not in {v.raw_value for v in bound}:
+                raise ValueError('Trọng lượng không thuộc ô tổng của đúng cột Net/Gross; không lấy số cột bên cạnh')
+            if not bound and f.field_id=='net_weight' and (not re.search(NET_WEIGHT_LABEL,field_evidence) or re.search(r'(?i)gross\s*(?:weight|wt)',field_evidence)):
+                raise ValueError('Chưa gắn được số trọng lượng tịnh với đúng nhãn/cột Net; cần xem bản gốc')
+        if f.field_id=='packages' and result.document_type in ['Packing List','Invoice & Packing List']:
+            bound=packing_summary_fields(pages).get('packages',[])
+            values={v.raw_value for v in bound if v.source_page==f.source_page}
+            if values and f.raw_value not in values:
+                raise ValueError('Số kiện không thuộc ô tổng/số carton được ghi rõ; không lấy số thứ tự')
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','po_number','co_number','packing_number','do_number','booking']:
             if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}', f.raw_value):
                 raise ValueError('Số chứng từ phải là một định danh; không nhận dòng chứa container/seal hoặc nhãn')
@@ -370,6 +381,12 @@ def validate_result(result, pages):
                     raise ValueError('ETA trên Booking phải thuộc cảng dỡ; không dùng ETA nơi giao cuối hoặc cảng xếp')
         if f.field_id=='packages' and re.search(r"(?i)\b(?:container|hi.cube|reefer|20GP|40GP|40HC)\b|\b(?:20|40|45)\s*['′]?\s*(?:FCL|GP|HC|RF|DC)\b",f.raw_value):
             raise ValueError('Số lượng thiết bị/container không phải số kiện hàng')
+        if f.field_id=='packages' and result.document_type=='Warehouse Receipt' and not (f.unit or normalize(f.raw_value,'quantity').get('unit')):
+            raise ValueError('Số kiện phiếu kho cần đơn vị bao bì ở đúng hàng; không lấy STT hoặc số lần nhập')
+        if f.field_id=='packages' and result.document_type=='Warehouse Receipt':
+            quantity_rows=re.findall(r'(?im)^\s*\d+\s+(?:CT|CTN|CARTONS?|PKG|BAGS?)\s+(\d+)\s+\d[\d.,]*\s+\d[\d.,]*\s*$',source_page.get('text',''))
+            if quantity_rows and f.raw_value not in set(quantity_rows):
+                raise ValueError('Số kiện phiếu kho khác cột Quantity cạnh đơn vị; không lấy cột No./STT')
         if f.field_id=='packages' and result.document_type=='Booking' and not re.search(r'(?im)^\s*(?:total\s+|number\s+of\s+)?(?:packages|cartons|package\s+(?:count|qty)|no\.?\s+of\s+packages)\s*[:：]?',source_page.get('text','')):
             raise ValueError('Booking chưa có nhãn số kiện; không lấy số 1 trong số lượng thiết bị')
         if f.field_id=='gross_weight' and result.document_type=='Booking' and not re.search(r'(?i)gross\s*(?:weight|wt)|g\.?w\.?',source_page.get('text','')):
@@ -459,6 +476,44 @@ def validate_result(result, pages):
     return records
 
 
+def packing_summary_fields(pages):
+    """Read source-bound total cells; retain conflicting candidates without picking one."""
+    recovered={}
+    for page in pages:
+        for table in page.get('tables',[]):
+            if not table: continue
+            columns={}
+            for i,header in enumerate(table[0]):
+                header=header or '';label=re.sub(r'\s+',' ',header).casefold()
+                key=('net_weight' if re.search(r'net\s*(?:weight|wt)',label) else
+                     'gross_weight' if re.search(r'gross\s*(?:weight|wt)',label) else
+                     'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b',label) else None)
+                if key: columns[i]=(key,header)
+            for row_index,row in enumerate(table[1:],start=1):
+                if not row:continue
+                labelled=any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*',cell or '') for cell in row)
+                # A printed aggregate row with blank item/code cells directly above
+                # a Tare/Total-weight footer is also layout-bound, not a calculated sum.
+                next_row=next((r for r in table[row_index+1:] if any(c for c in r)),[])
+                footer=any(re.search(r'(?i)^\s*(?:tare|total)\s+weight|^\s*total\s*\(kgs?\)',c or '') for c in next_row)
+                identity=[i for i,h in enumerate(table[0]) if re.search(r'(?i)description|item\s*(?:no|code)|^po#',h or '')]
+                blank_identity=bool(identity) and all(not (row[i] if i<len(row) else '') for i in identity)
+                numeric_weights=sum(bool(i<len(row) and re.fullmatch(r'\s*\d[\d., ]*\s*',row[i] or '')) for i,(k,_) in columns.items() if k in ['net_weight','gross_weight'])
+                if not labelled and not (footer and blank_identity and numeric_weights==2):continue
+                for i,(key,header) in columns.items():
+                    raw=row[i] if i<len(row) else None
+                    if not isinstance(raw,str) or not re.fullmatch(r'\s*\d[\d., ]*\s*',raw): continue
+                    unit_match=re.search(r'(?i)\b(KGS?|KGM|MT|LBS?|CTNS?|CARTONS?|PACKAGES?|PKGS?)\b',header)
+                    if not unit_match: continue
+                    unit=unit_match.group(0)
+                    if not evidence_ok(raw,raw,page['number'],pages) or not evidence_ok(unit,unit,page['number'],pages): continue
+                    recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw.strip(),unit=unit,unit_evidence=unit,source_page=page['number'],evidence_text=raw))
+    for page in pages:
+        for m in re.finditer(r'(?i)\bPACKED\s+IN\b[^\n]{0,100}?\((\d+)\)\s*(CARTONS?|CTNS?|PACKAGES?|PKGS?|BAGS?)\b',page['text']):
+            recovered.setdefault('packages',[]).append(FieldResult(field_id='packages',raw_value=m.group(1),unit=m.group(2),unit_evidence=m.group(2),source_page=page['number'],evidence_text=m.group(0)))
+    return recovered
+
+
 def ground_source_format(result, pages):
     """Ground formatting and explicit price-header terms in literal source evidence."""
     from .normalize import decimal_text
@@ -467,39 +522,10 @@ def ground_source_format(result, pages):
     # and header unit must also exist literally in this page's text. This does not
     # reconstruct rows, guess separators, or mark any value verified.
     if grounded.document_type in ['Packing List','Invoice & Packing List']:
-        recovered={}
-        for page in pages:
-            for table in page.get('tables',[]):
-                if not table: continue
-                columns={}
-                for i,header in enumerate(table[0]):
-                    header=header or '';label=re.sub(r'\s+',' ',header).casefold()
-                    key=('net_weight' if re.search(r'net\s*(?:weight|wt)',label) else
-                         'gross_weight' if re.search(r'gross\s*(?:weight|wt)',label) else
-                         'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b',label) else None)
-                    if key: columns[i]=(key,header)
-                for row_index,row in enumerate(table[1:],start=1):
-                    if not row:continue
-                    labelled=any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*',cell or '') for cell in row)
-                    # A printed aggregate row with blank item/code cells directly above
-                    # a Tare/Total-weight footer is also layout-bound, not a calculated sum.
-                    next_row=next((r for r in table[row_index+1:] if any(c for c in r)),[])
-                    footer=any(re.search(r'(?i)^\s*(?:tare|total)\s+weight|^\s*total\s*\(kgs?\)',c or '') for c in next_row)
-                    identity=[i for i,h in enumerate(table[0]) if re.search(r'(?i)description|item\s*(?:no|code)|^po#',h or '')]
-                    blank_identity=bool(identity) and all(not (row[i] if i<len(row) else '') for i in identity)
-                    numeric_weights=sum(bool(i<len(row) and re.fullmatch(r'\s*\d[\d., ]*\s*',row[i] or '')) for i,(k,_) in columns.items() if k in ['net_weight','gross_weight'])
-                    if not labelled and not (footer and blank_identity and numeric_weights==2):continue
-                    for i,(key,header) in columns.items():
-                        raw=row[i] if i<len(row) else None
-                        if not isinstance(raw,str) or not re.fullmatch(r'\s*\d[\d., ]*\s*',raw): continue
-                        unit_match=re.search(r'(?i)\b(KGS?|KGM|MT|LBS?|CTNS?|CARTONS?|PACKAGES?|PKGS?)\b',header)
-                        if not unit_match: continue
-                        unit=unit_match.group(0)
-                        if not evidence_ok(raw,raw,page['number'],pages) or not evidence_ok(unit,unit,page['number'],pages): continue
-                        recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw.strip(),unit=unit,unit_evidence=unit,source_page=page['number'],evidence_text=raw))
+        recovered=packing_summary_fields(pages)
         base={**grounded.model_dump(),'fields':[],'items':[],'containers':[]}
         for key,candidates in recovered.items():
-            if len({(f.raw_value,f.unit) for f in candidates})!=1: continue
+            if len({(f.raw_value,normalize(f.raw_value+' '+f.unit,FIELDS[key]['type']).get('unit')) for f in candidates})!=1: continue
             existing=[f for f in grounded.fields if f.field_id==key]
             def accepted(f):
                 try:
@@ -757,7 +783,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v26-shipment-quantity-scope|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v27-ocr-role-bound-summary|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -798,6 +824,7 @@ def analyze(case_id, document, pages):
         'Arrival Notice: extract only the allowed header and shipment-summary fields; items=[] and containers=[]. Freight charges and equipment rows are not Invoice amounts or commercial items. A referenced B/L number is bl_number, never booking. '
         'Booking: eta is the ETA at Port of Discharge, not ETA at Port of Loading, final delivery or cargo availability. Equipment counts are not packages; generic Cargo Weight is not gross_weight unless explicitly labelled Gross. '
         'Packing List: re-read the NUMBER OF CARTONS/packages and NET WEIGHT columns as separate header fields even if the item quantity uses cartons. Do not include CONT/SEAL labels, numbers or bank information in item descriptions. A standalone No.: directly under the Packing List title can be its own packing_number; an Invoice No. cannot. '
+        'For OCR packing summary table_hints, Net and Gross are bound to distinct physical columns. Read only the literal cell under that column; Total (kgs) alone never proves Net. Warehouse Receipt: STT/No. is a row index, not the Quantity. In a row No., Unit, Quantity, Weight, Volume use the Quantity cell and its printed packing unit, never No. or Lan nhap. '
         'C/O: co_number is the labelled Reference/Certificate No, not an unlabelled serial or barcode. co_date belongs to Certification/Issue Date, not the Invoice date in box 10 or Departure date. origin_criteria is the actual row code in box 8, not the form instructions RVC criterion. co_issuer must be the named certifying organization, not the Issued in country. The exporter declaration that all products were produced in a named country can support origin; an exporter address cannot. If a stamp or OCR makes the code/date/reference unreadable, omit it and never repair a character by guessing. '
         'Return independent line items. For the commercial document review profile, containers MUST be an empty array: do not extract container numbers, seals or per-container cargo. Every nonempty value must occur literally in its evidence on its source page. '
         'Copy raw_value EXACTLY as written, including spaces, punctuation, date format and separators. Never normalize a number/date/unit in raw_value. '

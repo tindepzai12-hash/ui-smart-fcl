@@ -1,4 +1,4 @@
-import re
+import re, unicodedata
 from .dictionary import FIELDS, supports
 from .normalize import normalize,decimal_text
 
@@ -27,13 +27,17 @@ def classify(pages):
                 return kind,line
     # A carrier's arrival notice often has its title embedded in a logo/raster stamp.
     text='\n'.join(lines)
+    # OCR can preserve a Vietnamese word while dropping only its accents.
+    # Match complete business headings after accent folding, but retain the
+    # exact original line as evidence; do not repair numbers or fuzzy-match titles.
     for kind,pattern in [
-        ('Customs Declaration',r'(?im)^Tờ khai hàng hóa (?:xuất|nhập) khẩu[^\n]*$'),
-        ('Customs Release',r'(?im)^ĐỦ ĐIỀU KIỆN QUA KHU VỰC GIÁM SÁT HẢI QUAN\s*$'),
-        ('Warehouse Receipt',r'(?im)^(?:YÊU CẦU|PHIẾU) NHẬP KHO\s*$'),
+        ('Customs Release',r'^du dieu kien qua khu vuc giam sat hai quan$'),
+        ('Customs Declaration',r'^to khai hang hoa (?:xuat|nhap) khau(?:\s*\(thong quan\))?$'),
+        ('Warehouse Receipt',r'^(?:yeu cau|phieu) nhap kho$'),
     ]:
-        m=re.search(pattern,text)
-        if m:return kind,m.group(0).strip()
+        for line in lines:
+            folded=''.join(c for c in unicodedata.normalize('NFD',line.casefold().replace('đ','d')) if not unicodedata.combining(c))
+            if re.fullmatch(pattern,re.sub(r'\s+',' ',folded).strip()):return kind,line
     arrival=re.search(r'(?im)^.*(?:est\.?\s*arrival\s*date|estimated\s*time\s*of\s*arrival)\s*:\s*[^\n]+',text)
     if arrival and re.search(r'(?i)free\s*time\s*until',text):
         return 'Arrival Notice',arrival.group(0).strip()

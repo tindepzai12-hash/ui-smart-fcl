@@ -102,7 +102,52 @@ def ocr_tables(data):
                 table.append(cells)
             if len(table) > 1:
                 tables.append(table)
-    return tables
+    return tables + ocr_packing_summary(data)
+
+
+def ocr_packing_summary(data):
+    """Bind printed PL total cells by OCR coordinates, never calculate totals."""
+    words=[{'text':t.strip(),'x':data['left'][i],'y':data['top'][i]+data['height'][i]/2,
+            'h':data['height'][i]} for i,t in enumerate(data['text']) if t.strip() and float(data['conf'][i])>=0]
+    if not words:return []
+    tolerance=max(4,statistics.median(w['h'] for w in words)*.6)
+    rows=[]
+    for w in sorted(words,key=lambda w:(w['y'],w['x'])):
+        if rows and abs(w['y']-rows[-1][0]['y'])<=tolerance:rows[-1].append(w)
+        else:rows.append([w])
+    for row in rows:row.sort(key=lambda w:w['x'])
+    compact=lambda t:re.sub(r'[^a-z]','',t.casefold())
+    for hi,row in enumerate(rows):
+        names={compact(w['text']):w for w in row}
+        if not {'net','gross'}.issubset(names):continue
+        left=names.get('ctn',{}).get('x')
+        net,gross=names['net']['x'],names['gross']['x']
+        if not net<gross:continue
+        units=[w for r in rows[hi+1:hi+7] for w in r if re.search(r'(?i)\bkgs?\b',w['text'])]
+        if not any(net-20<=w['x']<gross for w in units) or not any(gross-20<=w['x'] for w in units):continue
+        for ri in range(hi+2,len(rows)):
+            footer=' '.join(w['text'] for w in rows[ri]).lstrip('[|')
+            if not re.match(r'(?i)tare\s+weight\s*\(kgs?\)',footer):continue
+            aggregate=rows[ri-1]
+            if rows[ri][0]['y']-aggregate[0]['y']>tolerance*6:continue
+            cells=[]
+            for w in aggregate:
+                raw=w['text'].strip('[]{}|')
+                if not re.fullmatch(r'\d[\d.,]*',raw):break
+                cells.append((w['x'],raw))
+            else:
+                nw=[v for x,v in cells if net-20<=x<gross-20]
+                gw=[v for x,v in cells if gross-20<=x<gross+(gross-net)-20]
+                # Quantity may be another column before Net; the carton count
+                # must be the single value beside the CTN header's x-position.
+                pkg=[v for x,v in cells if left is not None and abs(x-left)<80]
+                if len(nw)==len(gw)==1:
+                    if len(pkg)==1:
+                        return [[['CTN','Description','Net Wt. (kgs)','Gross Wt. (kgs)'],
+                                 [pkg[0],'',nw[0],gw[0]],[footer,'','','']]]
+                    return [[['Description','Net Wt. (kgs)','Gross Wt. (kgs)'],
+                             ['',nw[0],gw[0]],[footer,'','']]]
+    return []
 
 def prepare_ocr_image(image):
     image = ImageOps.exif_transpose(image).convert('RGB')
