@@ -33,6 +33,19 @@ Example C: page 1 lines:
 Extract do_number="XO17B" from line 2. Never replace letter O with digit 0.
 Extract voyage="V112" from line 3; do not also call it booking.
 
+Example D: page 1 lines:
+1 COMMERCIAL INVOICE
+2 Description | Quantity | Unit Price | Amount (USD)
+3 120 2.50 300.00
+4 BLUE FASTENERS
+5 TOTAL 300.00
+The description and numbers are different source lines of the same table row.
+Use description="BLUE FASTENERS" with description cell_evidence pointing to
+line 4. Point quantity="120", unit_price="2.50" and line_amount="300.00"
+to line 3, and currency="USD" to line 2. Overall row evidence may point to
+line 3, but cannot substitute for the description evidence on line 4.
+Do not join text from separate table rows or copy an adjacent product name.
+
 For the real document, check every evidence pointer against the numbered lines
 before submitting. Prefer exact numeric strings from selectable PDF text when
 an OCR layer disagrees. Use a separate source line for units, not a reconstructed

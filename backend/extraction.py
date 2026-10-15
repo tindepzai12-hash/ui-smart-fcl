@@ -25,6 +25,11 @@ def classify(pages):
     arrival=re.search(r'(?im)^.*(?:est\.?\s*arrival\s*date|estimated\s*time\s*of\s*arrival)\s*:\s*[^\n]+',text)
     if arrival and re.search(r'(?i)free\s*time\s*until',text):
         return 'Arrival Notice',arrival.group(0).strip()
+    # Some carrier forms have no standalone title: the printed number heading and
+    # carriage terms jointly identify a bill. A B/L reference alone is insufficient.
+    bill_heading=re.search(r'(?im)^\s*BILL\s+OF\s+LADING\s+(?:NO\.?|NUMBER)\s*[:：]?\s*$',text)
+    if bill_heading and re.search(r'(?i)FOR\s+COMBINED\s+TRANSPORT\s+SHIPMENT',text) and re.search(r'(?i)IN\s+WITNESS|RECEIVED\s+by\s+the\s+Carrier',text):
+        return 'B/L',bill_heading.group(0).strip()
     return 'Other','Không có tiêu đề đủ rõ; chọn loại chứng từ thủ công.'
 
 ITEM_ALIASES={'line_number':['item no','line','line no','item number','stt'],'product_code':['sku','product code','item code','model','mã hàng'],'description':['description','product description','description of goods','tên hàng'],'quantity':['quantity','qty','số lượng'],'unit':['unit','uom','đơn vị'],'unit_price':['unit price','price','đơn giá'],'line_amount':['line amount','amount','total','thành tiền'],'currency':['currency'],'origin':['country of origin','origin'],'hs_code':['hs code']}

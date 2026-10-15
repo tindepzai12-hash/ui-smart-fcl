@@ -24,6 +24,23 @@ def test_classification_cannot_use_valid_but_unrelated_quote():
     with pytest.raises(ValueError,match='mâu thuẫn'):ai.validate_result(data,pages)
 
 
+def test_carrier_bill_number_heading_needs_carriage_terms_not_just_a_reference():
+    bill='HEDE SHIPPING\nBILL OF LADING NO.\nXYZ-123\nFOR COMBINED TRANSPORT SHIPMENT OR PORT TO PORT SHIPMENT\nRECEIVED by the Carrier from the Shipper in apparent good order'
+    assert extraction.classify([{'text':bill}])==('B/L','BILL OF LADING NO.')
+    assert extraction.classify([{'text':'BILL OF LADING NO.\nXYZ-123\nInternal payment note'}])[0]=='Other'
+    assert extraction.classify([{'text':'ARRIVAL NOTICE\n'+bill}])[0]=='Arrival Notice'
+
+
+def test_separated_description_requires_its_own_source_pointer():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nAmount (USD)\n120 2.50 300.00\nBLUE FASTENERS'}]
+    data=document('Invoice','COMMERCIAL INVOICE')
+    data.items=[ai.ItemResult(line_number='1',description='BLUE FASTENERS',quantity='120',source_page=1,evidence_text='',evidence_start_line=3)]
+    with pytest.raises(ValueError,match='description'):ai.validate_result(data,pages)
+    data.items[0].cell_evidence=[ai.CellEvidence(attribute='description',evidence_text='',start_line=4)]
+    row=ai.validate_result(data,pages)[0]
+    assert row['raw']['description']=='BLUE FASTENERS' and '[description] BLUE FASTENERS' in row['evidence']
+
+
 def test_literal_container_row_is_not_a_bill_number():
     pages=[{'number':1,'text':'BILL OF LADING\nABCU1234567 20DC SEAL99'}]
     data=document('B/L','BILL OF LADING')

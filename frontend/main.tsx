@@ -1406,7 +1406,7 @@ function App() {
                               checked={consent}
                               onChange={(e) => setConsent(e.target.checked)}
                             />
-                            Tôi đồng ý gửi văn bản đã đọc/OCR và ảnh thu nhỏ của tệp ảnh trong bộ Chứng từ tới OpenAI để phân nhóm và trích xuất. Bộ ảnh riêng không gửi trong tác vụ này. File gốc giữ trên máy chủ đang chạy app.
+                            Tôi đồng ý gửi văn bản đã đọc/OCR và ảnh thu nhỏ của tệp ảnh trong bộ Chứng từ tới OpenAI để phân nhóm và trích xuất. Tệp đã chuyển vào “Giấy tờ khác” không gửi lại trong tác vụ này. File gốc giữ trên máy chủ đang chạy app.
                           </label>
                         )}
                       </div>

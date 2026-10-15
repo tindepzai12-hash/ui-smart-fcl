@@ -573,7 +573,7 @@ def worker(job_id):
                     kind = result.document_type
                     evidence = result.classification_evidence
                     if info['rejected']:
-                        extraction_warning = f"OpenAI: {len(info['rejected'])} giá trị bị loại vì không qua kiểm tra bằng chứng/dictionary. Cần kiểm tra phần dữ liệu thiếu. " + '; '.join(info['rejected'])[:400]
+                        extraction_warning = ai.extraction_notice(info['rejected'])
                         job['warnings'].append({'document': d['name'], 'message': extraction_warning})
                 else:
                     kind, evidence = extraction.classify(pages)
