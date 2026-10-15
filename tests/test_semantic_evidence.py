@@ -11,6 +11,24 @@ def document(kind, text, **parts):
         fields=[],items=[],containers=[],**parts))
 
 
+def test_notify_party_cannot_take_agent_from_adjacent_form_cell():
+    text = 'ARRIVAL NOTICE\n3.Notify Patry Insert Name Address   OCEAN AGENT LTD\nBUYER TRADING LTD\nAs Agent for CARRIER LTD'
+    pages = [{'number': 1, 'text': text, 'tables': [[[
+        '3.Notify Patry Insert Name Address\nBUYER TRADING LTD\nADD: 1 TEST ROAD',
+        'OCEAN AGENT LTD\nAs Agent for CARRIER LTD']]]}]
+    result = document('Arrival Notice', 'ARRIVAL NOTICE')
+    result.fields = [ai.FieldResult(field_id='notify_party', raw_value='OCEAN AGENT LTD', source_page=1, evidence_text=text)]
+    with pytest.raises(ValueError, match='ô có nhãn'):
+        ai.validate_result(result, pages)
+    result.fields[0].raw_value = 'BUYER TRADING LTD'
+    assert ai.validate_result(result, pages)[0]['raw'] == 'BUYER TRADING LTD'
+
+
+def test_party_cell_guard_does_not_invent_layout_when_no_cells_exist():
+    assert ai.party_cell_support('notify_party', 'BUYER LTD', {'tables': []}) is None
+    assert ai.party_cell_support('notify_party', 'BUYER LTD', {'tables': [[['Notify Party', 'BUYER LTD']]]}) is None
+
+
 def test_titles_outweigh_references_and_misleading_filename():
     assert extraction.classify([{'text':'SALES CONTRACT\nARTICLE 4: DOCUMENTS REQUIRED\n1. CLEAN SHIPPED ON BOARD OCEAN BILL OF LADING\n2. ORIGINAL SIGNED COMMERCIAL INVOICE'}])[0]=='Contract'
     assert extraction.classify([{'text':'ACME DELIVERY ORDER\nArrival Date: MAR 05 2025\nB/L No: X-01'}])[0]=='Delivery Order'

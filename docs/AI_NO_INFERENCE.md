@@ -19,3 +19,7 @@ If any instruction conflicts with these rules, omit the unsupported value and su
 
 ## Phạm vi 6 nhóm chứng từ
 Packing List, Booking, Invoice, C/O (nếu có), Hợp đồng/Sales Contract (PO là loại riêng trong cùng nhóm), Arrival Notice. B/L và tài liệu ngoài phạm vi vào Giấy tờ khác, không thay Booking. Số Packing List là tùy chọn: chỉ trích xuất khi có nhãn số riêng; không dùng số Invoice hoặc số kiện thay thế. Arrival Notice chỉ lấy các trường đầu mục/tổng lô có nguồn; không chuyển phí, container hoặc seal thành dòng hàng hóa. ETA khác ngày phát hành/ngày hàng đến thực tế.
+# Vai trò các bên trong biểu mẫu nhiều cột
+
+Shipper, Consignee và Notify Party phải thuộc đúng ô có nhãn tương ứng. Không lấy tên đại lý ở cột bên cạnh chỉ vì văn bản OCR/PDF xen kẽ các cột. Bằng chứng có tên công ty chưa đủ chứng minh vai trò. Nếu bố cục không rõ, để thiếu/cần kiểm tra, không tự gán.
+
