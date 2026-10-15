@@ -4,7 +4,7 @@ from decimal import Decimal
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.datavalidation import DataValidation
-from .dictionary import FIELDS, LEGAL, REVIEW_FIELDS, commercial_profile
+from .dictionary import FIELDS, LEGAL, REVIEW_FIELDS, commercial_profile, supports
 from .validation import human_check_label, container_number
 from .db import now
 
@@ -156,18 +156,27 @@ def build(path, case, documents, records, checks, audit, mode='Draft', workbook_
                     r['note'],
                 ])
         else:
+            blank_status = 'Missing'
+            if commercial:
+                missing_check = next((c for c in warnings if c['key'] == 'missing:' + key), None)
+                # An absent extraction is not proof that a printed field is inapplicable.
+                uncertain_documents = any(d['status'] != 'read' or not d['type_verified'] or d['type'] == 'Other' for d in documents)
+                applicable_documents = any(supports(d['type'], kind) for d in documents for kind in FIELDS[key]['documents'])
+                blank_status = missing_check['result'] if missing_check else ('Not Yet Checked' if uncertain_documents or applicable_documents or not documents else 'Not Applicable')
             data.append([
                 key,
                 FIELDS[key]['label'],
                 '',
                 '',
                 '',
-                ('Missing' if any(c['key']=='missing:'+key for c in warnings) else 'Not Applicable') if commercial else 'Missing',
+                blank_status,
                 '',
-                'Nhập/xác minh theo căn cứ chính thức' if key in LEGAL else ('Chưa ghi nhận; chỉ kiểm nếu chứng từ có trường này' if commercial else 'Chưa trích xuất'),
+                'Nhập/xác minh theo căn cứ chính thức' if key in LEGAL else (
+                    'Không có loại chứng từ áp dụng trong bộ đã xác nhận' if commercial and blank_status == 'Not Applicable'
+                    else 'Chưa ghi nhận; kiểm bản gốc trước khi kết luận không áp dụng' if commercial else 'Chưa trích xuất'),
             ])
     ws = sheet(wb, names[1], ['Field ID', 'Tên chỉ tiêu', 'Giá trị', 'Đơn vị', 'Nguồn', 'Trạng thái', 'Phương pháp', 'Ghi chú'], data)
-    dv = DataValidation(type='list', formula1='"pending,verified,rejected,Missing"')
+    dv = DataValidation(type='list', formula1='"pending,verified,rejected,Missing,Needs Verification,Not Yet Checked,Not Applicable"')
     ws.add_data_validation(dv)
     dv.add(f'F2:F{max(2, ws.max_row)}')
     items = []

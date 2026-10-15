@@ -75,6 +75,34 @@ def test_co_present_is_checked_and_po_contract_stay_separate():
  checks=validation.build_checks(b['case'],b['documents'],records)
  assert next(c for c in checks if c['key']=='missing:origin')['result']=='Missing'
 
+@pytest.mark.parametrize('co', [False, True])
+def test_excel_does_not_call_unextracted_applicable_fields_inapplicable(co):
+ id,b=prepared(co=co)
+ # Before staff confirms document types, absence is not evidence of inapplicability.
+ draft=client.post('/api/cases/'+id+'/export',headers=H,json={'mode':'Draft'})
+ assert draft.status_code==200,draft.text
+ wb=load_workbook(io.BytesIO(client.get(draft.json()['download']).content))
+ rows={row[0]:row for row in wb['THONG_TIN_CHUNG_TU'].iter_rows(min_row=2,values_only=True)}
+ assert rows['seller_address'][5]=='Not Yet Checked'
+ assert rows['co_form'][5]=='Not Yet Checked'
+ wb.close()
+ for d in b['documents']:
+  assert client.patch('/api/documents/'+d['id']+'/classification',headers=H,json={'type':d['type']}).status_code==200
+ date=next(r for r in b['records'] if r['key']=='invoice_date')
+ res=client.post('/api/records/'+date['id']+'/verify',headers=H,json={'status':'rejected','version':date['version'],'note':'Test: no accepted invoice date remains'})
+ assert res.status_code==200,res.text
+ draft=client.post('/api/cases/'+id+'/export',headers=H,json={'mode':'Draft'})
+ assert draft.status_code==200,draft.text
+ wb=load_workbook(io.BytesIO(client.get(draft.json()['download']).content))
+ ws=wb['THONG_TIN_CHUNG_TU']
+ rows={row[0]:row for row in ws.iter_rows(min_row=2,values_only=True)}
+ assert rows['invoice_date'][5]=='Missing'
+ assert rows['seller_address'][5]=='Not Yet Checked'
+ assert rows['co_form'][5]==('Not Yet Checked' if co else 'Not Applicable')
+ statuses=next(iter(ws.data_validations.dataValidation)).formula1
+ assert all(status in statuses for status in ['Not Yet Checked','Not Applicable','Needs Verification'])
+ wb.close()
+
 def test_planned_booking_and_multi_delivery_contract_require_scope_review():
  id,b=prepared()
  booking=next(d for d in b['documents'] if d['type']=='Booking')
