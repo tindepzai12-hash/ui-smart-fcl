@@ -24,6 +24,23 @@ def test_contract_reference_can_contain_source_printed_spaces():
     rows,rejected=ai.validated_subset(ai.ground_source_format(model,[page]),[page])
     assert not rejected and rows[0]['value']['text']=='TPV 03/EX'
 
+def test_order_bank_consignee_is_never_promoted_to_buyer():
+    page={'number':1,'text':'COMMERCIAL INVOICE\nInvoice No: INV-10\nCONSIGNEE: TO THE ORDER OF EXAMPLE BANK'}
+    model=ai.DocumentResult.model_validate({'document_type':'Invoice','classification_evidence':'COMMERCIAL INVOICE','fields':[{'field_id':'buyer','raw_value':'TO THE ORDER OF EXAMPLE BANK','source_page':1,'evidence_text':'CONSIGNEE: TO THE ORDER OF EXAMPLE BANK'}],'items':[],'containers':[]})
+    with pytest.raises(ValueError):ai.validate_result(model,[page])
+    grounded=ai.ground_source_format(model,[page]);rows,rejected=ai.validated_subset(grounded,[page])
+    assert not rows and not rejected
+
+def test_contract_buyer_can_supply_shared_working_field_without_filling_invoice():
+    import json
+    from backend.dictionary import default_requirements
+    from backend.validation import build_checks
+    docs=[{'id':'inv','type':'Invoice','name':'inv.pdf','status':'read','type_verified':0,'classification_method':'OpenAI'}, {'id':'contract','type':'Contract','name':'contract.pdf','status':'read','type_verified':0,'classification_method':'OpenAI'}]
+    record={'id':'r','document_id':'contract','page':1,'kind':'field','key':'buyer','status':'auto_accepted','value':normalize('REAL BUYER')}
+    checks=build_checks({'id':'case','mode':'FCL','requirements':json.dumps(default_requirements())},docs,[record])
+    assert not any(c['key']=='missing:buyer' for c in checks)
+    assert record['document_id']=='contract' and len([r for r in [record] if r['document_id']=='inv'])==0
+
 def rows(key,values):
     return [{'id':str(i),'document_id':str(i),'page':1,'kind':'field','key':key,'status':'pending','value':normalize(v)} for i,v in enumerate(values)]
 
@@ -33,6 +50,9 @@ def test_port_formatting_does_not_merge_different_countries_or_ports():
     for other in ['CAT LAI, THAILAND','HO CHI MINH CITY, VIETNAM','ANY PORT OF HOCHIMINH CITY, VIETNAM']:
         different=group+[rows('port_loading',[other])[0]]
         assert len(set(comparison_values('port_loading',different,different)))>1
+    mixed=group+[{**group[0],'id':'contract','value':normalize('ANY PORT OF HOCHIMINH CITY, VIETNAM')}]
+    values=comparison_values('port_loading',mixed,mixed)
+    assert len(set(values[:3]))==1 and values[3]!=values[0]
 
 def test_vessel_suffix_needs_an_explicit_independent_voyage():
     group=rows('vessel',['AMALIA C','AMALIA C 074B'])

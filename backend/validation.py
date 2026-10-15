@@ -53,8 +53,9 @@ def comparison_values(key, group, records):
             name=re.sub(r'\bPORT\b','',tokens[0]);name=' '.join(name.split())
             country=' '.join(tokens[1:]).replace('VIET NAM','VIETNAM').strip()
             parts.append((name,country))
-        if len({n for n,_ in parts})==1 and len({c for _,c in parts if c})<=1:
-            return [parts[0][0]]*len(parts)
+        countries={name:{c for n,c in parts if n==name and c} for name,_ in parts}
+        if all(len(v)<=1 for v in countries.values()):
+            return [(name,next(iter(countries[name]),'')) for name,_ in parts]
     if key=='vessel':
         # Only remove a suffix if another source explicitly has that same
         # vessel AND a separate voyage field. Preserve every raw source value.
@@ -161,6 +162,11 @@ def build_checks(case, documents, records):
             for key in keys:
                 field_docs = [d for d in matching if kind != 'Contract' or d['type'] == ('Purchase Order' if key == 'po_number' else 'Contract')]
                 missing_docs=[d for d in field_docs if not any(r['document_id']==d['id'] for r in fields.get(key,[]))]
+                # Shared parties can be documented by the signed contract. Never
+                # invent an Invoice buyer from its bank/transport consignee.
+                if kind=='Invoice' and key in ['buyer','seller'] and any(
+                    docs.get(r['document_id'],{}).get('type') in ['Contract','Purchase Order'] for r in fields.get(key,[])):
+                    missing_docs=[]
                 if not field_docs or missing_docs:
                     missing_sources=[{'id':'missing:'+d['id']+':'+key,'document_id':d['id'],'document':d['name'],'type':d['type'],
                         'missing_field':key,'field_label':FIELDS[key]['label'],'value':{'text':''},'page':1} for d in missing_docs]
@@ -220,7 +226,8 @@ def build_checks(case, documents, records):
         elif len(set(values)) > 1:
             # Same field across multiple independent invoices cannot automatically be a conflict.
             doc_types = [s['type'] for s in sources]
-            if commercial and 'Booking' in doc_types:
+            contract_scope=any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight','port_loading','port_discharge','incoterms']
+            if commercial and 'Booking' in doc_types and not contract_scope:
                 result = 'Needs Verification'
                 reason = 'Booking là kế hoạch đặt chỗ. Giá trị khác nguồn thương mại/đóng gói cần kiểm phạm vi và phiên bản; chưa kết luận chứng từ sai.'
             elif commercial and any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight']:

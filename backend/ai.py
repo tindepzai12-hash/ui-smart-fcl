@@ -34,6 +34,7 @@ def origin_supported(value, quote):
 
 SHIPPING_MARKS_LABEL = r'(?i)\b(?:shipping\s*marks(?:\s*(?:&|and)\s*(?:nos?\.?|numbers?))?|marks\s*(?:&|and)\s*(?:nos?\.?|numbers?))\s*[:：]|ký\s*mã\s*hiệu\s*[:：]'
 CONSIGNEE_LABEL = r'(?i)\b(?:consignee|ship\s*to|deliver\s*to|delivery\s*address)\b|người\s*nhận\s*hàng'
+BUYER_LABEL = r'(?i)\b(?:buyer|purchaser|bill\s*to|sold\s*to)\b|người\s*mua'
 PACKING_NUMBER_LABEL = r'(?i)\bpacking\s*(?:list\s*)?(?:no\.?|number|reference|ref\.?)\b|số\s*(?:phiếu\s*)?đóng\s*gói'
 NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?)|n\.?\s*w\.?)\b|trọng\s*lượng\s*tịnh'
 
@@ -360,6 +361,8 @@ def validate_result(result, pages):
         if f.field_id=='invoice_total' and result.document_type=='Customs Declaration' and not re.search(r'(?i)tổng\s+trị\s+giá\s+hóa\s+đơn|total\s+invoice\s+(?:value|amount)',field_evidence):
             raise ValueError('Tổng trị giá hóa đơn trên tờ khai cần nhãn tổng; không dùng trị giá tính thuế hoặc từng dòng hàng')
         source_page = next((p for p in pages if p['number'] == f.source_page), {})
+        if f.field_id=='buyer' and re.search(CONSIGNEE_LABEL+r'|(?i:notify\s+party)',field_evidence) and not re.search(BUYER_LABEL,field_evidence):
+            raise ValueError('Người mua cần nhãn Buyer/Bill To/Sold To; Consignee hoặc Notify Party không chứng minh vai trò Buyer')
         if party_cell_support(f.field_id, f.raw_value, source_page) is False:
             raise ValueError('Tên bên nghiệp vụ không thuộc ô có nhãn vai trò tương ứng; không lấy công ty ở cột đại lý bên cạnh')
         if f.field_id == 'shipping_marks' and not any(evidence_ok(f.raw_value,field_evidence[m.end():m.end()+120],f.source_page,pages) for m in re.finditer(SHIPPING_MARKS_LABEL,field_evidence)):
@@ -591,6 +594,8 @@ def ground_source_format(result, pages):
     # Missing is not a rejected fabricated value. Empty model slots create no
     # record and no employee action; required missing fields remain in checklist.
     grounded.fields=[f for f in grounded.fields if f.raw_value.strip()]
+    grounded.fields=[f for f in grounded.fields if not (f.field_id=='buyer' and any(
+        p['number']==f.source_page and not re.search(BUYER_LABEL,p['text']) and re.search(CONSIGNEE_LABEL,p['text']) for p in pages))]
     # An absent discharge label means this optional role was not supplied.
     # FROM/TO alone describe a route and must not become discharge-port data.
     # Keep a genuine rejected reading when the role label does exist.
@@ -1080,7 +1085,7 @@ def analyze(case_id, document, pages):
         'Only when confirmed=true AND the content classifier is Other: use selected_type as the extraction target if independent_support_quote is nonempty; otherwise keep Other with no data. Quote existing identifying business labels for classification_evidence; never invent a title. When the content classifier is not Other, preserve its type, including a clear title conflicting with the staff choice. '
         'No tools/actions. Never infer HS, declaration/tax/customs codes. No invented values. '
         'Omit absent fields entirely; never return an empty raw_value or a placeholder for a missing ETA, voyage or actual arrival date. '
-        'Keep seller, exporter, shipper, buyer, importer and consignee roles separate. '
+        'Keep seller, exporter, shipper, buyer, importer and consignee roles separate. Consignee/Notify Party, including an order bank, is NOT evidence for buyer. Omit buyer if no Buyer/Bill To/Sold To role is printed; a buyer on the contract remains that contract source only. '
         'Party name fields contain only the company/person name; addresses and telephone belong in separate fields. '
         'Origin at field and item level requires a printed Country of Origin / Origin: / Made in label and the country in the SAME evidence quote. Seller address, port, company name and certificate issuer country never prove goods origin. If no origin label is printed, omit origin on all fields and items. '
         'Quantity units must be read from the actual quantity column/header (including Quantity followed by a separate line such as (KGS)), using exact unit_line or cell_evidence. Do not leave a unit null when that applicable header is readable; do not substitute packing weight, net/gross weight or price unit for quantity. '

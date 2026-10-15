@@ -25,6 +25,8 @@ Packing List, Booking, Invoice, C/O (nếu có), Hợp đồng/Sales Contract (P
 
 Shipper, Consignee và Notify Party phải thuộc đúng ô có nhãn tương ứng. Không lấy tên đại lý ở cột bên cạnh chỉ vì văn bản OCR/PDF xen kẽ các cột. Bằng chứng có tên công ty chưa đủ chứng minh vai trò. Nếu bố cục không rõ, để thiếu/cần kiểm tra, không tự gán.
 
+Consignee/Notify Party không chứng minh Buyer, kể cả khi Consignee là ngân hàng nhận hàng theo lệnh. Chỉ nhận Buyer từ nhãn Buyer/Bill To/Sold To có nguồn rõ. Người mua ghi trên hợp đồng giữ nguồn hợp đồng, không tự điền vào Invoice thiếu nhãn người mua.
+
 ## Không thay thế các chỉ tiêu gần nhau
 
 - Booking: ETA phải gắn với cảng dỡ, không lấy ETA cảng xếp/nơi giao cuối. Số container không phải số kiện. Cargo Weight không tự trở thành Gross Weight.
