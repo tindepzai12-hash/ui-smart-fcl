@@ -200,3 +200,26 @@ def test_numeric_and_document_identifier_prefixes_are_not_literal_values():
     with pytest.raises(ValueError,match='định danh nguồn'):ai.validate_result(candidate,pages)
     candidate.fields[0]=field('invoice_number','INV-1000','Invoice No: INV-1000')
     assert ai.validate_result(candidate,pages)[0]['raw']=='INV-1000'
+
+
+def test_optional_packing_roles_cannot_be_guessed_from_adjacent_columns_or_risk_party():
+    pages=[{'number':1,'text':'PACKING LIST\nInvoice No: I-9\nFor Account & Risk of Messrs: EXAMPLE LTD\nMarks&Nos. Description of goods\nN/M BLUE BOLTS'}]
+    candidate=output('Packing List','PACKING LIST',[field('invoice_number','I-9','Invoice No: I-9'),
+        field('consignee','EXAMPLE LTD','For Account & Risk of Messrs: EXAMPLE LTD'),
+        field('shipping_marks','BLUE BOLTS','N/M BLUE BOLTS')])
+    records,rejected=ai.validated_subset(candidate,pages)
+    assert [r['key'] for r in records]==['invoice_number'] and len(rejected)==2
+    pages[0]['text']+='\nConsignee: EXAMPLE LTD\nShipping Marks: N/M'
+    candidate.fields[1]=field('consignee','EXAMPLE LTD','Consignee: EXAMPLE LTD')
+    candidate.fields[2]=field('shipping_marks','N/M','Shipping Marks: N/M')
+    records,rejected=ai.validated_subset(candidate,pages)
+    assert not rejected and records[-1]['raw']=='N/M'
+
+
+def test_currency_field_can_use_an_unambiguous_printed_header_and_positive_sign_must_not_be_inferred():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nAmount(USD)\nTOTAL: US$100.00\nAdjustment: -100.00'}]
+    assert not ai.evidence_ok('100.00','Adjustment: -100.00',1,pages)
+    candidate=output('Invoice','COMMERCIAL INVOICE',[field('currency','USD','TOTAL: US$100.00')])
+    grounded=ai.ground_source_format(candidate,pages)
+    records,rejected=ai.validated_subset(grounded,pages)
+    assert not rejected and records[0]['raw']=='USD' and records[0]['evidence']=='Amount(USD'

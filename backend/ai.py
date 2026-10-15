@@ -32,6 +32,8 @@ def origin_supported(value, quote):
     return any(evidence_ok(value, quote[m.end():m.end()+160], 1, [{'number':1,'text':quote}])
                for m in re.finditer(ORIGIN_LABEL, quote))
 
+SHIPPING_MARKS_LABEL = r'(?i)\b(?:shipping\s*marks(?:\s*(?:&|and)\s*(?:nos?\.?|numbers?))?|marks\s*(?:&|and)\s*(?:nos?\.?|numbers?))\s*[:：]|ký\s*mã\s*hiệu\s*[:：]'
+CONSIGNEE_LABEL = r'(?i)\b(?:consignee|ship\s*to|deliver\s*to|delivery\s*address)\b|người\s*nhận\s*hàng'
 PACKING_NUMBER_LABEL = r'(?i)\bpacking\s*(?:list\s*)?(?:no\.?|number|reference|ref\.?)\b|số\s*(?:phiếu\s*)?đóng\s*gói'
 NET_WEIGHT_LABEL = r'(?i)\b(?:net\s*(?:weight|wt\.?)|n\.?\s*w\.?)\b|trọng\s*lượng\s*tịnh'
 NO_INFERENCE_POLICY = (Path(__file__).resolve().parents[1] / 'docs' / 'AI_NO_INFERENCE.md').read_text(encoding='utf-8')
@@ -262,7 +264,7 @@ def evidence_ok(value, evidence, page, pages):
     if not evidence.strip() or norm(evidence) not in norm(source): return False
     literal=norm(value); quote=norm(evidence)
     if re.fullmatch(r'[+-]?\d[\d., ]*',literal):
-        return bool(re.search(r'(?<![\d.,])'+re.escape(literal)+r'(?![\d.,])',quote))
+        return bool(re.search(r'(?<![\d.,+-])'+re.escape(literal)+r'(?![\d.,])',quote))
     if literal and literal[0].isdigit() and literal[-1].isdigit():
         return bool(re.search(r'(?<!\d)'+re.escape(literal)+r'(?!\d)',quote))
     return literal in quote
@@ -294,6 +296,10 @@ def validate_result(result, pages):
         field_evidence=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages):
             raise ValueError('AI trả giá trị không có bằng chứng nguồn')
+        if f.field_id == 'shipping_marks' and not any(evidence_ok(f.raw_value,field_evidence[m.end():m.end()+120],f.source_page,pages) for m in re.finditer(SHIPPING_MARKS_LABEL,field_evidence)):
+            raise ValueError('Ký mã hiệu thiếu nhãn gắn trực tiếp với giá trị; không dùng mô tả hàng ở cột bên cạnh')
+        if f.field_id == 'consignee' and result.document_type=='Packing List' and not any(re.search(CONSIGNEE_LABEL,p['text']) for p in pages if p['number']==f.source_page):
+            raise ValueError('Packing List chưa ghi rõ vai trò người nhận hàng; For Account & Risk không chứng minh Consignee')
         if f.field_id == 'packing_number' and not any(evidence_ok(f.raw_value, field_evidence[m.end():m.end()+160], f.source_page, pages) for m in re.finditer(PACKING_NUMBER_LABEL,field_evidence)):
             raise ValueError('Số Packing List thiếu nhãn số chứng từ; không dùng số kiện hoặc số Invoice thay thế')
         if f.field_id == 'origin' and not origin_supported(f.raw_value, field_evidence):
@@ -417,6 +423,10 @@ def ground_source_format(result, pages):
     for f in grounded.fields:
         try: quote=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         except ValueError: continue
+        if f.field_id=='currency' and f.raw_value in currencies and not evidence_ok(f.raw_value,quote,f.source_page,pages):
+            header=explicit_currency(f.source_page,f.raw_value)
+            if header:
+                f.evidence_text=header;f.evidence_start_line=None;f.evidence_end_line=None
         if FIELDS[f.field_id]['type'] in ['number','weight','quantity']:
             f.raw_value=exact_number(f.raw_value,quote,f.source_page)
         if f.unit in currencies:
@@ -601,7 +611,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v15-source-literal-format|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v16-packing-role-evidence|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])
@@ -614,6 +624,10 @@ def analyze(case_id, document, pages):
                  if k in REVIEW_FIELDS and v['documents'] and (target_type=='Other' or target_type in v['documents'])}
     if not re.search(DISCHARGE_LABEL,'\n'.join(p['text'] for p in pages)):
         permitted.pop('port_discharge',None)
+    if not any(re.search(SHIPPING_MARKS_LABEL,p['text']) for p in pages):
+        permitted.pop('shipping_marks',None)
+    if target_type=='Packing List' and not any(re.search(CONSIGNEE_LABEL,p['text']) for p in pages):
+        permitted.pop('consignee',None)
     if not any(re.search(PACKING_NUMBER_LABEL,p['text']) for p in pages):
         permitted.pop('packing_number',None)
     if not any(re.search(ORIGIN_LABEL,p['text']) for p in pages):
@@ -646,6 +660,7 @@ def analyze(case_id, document, pages):
         'Always supply a description cell_evidence for each item. A numeric row does not prove a description printed on another line. Point description to its actual printed line(s), and numeric cells to their own lines; never rewrite or concatenate disjoint description fragments into a new string. '
         'A unit or currency printed in a table column header can be copied with a cell_evidence quote of that header. Use null if not printed. Never combine two different rows. '
         'For numeric fields with units/currency in a separate cell, raw_value is the exact number, unit is the printed unit/currency, unit_evidence quotes that separate cell on the SAME page. Otherwise unit and unit_evidence=null. '
+        'shipping_marks requires an explicit Shipping Marks: / Marks and Numbers: label with the mark value in the same quote. Do not use the commodity description from an adjacent column. If a table mark cell cannot be associated unambiguously, omit shipping_marks for human review. On Packing Lists, For Account & Risk of Messrs is not an explicit Consignee/Ship To label: omit consignee unless the receiving role is printed. '
         'packing_number requires an explicit Packing List No / Packing No / Packing Number label and its value in the same quote. A Packing List may have only Invoice No: keep that as invoice_number, omit packing_number. Package counts such as 840BAGS are never document numbers. '
         'When another column interrupts a description in the source text, copy a contiguous commodity-name fragment with its own source quote; do not concatenate fragments or omit an otherwise supported row. Missing description details remain for human review in the original. '
         'For Contract and Purchase Order, read independent item rows and their quantity/price/currency headers as printed, including MT quantities and USD/MT prices. Retain source units without converting raw values. '

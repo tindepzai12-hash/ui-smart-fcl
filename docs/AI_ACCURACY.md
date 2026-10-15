@@ -34,3 +34,5 @@ Nguồn đối chiếu: [OpenAI — Model optimization](https://developers.opena
 - Mass quantities are compared through explicit KG/MT/LB conversion with an explanatory check; raw values and source units are retained. Named-month date punctuation is normalized deterministically.
 
 - Source-format grounding: if the model changes numeric punctuation, recover the uniquely equal numeric literal only inside its existing valid source quote. Multiple alternatives or ambiguous numbers stay rejected. Currency evidence may use a printed Amount/Currency/Unit-price header only when the page has one unambiguous currency; symbols alone are insufficient. The unchanged validator still checks the result.
+
+- Optional Packing List roles stay conservative: an account/risk party is not automatically a consignee, and a neighboring commodity description is not shipping marks. Ambiguous table marks remain for human review rather than being forced into a field.
