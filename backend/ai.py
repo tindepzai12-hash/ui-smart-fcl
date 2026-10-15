@@ -519,6 +519,23 @@ def packing_summary_fields(pages):
         for table in page.get('tables',[]):
             if not table: continue
             columns={}
+            quantity_columns=[i for i,h in enumerate(table[0]) if re.fullmatch(r'(?i)\s*(?:quantity|qty\.?)\s*',h or '')]
+            unit_columns=[i for i,h in enumerate(table[0]) if re.fullmatch(r'(?i)\s*(?:unit|uom|u/m)\s*',h or '')]
+            if len(quantity_columns)==len(unit_columns)==1:
+                qi,ui=quantity_columns[0],unit_columns[0]
+                data_rows=[r for r in table[1:] if qi<len(r) and r[qi] and not any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*',c or '') for c in r)]
+                units={r[ui].strip() for r in data_rows if ui<len(r) and r[ui]}
+                # The total inherits a Unit column only when every quantity row
+                # explicitly prints the same unit. Never add quantities or choose
+                # between mixed/missing units.
+                if data_rows and len(units)==1 and all(ui<len(r) and r[ui] for r in data_rows):
+                    unit=next(iter(units))
+                    if re.fullmatch(r'(?i)PCS|PIECES?|SETS?|CTNS?|CARTONS?|BAGS?|KGS?|KGM|MT',unit):
+                        for row in table[1:]:
+                            if qi<len(row) and row[qi] and any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*',c or '') for c in row):
+                                raw=row[qi].strip()
+                                if (ui>=len(row) or not row[ui] or row[ui].strip()==unit) and evidence_ok(raw,raw,page['number'],pages) and evidence_ok(unit,unit,page['number'],pages):
+                                    recovered.setdefault('goods_quantity',[]).append(FieldResult(field_id='goods_quantity',raw_value=raw,unit=unit,unit_evidence=unit,source_page=page['number'],evidence_text=raw))
             for i,header in enumerate(table[0]):
                 header=header or '';label=re.sub(r'\s+',' ',header).casefold()
                 key=('net_weight' if re.search(r'net\s*(?:weight|wt)',label) else
@@ -557,18 +574,18 @@ def ground_source_format(result, pages):
     # Recover only labelled TOTAL or footer-bounded aggregate cells. The printed raw value
     # and header unit must also exist literally in this page's text. This does not
     # reconstruct rows, guess separators, or mark any value verified.
-    if grounded.document_type in ['Packing List','Invoice & Packing List']:
+    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List']:
         recovered=packing_summary_fields(pages)
         base={**grounded.model_dump(),'fields':[],'items':[],'containers':[]}
         for key,candidates in recovered.items():
             if len({(f.raw_value,normalize(f.raw_value+' '+f.unit,FIELDS[key]['type']).get('unit')) for f in candidates})!=1: continue
             existing=[f for f in grounded.fields if f.field_id==key]
-            def accepted(f):
+            def accepted(f, require_clear=False):
                 try:
-                    validate_result(DocumentResult.model_validate({**base,'fields':[f.model_dump()]}),pages)
-                    return True
+                    rows=validate_result(DocumentResult.model_validate({**base,'fields':[f.model_dump()]}),pages)
+                    return not require_clear or not rows[0]['value'].get('warning')
                 except ValueError: return False
-            if any(accepted(f) for f in existing): continue
+            if any(accepted(f,require_clear=True) for f in existing): continue
             candidate=candidates[0]
             if accepted(candidate):
                 grounded.fields=[f for f in grounded.fields if f.field_id!=key]+[candidate]
@@ -618,6 +635,11 @@ def ground_source_format(result, pages):
                 f.evidence_text=source;f.evidence_start_line=None;f.evidence_end_line=None
         try: quote=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         except ValueError: continue
+        if not f.unit and f.field_id in ['goods_quantity','packages'] and re.fullmatch(r'\d[\d.,]*',f.raw_value):
+            allowed=(r'PCS|PIECES?|SETS?|KGS?|KGM|MT' if f.field_id=='goods_quantity' else r'CTNS?|CARTONS?|PACKAGES?|PKGS?|BAGS?')
+            matches=list(re.finditer(r'(?<![\d.,])'+re.escape(f.raw_value)+r'\s*\)?\s*('+allowed+r')(?!\w)',quote,re.I))
+            if len({m.group(1).upper() for m in matches})==1 and evidence_ok(quote,quote,f.source_page,pages):
+                f.unit=matches[0].group(1);f.unit_evidence=matches[0].group(0);f.unit_line=None
         if grounded.document_type=='Warehouse Receipt' and f.field_id=='packages':
             source=next((p['text'] for p in pages if p['number']==f.source_page),'')
             rows=list(re.finditer(r'(?im)^[ \t]*\d+[ \t]+(CT|CTN|CARTONS?|PKG|BAGS?)[ \t]+(\d+)[ \t]+\d[\d.,]*[ \t]+\d[\d.,]*[ \t]*$',source))

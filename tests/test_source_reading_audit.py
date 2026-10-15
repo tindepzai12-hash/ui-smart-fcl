@@ -115,3 +115,25 @@ def test_warehouse_unprinted_unit_is_omitted_without_losing_literal_number():
     rows=ai.validate_result(ai.ground_source_format(candidate,[page]),[page])
     assert len(rows)==2 and all(r['value']['unit'] is None and r['value']['warning'] for r in rows)
     assert candidate.fields[0].unit=='KGS'  # Original model candidate is not mutated.
+
+def test_printed_adjacent_units_are_retained_when_model_omits_them():
+    quote='SAY TOTAL: (1,200) PCS PACKED IN FIFTY SIX (56) CARTONS'
+    page={'number':1,'text':'PACKING LIST\n'+quote}
+    candidate=ai.DocumentResult(document_type='Packing List',classification_evidence='PACKING LIST',items=[],containers=[],
+        fields=[ai.FieldResult(field_id=k,raw_value=v,source_page=1,evidence_text=quote)
+                for k,v in [('goods_quantity','1,200'),('packages','56')]])
+    rows=ai.validate_result(ai.ground_source_format(candidate,[page]),[page])
+    assert {(r['key'],r['value']['number'],r['value']['unit']) for r in rows}=={('goods_quantity','1200','PCS'),('packages','56','CTN')}
+    assert all(not r['value']['warning'] for r in rows)
+
+@pytest.mark.parametrize('units',[['PCS','PCS'],['PCS','SET'],['PCS','']])
+def test_total_quantity_uses_uniform_printed_unit_column_only(units):
+    page={'number':1,'text':'INVOICE\n600 PCS\n600 '+units[1]+'\nTOTAL 1,200',
+          'tables':[[['Description','Quantity','Unit'],['CARRIER','600',units[0]],['BRACKET','600',units[1]],['TOTAL','1,200','']]]}
+    candidate=ai.DocumentResult(document_type='Invoice',classification_evidence='INVOICE',items=[],containers=[],
+        fields=[ai.FieldResult(field_id='goods_quantity',raw_value='1,200',source_page=1,evidence_text='TOTAL 1,200')])
+    row=ai.validate_result(ai.ground_source_format(candidate,[page]),[page])[0]
+    if units==['PCS','PCS']:
+        assert row['value']['number']=='1200' and row['value']['unit']=='PCS' and not row['value']['warning']
+    else:
+        assert row['value']['unit'] is None and row['value']['warning']
