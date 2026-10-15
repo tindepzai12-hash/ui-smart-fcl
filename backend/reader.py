@@ -1,5 +1,5 @@
 """Offline readers; preserve page/table boundaries. No document instructions executed."""
-import csv, io, os, shutil, subprocess, re, statistics
+import csv, io, os, shutil, subprocess, re, statistics, gc, sys, ctypes
 from pathlib import Path
 try:
     import fitz
@@ -113,7 +113,33 @@ def prepare_ocr_image(image):
             image=image.resize((int(image.width*scale),int(image.height*scale)),Image.Resampling.LANCZOS)
     return image
 
+def release_reader_memory():
+    """Discard native PDF/image caches between pages on memory-limited workers."""
+    if fitz is not None:
+        fitz.TOOLS.store_shrink(100)
+    gc.collect()
+    if sys.platform.startswith('linux'):
+        try:
+            ctypes.CDLL(None).malloc_trim(0)
+        except (AttributeError, OSError):
+            pass  # Non-glibc platforms can still release Python/PDF objects.
+
+
+def pdf_ocr_image(page):
+    # OCR already reads grayscale. Avoid simultaneous RGB pixmap, PNG buffer,
+    # decoded RGB image and grayscale copies of a full page.
+    pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72), colorspace=fitz.csGRAY, alpha=False)
+    return Image.frombytes('L', (pix.width, pix.height), pix.samples)
+
+
 def ocr(image, include_tables=False, psm=3):
+    try:
+        return _ocr(image, include_tables, psm)
+    finally:
+        release_reader_memory()
+
+
+def _ocr(image, include_tables=False, psm=3):
     status = ocr_status()
     if not status['ready']:
         raise ValueError('OCR local chưa sẵn sàng. Cài Tesseract và thử lại; PDF text vẫn đọc được.')
@@ -262,14 +288,15 @@ def read_document(path, progress=lambda *_: None, cancelled=lambda: False):
                             pass
                         text = preserve_pdf_content_order(page, text, tables)
                         if page.get_images():
-                            pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72))
-                            add(*hybrid_text(text, Image.open(io.BytesIO(pix.tobytes('png'))), tables))
+                            with pdf_ocr_image(page) as image:
+                                add(*hybrid_text(text, image, tables))
                         else:
                             add(text, 'PDF text', '', tables)
                     else:
-                        pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72))
-                        text, method, quality, tables = read_pdf_image(Image.open(io.BytesIO(pix.tobytes('png'))))
+                        with pdf_ocr_image(page) as image:
+                            text, method, quality, tables = read_pdf_image(image)
                         add(text, method, quality, tables)
+                    release_reader_memory()
         else:
             from pypdf import PdfReader
             import pdfplumber

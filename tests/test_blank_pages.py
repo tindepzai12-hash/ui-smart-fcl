@@ -45,3 +45,16 @@ def test_ocr_timeout_is_actionable_and_thread_limit_is_set(monkeypatch):
     monkeypatch.setattr(reader.pytesseract,'image_to_data',timeout)
     with pytest.raises(ValueError,match='60 giây'):
         reader.ocr(Image.new('RGB',(1000,1400),'white'))
+
+
+def test_pdf_ocr_grayscale_retains_original_numbers_and_page_geometry(tmp_path):
+    import pymupdf
+    path=tmp_path/'weights.pdf'
+    path.write_bytes(pdf('GROSS WEIGHT: 515.08 KGM\nNET WEIGHT: 391.20 KGM'))
+    with pymupdf.open(path) as doc:
+        page=doc[0]
+        expected=page.get_pixmap(matrix=pymupdf.Matrix(200/72,200/72),colorspace=pymupdf.csGRAY,alpha=False)
+        with reader.pdf_ocr_image(page) as image:
+            assert image.mode=='L' and image.size==(expected.width,expected.height)
+            assert image.tobytes()==expected.samples
+        assert '515.08' in page.get_text() and '391.20' in page.get_text()

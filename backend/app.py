@@ -630,6 +630,8 @@ def worker(job_id):
                 message = str(exc)[:600] if isinstance(exc, ValueError) else 'Không đọc/xử lý được tệp. Kiểm tra định dạng và thử lại.'
                 db.execute("UPDATE documents SET status='error',error=? WHERE id=?", (message, d['id']))
                 job['errors'].append({'document': d['name'], 'error': message})
+            finally:
+                reader.release_reader_memory()
         if mode=='openai' and not job['cancel'] and commercial_profile(json.loads(require_case(id)['requirements']),require_case(id)['mode']):
             job['stage']='OpenAI đối chiếu toàn bộ hồ sơ'
             case_docs=db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document'",(id,))
