@@ -23,6 +23,7 @@ import { TemplateCenter } from './TemplateCenter';
 import { PdfSplit } from './PdfSplit';
 import { SourceInspector } from './SourceInspector';
 import { UserGuide } from './UserGuide';
+import { OtherFiles } from './OtherFiles';
 
 type Any = any;
 
@@ -365,13 +366,14 @@ function App() {
     });
   }
 
-  async function loadSampleSet(conflict: boolean, purchaseOrder = false) {
-    if (current.documents.length) {
+  async function loadSampleSet(conflict: boolean, purchaseOrder = false, both = false) {
+    if (current.documents.length || current.reference_files?.length) {
       setError('Bộ mẫu chỉ nạp vào hồ sơ trống. Tạo hồ sơ riêng để thử nghiệm, tránh trộn với chứng từ đang làm.');
       return;
     }
     const files = await run(async () => {
       const names = ['invoice.txt', conflict ? 'packing-conflict.txt' : 'packing.txt', 'booking.txt', purchaseOrder ? 'po.txt' : 'contract.txt', 'co.txt'];
+      if (both) names.push('po.txt');
       return Promise.all(names.map(async (name) => {
         const response = await fetch('/api/samples/' + name);
         if (!response.ok) throw new Error('Không tải được bộ mẫu local.');
@@ -1378,17 +1380,12 @@ function App() {
                     </div>
                   </div>
 
-                  {!!current.reference_files?.length && <details className="excluded-files">
-                    <summary>Tệp không tham gia đối chiếu ({current.reference_files.length})</summary>
-                    <p>Tệp lưu từ phiên bản trước hoặc được AI nhận diện là ảnh không chứa chứng từ. Nếu nhận diện nhầm, chuyển về Chứng từ rồi xác nhận loại và đọc lại.</p>
-                    {current.reference_files.map((file: Any) => <div className="excluded-file" key={file.id}>
-                      <div><strong>{file.name}</strong>{file.collection_reason && <p>{file.collection_reason}</p>}</div>
-                      <div className="row">
-                        <a className="btn small" href={`/api/documents/${file.id}/original`} download>Tải bản gốc</a>
-                        <button className="btn small" disabled={loading || job?.status === 'running'} onClick={() => update(() => patch('/documents/' + file.id + '/collection', { collection: 'document', reason: 'Người dùng xác nhận đây là chứng từ' }), 'Đã chuyển về Chứng từ · xác nhận loại rồi đọc lại')}>Chuyển về Chứng từ</button>
-                      </div>
-                    </div>)}
-                  </details>}
+                  <OtherFiles files={current.other_files || current.reference_files || []}
+                    types={[...dict.document_types, 'Invoice & Packing List']}
+                    disabled={loading || job?.status === 'running'}
+                    onRestore={(file: Any, kind: string) => update(() => patch('/documents/' + file.id + '/collection', {
+                      collection: 'document', document_type: kind, reason: 'Nhân viên kiểm bản gốc và xác nhận đưa vào bộ chính',
+                    }), 'Đã đưa vào bộ chính · bấm Đọc & trích xuất để kiểm dữ liệu')} />
 
                   {mode === 'openai' && (
                     <div className="alert info">
@@ -1464,7 +1461,7 @@ function App() {
                       <div className="sample-loader">
                         <details><summary>Chứng từ để kiểm thử</summary>
                         <small>5 tệp TXT giả lập cùng một lô. Chọn bộ dùng Sales Contract hoặc PO; bộ sai lệch có số Invoice tham chiếu trên Packing List khác hóa đơn.</small>
-                        <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false)}>Bộ mẫu chuẩn</button>
+                        <button className="btn small" disabled={loading || !!current.documents.length || !!current.reference_files?.length} onClick={() => loadSampleSet(false, false, true)}>Bộ mẫu 6 loại</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false, true)}>Bộ mẫu dùng PO</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(true)}>Bộ mẫu sai lệch</button>
                         </details>
@@ -1731,8 +1728,8 @@ function App() {
                       </p>
                       <div className="segments">
                         {[
-                          ['field', `Trường (${current.records.filter((r: Any) => r.kind === 'field').length})`],
-                          ['item', `Hàng (${current.records.filter((r: Any) => r.kind === 'item').length})`],
+                          ['field', `Thông tin chứng từ (${current.records.filter((r: Any) => r.kind === 'field').length})`],
+                          ['item', `Dòng hàng hóa (${current.records.filter((r: Any) => r.kind === 'item').length})`],
                         ].map(([id, t]) => (
                           <button
                             key={id}

@@ -171,7 +171,7 @@ tbody tr:hover{background:#fbfdff}
 .fields-pane{display:flex;flex-direction:column;border-left:1px solid var(--line);min-width:0;background:#fff}
 .pane-help{color:var(--muted);font-size:12px;line-height:1.55;padding:10px 14px 6px}
 .segments{display:flex;background:#f1f5f9;border-radius:6px;padding:3px;margin:4px 14px 8px;gap:3px}
-.segments button{flex:1;border:0;border-radius:4px;padding:6px;font-size:12px;background:none;color:#64748b;white-space:nowrap;font-weight:500}
+.segments button{flex:1;min-width:0;border:0;border-radius:4px;padding:6px;font-size:12px;line-height:1.4;background:none;color:#64748b;white-space:normal;font-weight:500}
 .segments button.active{background:#fff;color:#155eef;box-shadow:0 1px 3px #102a4312;font-weight:600}
 .filter-pills{display:flex;gap:6px;padding:0 14px 10px;flex-wrap:wrap}
 .pill-btn{border:1px solid var(--line);background:#f8fafc;color:#475569;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:500}
@@ -445,6 +445,19 @@ blockquote{margin:8px 0;padding:9px 12px;border-left:3px solid #a6c5fa;backgroun
 .excluded-file{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
 .excluded-file>div:first-child{min-width:0;flex:1 1 240px;overflow-wrap:anywhere}
 .excluded-file p{margin:4px 0;max-width:75ch}
+.other-files{margin:16px 0;padding:12px 16px;border:1px solid var(--line);border-radius:12px;font-size:13px}
+.other-files summary{cursor:pointer;font-weight:600;padding:4px 0}
+.other-files>p,.other-file p{max-width:75ch;line-height:1.6}
+.other-files ul{list-style:none;margin:0;padding:0}
+.other-file{padding:16px 0;border-top:1px solid var(--line);min-width:0;overflow-wrap:anywhere}
+.other-file-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.other-file-heading>div:first-child{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.other-restore{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.other-restore label,.other-preview label{display:grid;gap:6px;flex:1 1 230px;max-width:380px}
+.other-restore select,.other-preview select{width:100%;min-width:0}
+.other-preview{margin:12px 0;max-height:480px;overflow:auto;background:#f8fafc;border-radius:8px;padding:12px}
+.other-preview img{display:block;max-width:100%;height:auto;margin-top:8px}
+.other-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;line-height:1.65}
 
 .document-check-group {border:1px solid var(--border,#dce4ef);border-radius:10px;margin-top:12px;overflow:hidden;}
 .document-check-group>summary {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px;cursor:pointer;list-style:none;background:#f8faff;}

@@ -83,6 +83,7 @@ class ClassInput(Input):
 class CollectionInput(Input):
     collection: Literal['document', 'reference']
     reason: str = Field(default='', max_length=1000)
+    document_type: Optional[str] = None
 
 class SplitGroup(ClassInput):
     start: int = Field(ge=1, le=100)
@@ -152,7 +153,7 @@ def require_record(id):
 def require_working_doc(id):
     doc = require_doc(id)
     if doc.get('collection', 'document') != 'document':
-        raise HTTPException(409, 'Tệp thuộc bộ ảnh riêng. Chuyển về Chứng từ trước khi trích xuất hoặc xác minh.')
+        raise HTTPException(409, 'Tệp thuộc Giấy tờ khác. Chọn đúng loại và đưa vào bộ chính trước khi trích xuất hoặc xác minh.')
     return doc
 
 def working_records(id):
@@ -175,7 +176,9 @@ def bundle(id):
             d['split_suggestion'] = pdf_bundle.suggest(text_pages)
             d['mixed_pdf'] = pdf_bundle.is_mixed(text_pages)
         d['source'] = db.one('SELECT s.id,s.name,s.hash,m.start_page,m.end_page FROM document_sources m JOIN bundle_sources s ON s.id=m.source_id WHERE m.document_id=?', (d['id'],))
-    references = db.rows("SELECT id,name,ext,size,collection_reason,status FROM documents WHERE case_id=? AND collection='reference' ORDER BY rowid", (id,))
+    references = db.rows("SELECT id,name,type,ext,size,collection_reason,classification_evidence,reading_method,status,error FROM documents WHERE case_id=? AND collection='reference' ORDER BY rowid", (id,))
+    for d in references:
+        d['pages'] = db.rows('SELECT number,method,quality,length(text) characters FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
     records = working_records(id)
     checks = db.rows('SELECT * FROM checks WHERE case_id=? ORDER BY rowid', (id,))
     for c in checks:
@@ -186,6 +189,7 @@ def bundle(id):
         'case': case,
         'documents': docs,
         'reference_files': references,
+        'other_files': references,
         'records': records,
         'checks': checks,
         'blockers': validation.blockers(case, docs, records, checks),
@@ -349,9 +353,17 @@ def collection(id: str, body: CollectionInput):
     with LOCK:
         doc = require_doc(id)
         busy(doc['case_id'])
+        if body.document_type is not None and (body.collection != 'document' or body.document_type not in PROFILE_TYPES + ['Invoice & Packing List']):
+            raise HTTPException(422, 'Chọn một trong 6 loại chứng từ chính trước khi đưa vào checklist.')
         if doc.get('collection', 'document') != body.collection:
             with db.connect() as c:
                 move_collection(c, doc, body.collection, body.reason or 'Người dùng xác nhận chuyển bộ')
+                if body.document_type is not None:
+                    if doc['type'] != body.document_type:
+                        c.execute("DELETE FROM records WHERE document_id=? AND status='pending' AND method NOT LIKE 'Manual%'", (id,))
+                    c.execute('UPDATE documents SET type=?,type_verified=1,error=NULL WHERE id=?', (body.document_type,id))
+                    db.audit(c,doc['case_id'],'Xác nhận loại khi đưa vào bộ chính',id,before=doc['type'],after=body.document_type,reason=body.reason)
+                    revalidate(c,doc['case_id'])
     return bundle(doc['case_id'])
 
 @app.get('/api/documents/{id}/original')
@@ -525,7 +537,7 @@ def worker(job_id):
                     if route.category == 'reference' and route.certainty == 'clear':
                         with db.connect() as c:
                             move_collection(c, d, 'reference', route.reason)
-                        job['warnings'].append({'document': d['name'], 'message': 'Tệp không tham gia đối chiếu: ' + route.reason + '. Xem mục Tệp không tham gia đối chiếu trong Chứng từ; có thể chuyển về nếu nhận diện nhầm.'})
+                        job['warnings'].append({'document': d['name'], 'message': 'Đã đưa vào Giấy tờ khác: ' + route.reason + '. Có thể kiểm bản gốc và đưa lại vào bộ chính.'})
                         continue
                     uncertain_image = route.category == 'uncertain' or route.certainty != 'clear'
                 if d['status'] in ['read', 'needs_split']:
@@ -568,6 +580,25 @@ def worker(job_id):
                     if d['type_verified']:
                         kind = d['type']
                     records = extraction.extract(pages, kind)
+                if job['cancel']:
+                    raise InterruptedError()
+                case = require_case(id)
+                commercial = commercial_profile(json.loads(case['requirements']),case['mode'])
+                main_types = PROFILE_TYPES + ['Invoice & Packing List']
+                # A staff correction is explicit. Keep it in the main set, but flag conflicting AI classification.
+                if commercial and d['type_verified'] and d['type'] in main_types and kind != d['type']:
+                    extraction_warning = f'Máy gợi ý {kind}, khác loại {d["type"]} đã được nhân viên xác nhận. Kiểm bản gốc và loại trước khi dùng dữ liệu.'
+                    kind, records = d['type'], []
+                    job['warnings'].append({'document':d['name'],'message':extraction_warning})
+                if commercial and kind not in main_types and not uncertain_image:
+                    reason = ('Không đủ căn cứ nhận diện 6 loại chính; cần xem lại bản gốc.' if kind == 'Other'
+                              else f'Nhận diện {kind}; nằm ngoài 6 loại chứng từ đang kiểm thử.')
+                    with db.connect() as c:
+                        c.execute("UPDATE documents SET type=?,classification_evidence=?,status='read',error=NULL WHERE id=?",(kind,evidence,d['id']))
+                        move_collection(c,d,'reference',reason)
+                        db.audit(c,id,'Phân loại vào Giấy tờ khác',d['id'],after={'type':kind,'evidence':evidence,'method':mode},reason=reason)
+                    job['warnings'].append({'document':d['name'],'message':'Giấy tờ khác: '+reason})
+                    continue
                 if job['cancel']:
                     raise InterruptedError()
                 with db.connect() as c:

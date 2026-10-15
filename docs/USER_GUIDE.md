@@ -20,13 +20,13 @@ Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nú
 
 **Việc nhân viên làm:** Nhận Packing List, Booking, Invoice và Hợp đồng hoặc PO. Có C/O thì nhận thêm. Có thể chọn nhiều file một lần, tên file không cần chứa loại chứng từ.
 
-**Thao tác trên web:** Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại.
+**Thao tác trên web:** Tạo hồ sơ → Thêm chứng từ → chọn các file → chọn OpenAI hoặc Xử lý Local → Đọc & trích xuất. Với OpenAI, xác nhận cho phép gửi chứng từ trước khi chạy. PDF nhiều loại: bấm Tách bộ PDF và kiểm khoảng trang. Sau đọc, kiểm gợi ý Loại chứng từ và bấm Xác nhận loại. Tệp ngoài 6 loại chính được đưa vào Giấy tờ khác bên dưới thanh Đọc & trích xuất; mở Xem bản gốc để kiểm. Nếu máy phân loại nhầm: chọn loại đúng → Đưa vào bộ chính → Đọc & trích xuất lại.
 
 **Kiểm tra trong ví dụ sầu riêng:** Dù file tên 1.pdf, nội dung PACKING LIST phải nhận là Packing List. SALES CONTRACT nhận Contract; PURCHASE ORDER nhận Purchase Order. Không đổi PO thành Contract để đủ checklist.
 
 **Khi nào chuyển bước?:** Các file đã đọc, loại đã được kiểm theo nội dung; mỗi file hoặc nhóm trang chứa đúng một chứng từ.
 
-**Nếu chưa đạt:** Không rõ loại: xem tiêu đề và mục đích nội dung, kiểm bản gốc rồi chọn lại. Scan mờ: xin bản rõ hơn. C/O không có thì bỏ qua; không cần tạo file trống.
+**Nếu chưa đạt:** Không rõ loại: xem tiêu đề và mục đích nội dung, kiểm bản gốc rồi chọn lại. Scan mờ: xin bản rõ hơn. C/O không có thì bỏ qua; không cần tạo file trống. Tệp lỗi hoặc ảnh chưa đủ rõ vẫn cần kiểm tra; không tự coi là giấy tờ không liên quan.
 
 
 
@@ -34,7 +34,7 @@ Các số dưới đây chỉ để hướng dẫn thao tác. Bộ mẫu có nú
 
 **Việc nhân viên làm:** Kiểm trường và dòng hàng từ bản gốc. AI/OCR hỗ trợ đọc, trạng thái chờ xác minh không có nghĩa chứng từ sai.
 
-**Thao tác trên web:** Mở Xác minh → chọn bản ghi → Xem nguồn. Kiểm trang, câu trích dẫn và vùng được đánh dấu. Sai thì sửa, ghi lý do, lưu rồi Xác minh. Máy không xác định được tọa độ thì kiểm trang/câu nguồn; không coi khung gần đó là bằng chứng chắc chắn.
+**Thao tác trên web:** Mở Xác minh → chọn bản ghi → Xem nguồn. Kiểm trang, câu trích dẫn và vùng được đánh dấu. Sai thì sửa, ghi lý do, lưu rồi Xác minh. Máy không xác định được tọa độ thì kiểm trang/câu nguồn; không coi khung gần đó là bằng chứng chắc chắn. Thông tin chứng từ là các bản ghi theo từng nguồn; Dòng hàng hóa là từng mặt hàng trong bảng, không phải số kiện/container.
 
 **Kiểm tra trong ví dụ sầu riêng:** Invoice: số/ngày, người bán/mua, USD, tổng 81.000. PL: số PL, 1.000 thùng, GW 19.500 kg và NW 18.000 kg giữ riêng. Booking: số BK, cảng đi/đến, ETD/ETA nếu ghi. Hợp đồng/PO: số riêng và điều kiện giao dịch nếu ghi.
 
