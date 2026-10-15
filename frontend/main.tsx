@@ -365,13 +365,13 @@ function App() {
     });
   }
 
-  async function loadSampleSet(conflict: boolean) {
+  async function loadSampleSet(conflict: boolean, purchaseOrder = false) {
     if (current.documents.length) {
       setError('Bộ mẫu chỉ nạp vào hồ sơ trống. Tạo hồ sơ riêng để thử nghiệm, tránh trộn với chứng từ đang làm.');
       return;
     }
     const files = await run(async () => {
-      const names = ['invoice.txt', conflict ? 'packing-conflict.txt' : 'packing.txt', 'booking.txt', 'contract.txt', 'co.txt'];
+      const names = ['invoice.txt', conflict ? 'packing-conflict.txt' : 'packing.txt', 'booking.txt', purchaseOrder ? 'po.txt' : 'contract.txt', 'co.txt'];
       return Promise.all(names.map(async (name) => {
         const response = await fetch('/api/samples/' + name);
         if (!response.ok) throw new Error('Không tải được bộ mẫu local.');
@@ -1463,8 +1463,9 @@ function App() {
                       </div>
                       <div className="sample-loader">
                         <details><summary>Chứng từ để kiểm thử</summary>
-                        <small>Cùng một lô FCL giả lập · 6 chứng từ/PDF. Tải lên hai hồ sơ riêng, đọc rồi tách bộ PDF để so sánh.</small>
+                        <small>5 tệp TXT giả lập cùng một lô. Chọn bộ dùng Sales Contract hoặc PO; bộ sai lệch có số Invoice tham chiếu trên Packing List khác hóa đơn.</small>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false)}>Bộ mẫu chuẩn</button>
+                        <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(false, true)}>Bộ mẫu dùng PO</button>
                         <button className="btn small" disabled={loading || !!current.documents.length} onClick={() => loadSampleSet(true)}>Bộ mẫu sai lệch</button>
                         </details>
                       </div>
@@ -2130,7 +2131,7 @@ function App() {
                     const matches = current.documents.filter((d: Any) => d.type === group.type || (group.type === 'Contract' && d.type === 'Purchase Order') || (['Invoice','Packing List'].includes(group.type) && d.type === 'Invoice & Packing List'));
                     const rule = current.case.requirements[group.type] || {required:false};
                     return <details className="document-check-group" key={group.type}>
-                      <summary><span><strong>{group.type === 'Contract' ? 'Hợp đồng / Đơn đặt hàng' : group.label}</strong><small>{matches.length ? matches.map((d: Any) => d.type + ' · ' + d.name).join(' | ') : group.type === 'C/O' ? 'Chưa có C/O — không chặn hồ sơ' : 'Chưa có chứng từ trong nhóm này'}</small></span><span className={'badge '+(matches.length ? 'good' : rule.required ? 'bad' : 'neutral')}>{matches.length ? `${matches.length} tệp` : rule.required ? 'Cần bổ sung' : 'Nếu có'}</span></summary>
+                      <summary><span><strong>{group.type === 'Contract' ? 'Hợp đồng / Đơn đặt hàng' : group.label}</strong><small>{matches.length ? matches.map((d: Any) => d.type + ' · ' + d.name).join(' | ') : group.type === 'C/O' ? 'Chưa có C/O — không chặn hồ sơ' : 'Chưa có chứng từ trong nhóm này'}</small></span><span className={'badge '+(matches.length ? 'good' : rule.required ? 'bad' : 'neutral')}>{matches.length ? `${matches.length} tệp` : rule.required ? 'Cần bổ sung' : 'Nếu có'}</span><ChevronRight size={16} aria-hidden="true" className="checklist-chevron"/></summary>
                       <div className="document-check-body"><p className="muted">{group.type === 'Booking' ? 'Đây là dữ liệu kế hoạch. Khác số lượng/khối lượng thực tế cần kiểm lại phạm vi, không tự kết luận chứng từ sai.' : group.type === 'Contract' ? 'Giữ riêng số và ngày PO/Sales Contract. Số lượng có thể thuộc nhiều đợt giao; kiểm đúng lô trước khi đối chiếu.' : group.type === 'C/O' ? 'Đọc số C/O, xuất xứ và dữ liệu liên quan. Kết quả đọc không xác thực tính hợp lệ của giấy.' : 'Bấm Xem nguồn để kiểm trên chứng từ gốc. Các trường chỉ có trên một số mẫu không mặc nhiên là bắt buộc.'}</p>
                       <div className="table-wrap"><table><thead><tr><th>Trường kiểm tra</th><th>Dữ liệu & nguồn</th><th>Thao tác</th></tr></thead><tbody>{group.fields.map((key: string) => {
                         const rows = current.records.filter((r: Any) => r.kind === 'field' && r.key === key && matches.some((d: Any) => d.id === r.document_id) && r.status !== 'rejected');

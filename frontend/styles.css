@@ -454,3 +454,5 @@ blockquote{margin:8px 0;padding:9px 12px;border-left:3px solid #a6c5fa;backgroun
 .check-source-value {display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0;}
 .steps {grid-template-columns:repeat(5,minmax(0,1fr));}
 @media(max-width:760px){.steps{grid-template-columns:repeat(2,minmax(0,1fr));}.document-check-group>summary{align-items:flex-start;}}
+
+.checklist-chevron{flex-shrink:0;color:#64748b}.document-check-group>summary>span:first-child{flex:1;min-width:0}.document-check-group[open] .checklist-chevron{transform:rotate(90deg)}
