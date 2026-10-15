@@ -33,6 +33,7 @@ function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false}
       <small>Giá trị đọc gốc: {typeof (record?.raw??source.raw)==='object'?JSON.stringify(record?.raw??source.raw):String(record?.raw??source.raw??'—')}</small></details>
     </>}
     {record?.value?.warning&&<p className="warning-text">{record.value.warning}</p>}
+    {record?.value?.source_parts?.length>0&&<p className="muted">{record.value.normalization_note}</p>}
     <button className="btn small" onClick={()=>setShow(!show)} aria-expanded={show}><Eye size={15}/>{show?'Ẩn bản gốc':record?'Hiện bản gốc có đánh dấu':'Xem trang gốc'}</button>
     {show&&!data&&!error&&<p role="status"><Loader2 className="spin" size={16}/> Đang định vị nguồn…</p>}
     {show&&data&&<><p className="muted">{data.message||(imageType?'Khung xanh đánh dấu chữ khớp; kiểm cả nhãn và đơn vị.':'Nội dung máy đọc trên trang nguồn; đối chiếu với tệp gốc nếu bố cục chưa rõ.')}</p>{imageType?<SourceImageViewer key={data.document_id+':'+data.page} src={`/api/documents/${data.document_id}/preview/${data.page}`} alt={`Nguồn ${source.document}, trang ${data.page}`} boxes={data.boxes||[]}/>:<div className="source-text"><pre>{data.text||'Trang chưa có văn bản đọc được.'}</pre></div>}</>}

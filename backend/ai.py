@@ -298,6 +298,32 @@ def source_quote(page, existing, start, end, pages):
         raise ValueError('Khoảng dòng bằng chứng không thuộc trang nguồn hoặc quá dài')
     return '\n'.join(lines[start-1:end])
 
+def labelled_cargo_parts(field, evidence, pages):
+    """Prove separated descriptions independently, without weakening numeric evidence."""
+    if field.field_id != 'cargo_description' or field.unit:
+        return []
+    parts = [p.strip() for p in field.raw_value.split(';')]
+    if not 2 <= len(parts) <= 20 or any(len(p.split()) < 3 for p in parts):
+        return []
+    if not evidence_ok(evidence, evidence, field.source_page, pages):
+        return []
+    norm = lambda s: re.sub(r'\s+', ' ', s).casefold().strip()
+    quote = norm(evidence)
+    labels = list(re.finditer(r'(?i)(?:mô\s+tả\s+hàng\s+hóa|description\s+of\s+goods|goods\s+description)\s*[:：]?', quote))
+    if len(labels) != len(parts) or len({norm(p) for p in parts}) != len(parts):
+        return []
+    proven = []
+    for index, (part, label) in enumerate(zip(parts, labels)):
+        cell = quote[label.end():labels[index+1].start() if index+1 < len(labels) else len(quote)].lstrip()
+        value = norm(part)
+        if not cell.startswith(value) or (len(cell) > len(value) and cell[len(value)].isalnum()):
+            return []
+        if re.search(r'(?i)số\s+lượng|trị\s+giá|thuế\s+xuất|quantity\s*[:：(]', value):
+            return []
+        proven.append({'text':part, 'page':field.source_page, 'label':label.group(0).strip()})
+    return proven
+
+
 def validate_result(result, pages):
     """No evidence-less data can enter persistence. AI never verifies a record."""
     classification_ok = any(evidence_ok(result.classification_evidence, result.classification_evidence, p['number'], pages) for p in pages)
@@ -312,7 +338,8 @@ def validate_result(result, pages):
         if not spec or result.document_type not in spec['documents']:
             raise ValueError('AI trả field ngoài dictionary/loại chứng từ')
         field_evidence=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
-        if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages):
+        description_parts = labelled_cargo_parts(f, field_evidence, pages) if result.document_type == 'Customs Declaration' else []
+        if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages) and not description_parts:
             raise ValueError('AI trả giá trị không có bằng chứng nguồn')
         source_page = next((p for p in pages if p['number'] == f.source_page), {})
         if party_cell_support(f.field_id, f.raw_value, source_page) is False:
@@ -418,6 +445,10 @@ def validate_result(result, pages):
             if not any(norm(f.raw_value) in norm(source[m.end():m.end()+80]) for m in re.finditer(labels,source)):
                 raise ValueError('Ngày hàng đến thực tế thiếu nhãn Arrival Date; không thay bằng ETA/ngày phát hành')
         normalized = normalize(f.raw_value, spec['type'])
+        if description_parts:
+            normalized['source_parts'] = description_parts
+            normalized['normalization_note'] = ('Mô tả gồm '+str(len(description_parts))+' đoạn nguyên văn ở các ô Mô tả hàng hóa trên cùng trang. '
+                'Dấu chấm phẩy chỉ phân cách khi hiển thị; từng đoạn được kiểm chứng riêng trên nguồn.')
         evidence = field_evidence
         if f.unit:
             unit_evidence=source_quote(f.source_page,f.unit_evidence,f.unit_line,None,pages)
@@ -800,7 +831,7 @@ def extraction_notice(rejected):
             details.append('Dòng hàng — thiếu trích dẫn đúng cho mô tả, số lượng hoặc đơn vị')
         else:
             details.append('Một phần dữ liệu chưa có đủ bằng chứng nguồn')
-    return (f'OpenAI chưa xác minh được {len(rejected)} mục dữ liệu; các giá trị này chưa được sử dụng. '
+    return (f'Đã đọc tệp. OpenAI chưa xác minh được {len(rejected)} mục dữ liệu; các giá trị này chưa được sử dụng. '
             + '; '.join(dict.fromkeys(details))+'. Mở bản gốc để kiểm tra phần còn thiếu.')
 
 
@@ -910,6 +941,7 @@ def analyze(case_id, document, pages):
         'The working scope is Invoice, Packing List, Booking, Contract (including Purchase Order subtype), Arrival Notice and optional C/O (including combined Invoice & Packing List). '
         'Also extract evidence-bound comparison fields from Customs Declaration (To khai hang hoa), Customs Release (Danh sach hang qua khu vuc giam sat) and Warehouse Receipt (Yeu cau/Phieu nhap kho). These support cross-document checking; never infer legal/customs codes. '
         'Customs Declaration: extract allowed HEADER fields only. Quantities on individual goods/item pages are not a shipment-total goods_quantity; omit them from header fields and never add them to fabricate a missing total. '
+        'For Customs Declaration cargo_description only, descriptions in distinct labelled goods-description cells on the SAME page may be displayed in source order separated by a semicolon. Copy every component verbatim (whitespace may collapse), starting immediately after its own goods-description label. The contiguous evidence range must include all those labels and components. The server proves each component independently and retains the separate source parts. Never apply this exception to numbers, units, totals, roles or unlabelled text. '
         'For documents outside those main and supporting types, classify the actual type and return fields=[], items=[], containers=[]; never force unrelated content into a main type. '
         'Staff classification context: '+encode({'selected_type':document['type'],'confirmed':bool(staff_type),'independent_support_quote':manual_quote})+'. '
         'Only when confirmed=true AND the content classifier is Other: use selected_type as the extraction target if independent_support_quote is nonempty; otherwise keep Other with no data. Quote existing identifying business labels for classification_evidence; never invent a title. When the content classifier is not Other, preserve its type, including a clear title conflicting with the staff choice. '
@@ -1009,7 +1041,7 @@ def analyze(case_id, document, pages):
                     'Do not invent unavailable values or normalize OCR punctuation. Keep units null if unproven. '
                     'For each diagnostic, identify the attribute that is NOT literally in its resolved quote. Find the actual source line containing it or omit/null that attribute. '
                     'USD is not a literal substring of US$: use a printed USD header with its own pointer, or keep that unit/currency null. '
-                    'Never concatenate disjoint description/address fragments across intervening cells into one raw value. Return an exact source span, or omit the value if it cannot be supported. '
+                    'Never concatenate disjoint description/address fragments across intervening cells into one raw value, except the explicitly specified same-page, separately labelled Customs Declaration cargo_description components whose literal text is independently validated. Otherwise return an exact source span, or omit the value if it cannot be supported. '
                     'If a row description is interrupted by numeric columns, use its contiguous printed commodity-name fragment as description with that fragment as cell evidence. Preserve supported quantity, unit, unit_price and line_amount in their own cells; do not discard the entire row for an unsupported extra descriptive clause. '
                     'Every returned value must have correct source pointers and literal evidence. '
                     'Targets: '+encode(targets)+'; diagnostics: '+encode(repair_diagnostics(result,pages,rejected)))

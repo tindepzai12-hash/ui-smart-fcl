@@ -3,6 +3,8 @@
 This policy is loaded into the extraction system instructions by backend/ai.py.
 It applies to the initial reading and the bounded correction pass.
 
+Customs descriptions in multiple labelled goods-description cells may be displayed together ONLY when each component is independently verified verbatim, in source order, on the same page. Keep every original component and its page as source_parts. A semicolon is a display separator, not source evidence. This narrow presentation rule never applies to numbers, units, totals, roles, invented wording or unrelated/unlabelled cells.
+
 1. Extract only information explicitly supported by the CURRENT document's supplied source pages. Never fill a value from general knowledge, filenames, previous cases, examples, another document, or an assumed business convention.
 2. Missing, illegible, ambiguous or unsupported information MUST remain null/omitted and require human review. An empty result is preferable to an invented or misleading result. Never fill fields to make the checklist look complete.
 3. A staff-selected document type specifies the extraction target only. It is NOT proof of a field value or of authenticity. If source headings clearly contradict it, report the conflict and do not force extraction. If the title is unreadable, use independently printed business labels; without such support return no fields/items.

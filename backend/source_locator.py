@@ -125,7 +125,14 @@ def inspect(doc, record, page):
     boxes=[]; message=''
     try:
         words=layout(doc['path'],page['number'],method)
-        boxes=locate(words,record['raw'],record['evidence'])
+        parts=record.get('value',{}).get('source_parts',[])
+        if parts:
+            for index,part in enumerate(parts):
+                if part.get('page')==page['number']:
+                    boxes.extend(locate(words,{'description_part_'+str(index+1):part['text']},record['evidence']))
+            if boxes:message='Từng đoạn mô tả đã được kiểm chứng và đánh dấu riêng trên ô nguồn; dấu chấm phẩy chỉ dùng khi hiển thị.'
+        else:
+            boxes=locate(words,record['raw'],record['evidence'])
         if not boxes and record['evidence']:
             raw=record['raw']
             candidate=' '.join(str(v) for k,v in raw.items() if v is not None and k not in {'line_number','scope'}) if isinstance(raw,dict) else str(raw)
