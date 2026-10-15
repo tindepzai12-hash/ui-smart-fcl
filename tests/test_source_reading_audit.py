@@ -45,6 +45,29 @@ def test_numeric_values_never_use_compound_description_exception():
     with pytest.raises(ValueError,match='bằng chứng'):
         ai.validate_result(result('3918; 600',key='gross_weight'),[{'number':1,'text':TEXT}])
 
+def test_partial_pointer_is_rebound_only_when_every_labelled_component_is_proven():
+    candidate=result(FIRST+'; '+SECOND,quote='Mô tả hàng hóa BLUE STEEL BICYCLE CARRIER\n  MADE IN VIET NAM')
+    page={'number':1,'text':TEXT}
+    grounded=ai.ground_source_format(candidate,[page])
+    assert len(ai.validate_result(grounded,[page])[0]['value']['source_parts'])==2
+    assert candidate.fields[0].evidence_text!=TEXT
+    candidate.fields[0].raw_value=FIRST+'; '+SECOND.replace('SILVER','GOLD')
+    with pytest.raises(ValueError,match='bằng chứng'):
+        ai.validate_result(ai.ground_source_format(candidate,[page]),[page])
+
+def test_declaration_invoice_total_requires_own_total_label_and_keeps_separator_warning():
+    for label in ['Tổng trị giá hóa đơn','Total Invoice Value']:
+        quote=label+' FOB - USD - 4.242'
+        candidate=result('4.242',quote=quote,key='invoice_total')
+        candidate.fields[0].unit='USD';candidate.fields[0].unit_evidence=quote
+        page={'number':1,'text':'Tờ khai hàng hóa xuất khẩu\n'+quote}
+        rows=ai.validate_result(candidate,[page])
+        assert rows[0]['value']['number'] is None and rows[0]['value']['warning']
+    for label in ['Trị giá hóa đơn','Tổng trị giá tính thuế']:
+        quote=label+' 4.242 USD';candidate=result('4.242',quote=quote,key='invoice_total')
+        with pytest.raises(ValueError,match='nhãn tổng'):
+            ai.validate_result(candidate,[{'number':1,'text':'Tờ khai hàng hóa xuất khẩu\n'+quote}])
+
 def test_each_accepted_source_part_has_independent_original_highlight(monkeypatch):
     from backend import source_locator
     words=[{'text':t,'layer':'PDF text','x':i/100,'y':.2,'w':.01,'h':.01,'confidence':None}

@@ -32,3 +32,7 @@ Shipper, Consignee và Notify Party phải thuộc đúng ô có nhãn tương �
 - C/O: dùng Reference/Certificate No., không dùng serial/barcode không nhãn. Ngày C/O thuộc Certification/Issue Date, không lấy ngày Invoice hay khởi hành. Tiêu chí xuất xứ phải là mã dòng hàng, không lấy câu hướng dẫn RVC criterion. Issued in Country không phải cơ quan cấp. Khai báo sản phẩm được sản xuất tại một nước có thể chứng minh xuất xứ; địa chỉ nhà xuất khẩu không chứng minh xuất xứ. Ký tự/số/ngày bị OCR đọc mờ phải để cần kiểm tra, không tự đoán để hoàn thiện.
 - Không lưu bản ghi rỗng. Không cắt bỏ ký tự OCR mờ ở đầu Reference No. để tạo một số C/O có vẻ hợp lệ. Website xác minh không phải cơ quan cấp C/O.
 - Có thể khôi phục số kiện, net/gross weight từ ô TOTAL có tiêu đề cột rõ ràng, giá trị và đơn vị còn nguyên văn trong trang. Nếu nhiều tổng mâu thuẫn, không tự chọn. Giữ nguyên dấu phân cách và cảnh báo mơ hồ; không tự xác nhận dữ liệu.
+# Giới hạn đọc tổng trị giá trên tờ khai
+
+Tờ khai chỉ được cung cấp `invoice_total` khi bằng chứng ghi rõ “Tổng trị giá hóa đơn” hoặc “Total Invoice Value/Amount”. Không lấy trị giá tính thuế hoặc trị giá một dòng hàng thay tổng hóa đơn. Giữ nguyên dấu phân cách chưa rõ (ví dụ `4.242`); không suy ra `4242` từ Invoice khác. Khi mô tả nhiều ô có nhãn riêng cùng trang, có thể gắn lại phạm vi nguồn bị trỏ thiếu chỉ sau khi kiểm chứng nguyên văn từng thành phần, đúng thứ tự; không sửa nội dung để làm khớp.
+

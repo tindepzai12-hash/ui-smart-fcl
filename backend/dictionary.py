@@ -152,8 +152,8 @@ for key,label,aliases,value_type,kinds in [
     FIELDS[key]={'id':key,'label':label,'aliases':aliases,'type':value_type,'documents':kinds,'class':'A','level':'document','human_review':True,'sheet':'THONG_TIN_KHAI_BAO','official_mapping':'Nội bộ — đối chiếu bằng chứng'}
 REVIEW_FIELDS+=['declaration_number','declared_weight','cargo_weight','shipment_terms']
 next(group for group in REVIEW_GROUPS if group['type']=='Contract')['fields'].append('shipment_terms')
-for key in ['gross_weight','net_weight','packages','volume','booking','vessel','voyage','etd','invoice_number','seller','buyer','exporter','importer','cargo_description']:
-    kinds=(['Customs Declaration'] if key in ['gross_weight','net_weight','invoice_number','seller','buyer','exporter','importer'] else SUPPORTING_TYPES)
+for key in ['gross_weight','net_weight','packages','volume','booking','vessel','voyage','etd','invoice_number','invoice_total','seller','buyer','exporter','importer','cargo_description']:
+    kinds=(['Customs Declaration'] if key in ['gross_weight','net_weight','invoice_number','invoice_total','seller','buyer','exporter','importer'] else SUPPORTING_TYPES)
     FIELDS[key]['documents']=list(dict.fromkeys([*FIELDS[key]['documents'],*kinds]))
 for key in ['booking','vessel','voyage','etd','eta','cargo_description']:
     FIELDS[key]['documents']=list(dict.fromkeys([*FIELDS[key]['documents'],'Invoice','Packing List','Invoice & Packing List']))

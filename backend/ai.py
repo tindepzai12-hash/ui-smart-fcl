@@ -341,6 +341,8 @@ def validate_result(result, pages):
         description_parts = labelled_cargo_parts(f, field_evidence, pages) if result.document_type == 'Customs Declaration' else []
         if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages) and not description_parts:
             raise ValueError('AI trả giá trị không có bằng chứng nguồn')
+        if f.field_id=='invoice_total' and result.document_type=='Customs Declaration' and not re.search(r'(?i)tổng\s+trị\s+giá\s+hóa\s+đơn|total\s+invoice\s+(?:value|amount)',field_evidence):
+            raise ValueError('Tổng trị giá hóa đơn trên tờ khai cần nhãn tổng; không dùng trị giá tính thuế hoặc từng dòng hàng')
         source_page = next((p for p in pages if p['number'] == f.source_page), {})
         if party_cell_support(f.field_id, f.raw_value, source_page) is False:
             raise ValueError('Tên bên nghiệp vụ không thuộc ô có nhãn vai trò tương ứng; không lấy công ty ở cột đại lý bên cạnh')
@@ -608,6 +610,12 @@ def ground_source_format(result, pages):
         # Verify the entire candidate quote first; never search the rest of the page for a number.
         return next(iter(matches)) if len(matches)==1 and evidence_ok(quote,quote,page,pages) else value
     for f in grounded.fields:
+        if grounded.document_type=='Customs Declaration' and f.field_id=='cargo_description':
+            # A model pointer may cover only the first of several labelled cells.
+            # Expand it only after proving every unchanged component on this page.
+            source=next((p['text'] for p in pages if p['number']==f.source_page),'')
+            if labelled_cargo_parts(f,source,pages):
+                f.evidence_text=source;f.evidence_start_line=None;f.evidence_end_line=None
         try: quote=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
         except ValueError: continue
         if grounded.document_type=='Warehouse Receipt' and f.field_id=='packages':
@@ -999,7 +1007,7 @@ def analyze(case_id, document, pages):
         'container_number contains exactly four uppercase letters followed by seven digits, even if a printed container type or slash touches it with no space. Copy the 11-character substring; seal_number and container_type are separate. '
         'eta is only the estimated arrival date marked ETA/Est. Arrival Date/Estimated Arrival, never Est. Issued Date, on-board date or departure date. Omit it if not present. '
         'arrival_date is the actual Arrival Date printed on a delivery order/arrival notice. Do not confuse it with eta or free time until. '
-        'Always extract invoice_total from the printed TOTAL commercial amount and currency from the printed table currency header when present. Use exact dictionary IDs, e.g. invoice_total and currency. '
+        'Only where permitted by the document dictionary, extract invoice_total from the printed TOTAL commercial amount. On Customs Declaration, invoice_total requires the explicit Tong tri gia hoa don / Total Invoice Value label, never taxable value or an individual goods value. Preserve ambiguous separators for human review. Extract currency only where allowed and actually printed. Use exact dictionary IDs, e.g. invoice_total and currency. '
         'classification_evidence must be an existing contiguous quote, not an invented document title. When a title is absent, quote an existing identifying label or phrase. '
         'field_id must be EXACTLY a key from the dictionary below; these are applicable to the content-supported type. Omit fields not in that dictionary, even if another field_id exists in the JSON schema. '
         'Omit disallowed or unavailable fields. A combined Invoice & Packing List heading means document_type="Invoice & Packing List"; include commercial amounts AND packing gross/net weights, packages and volume. '
