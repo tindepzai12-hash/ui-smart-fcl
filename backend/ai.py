@@ -368,8 +368,10 @@ def validate_result(result, pages):
                 port_sections=re.findall(r'(?is)port\s+of\s+discharge\s*:(.*?)(?:final\s+destination\s*:|\[PDF content-order|$)',source)
                 if port_sections and not any(norm(f.raw_value) in norm(s[m.end():m.end()+80]) for s in port_sections for m in re.finditer(labels,s)):
                     raise ValueError('ETA trên Booking phải thuộc cảng dỡ; không dùng ETA nơi giao cuối hoặc cảng xếp')
-        if f.field_id=='packages' and re.search(r'(?i)\b(?:container|hi.cube|reefer|20GP|40GP|40HC)\b',f.raw_value):
+        if f.field_id=='packages' and re.search(r"(?i)\b(?:container|hi.cube|reefer|20GP|40GP|40HC)\b|\b(?:20|40|45)\s*['′]?\s*(?:FCL|GP|HC|RF|DC)\b",f.raw_value):
             raise ValueError('Số lượng thiết bị/container không phải số kiện hàng')
+        if f.field_id=='packages' and result.document_type=='Booking' and not re.search(r'(?im)^\s*(?:total\s+|number\s+of\s+)?(?:packages|cartons|package\s+(?:count|qty)|no\.?\s+of\s+packages)\s*[:：]?',source_page.get('text','')):
+            raise ValueError('Booking chưa có nhãn số kiện; không lấy số 1 trong số lượng thiết bị')
         if f.field_id=='gross_weight' and result.document_type=='Booking' and not re.search(r'(?i)gross\s*(?:weight|wt)|g\.?w\.?',source_page.get('text','')):
             raise ValueError('Cargo Weight trên Booking chưa chứng minh Gross Weight; không tự đổi vai trò trọng lượng')
         if result.document_type=='C/O':
@@ -381,6 +383,10 @@ def validate_result(result, pages):
                     raise ValueError('Ngày C/O thiếu căn cứ trong phần chứng nhận/ngày phát hành; không lấy ngày Invoice/ngày khởi hành')
             if f.field_id=='origin_criteria' and re.search(r'(?i)criterion|criteria|notes|applied|weight|value',f.raw_value):
                 raise ValueError('Tiêu chí xuất xứ phải là giá trị của dòng hàng; không lấy hướng dẫn mẫu RVC criterion')
+            if f.field_id=='origin_criteria' and re.search(r'(?i)\d\s*(?:KGS?|KGM|MT|PCS|SETS?|BAGS?|CTNS?|CARTONS?)\b',f.raw_value):
+                raise ValueError('Số lượng/trọng lượng không phải mã tiêu chí xuất xứ')
+            if f.field_id=='origin_criteria' and (not re.search(r'(?<![A-Za-z0-9])'+re.escape(f.raw_value)+r'(?![A-Za-z0-9])',field_evidence,re.I) or (re.match(r'^\d',f.raw_value) and '%' not in f.raw_value)):
+                raise ValueError('Mã tiêu chí cần một giá trị nguyên vẹn; không dùng một phần từ hoặc số tham chiếu Invoice')
             if f.field_id=='co_issuer' and (re.search(r'(?i)verification|https?://|www\.|\.gov\.|\.com\b',f.raw_value) or not re.search(r'(?i)customs|chamber|council|ministry|authority|department|bureau|committee|agency|phòng\s*thương\s*mại|hải\s*quan',f.raw_value)):
                 raise ValueError('Cơ quan cấp C/O cần tên tổ chức; Issued in Country không phải cơ quan cấp')
         if f.field_id == 'arrival_date':
@@ -739,7 +745,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v23-explicit-total-cells|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v24-package-criteria-roles|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = DocumentResult.model_validate_json(cached['payload'])

@@ -78,6 +78,23 @@ def test_empty_field_and_partial_ocr_reference_never_persist():
         with pytest.raises(ValueError):ai.validate_result(result,[{'number':1,'text':text}])
 
 
+def test_numeric_equipment_count_and_cargo_quantity_cannot_change_roles():
+    text='BOOKING CONFIRMATION\nTOTAL BOOKING CONTAINER QTY: 1 X 40 REEFER'
+    result=document('Booking','BOOKING CONFIRMATION')
+    result.fields=[ai.FieldResult(field_id='packages',raw_value='1',source_page=1,evidence_text=text)]
+    with pytest.raises(ValueError):ai.validate_result(result,[{'number':1,'text':text}])
+    text="SALES CONTRACT\nPacking: 1*20'FCL"
+    result=document('Contract','SALES CONTRACT')
+    result.fields=[ai.FieldResult(field_id='packages',raw_value="1*20'FCL",source_page=1,evidence_text=text)]
+    with pytest.raises(ValueError):ai.validate_result(result,[{'number':1,'text':text}])
+    text='CERTIFICATE OF ORIGIN\nOrigin criteria / Gross weight or quantity\n42240SETS\nPE'
+    result=document('C/O','CERTIFICATE OF ORIGIN')
+    result.fields=[ai.FieldResult(field_id='origin_criteria',raw_value='42240SETS',source_page=1,evidence_text=text)]
+    with pytest.raises(ValueError):ai.validate_result(result,[{'number':1,'text':text}])
+    result.fields[0].raw_value='PE'
+    assert ai.validate_result(result,[{'number':1,'text':text}])
+
+
 def test_only_unique_literal_labelled_total_cells_recover_packing_fields():
     text='PACKING LIST\nNUMBER OF CARTONS (CTNS)\nNET WEIGHT (KGS)\nGROSS WEIGHT (KGS)\nTOTAL 1,134 13,608.0 17,350.2'
     table=[['DESCRIPTION','NUMBER OF CARTONS (CTNS)','NET WEIGHT (KGS)','GROSS WEIGHT (KGS)'],['TOTAL','1,134','13,608.0','17,350.2']]
