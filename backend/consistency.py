@@ -21,6 +21,32 @@ def printed_country(text):
     return next((country for name,country in sorted(COUNTRY_NAMES.items(),key=lambda x:-len(x[0]))
                  if text==name or text.endswith(' '+name)),None)
 
+def printed_incoterm_place_detail(group):
+    """A literal city and that city after a PORT detail are not opposites.
+
+    Do not infer port geography, map legacy terms or certify fulfilment. Two
+    different detailed ports, countries, terms or cities fail this narrow guard.
+    """
+    parsed=[];countries=set()
+    for row in group:
+        text=canonical_words(row['value'].get('text',''))
+        match=re.fullmatch(r'(EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF|CNF) (.+)',text)
+        if not match:return False
+        place=match[2]
+        country=printed_country(place)
+        if country:
+            countries.add(country)
+            for name in sorted(COUNTRY_NAMES,key=len,reverse=True):
+                if place.endswith(' '+name):place=place[:-len(name)].strip();break
+        parsed.append((match[1],place))
+    if len(countries)>1 or len({t for t,p in parsed})!=1:return False
+    generic={p for t,p in parsed if 'PORT' not in p.split()}
+    detailed={p for t,p in parsed if 'PORT' in p.split()}
+    if len(generic)!=1 or len(detailed)!=1:return False
+    city=next(iter(generic));detail=next(iter(detailed))
+    return bool(city) and detail.endswith(' PORT '+city)
+
+
 def scope_guard(key,group,documents,records):
     """Conservative source-bound limitations, NOT assertions that values match.
 
@@ -46,6 +72,10 @@ def scope_guard(key,group,documents,records):
             context.extend(items)
         if any(v!=identities[0] for v in identities[1:]):return None
         reason='Hợp đồng ghi rõ cho phép giao từng phần; các nguồn đang so tổng lượng hợp đồng với lượng một lô giao của cùng mặt hàng. Giữ riêng từng giá trị vào Excel; không kết luận sai lệch chỉ vì khác phạm vi. Chưa xác nhận đã giao đủ hợp đồng và không đoán dấu phân cách số.'
+    elif key=='incoterms':
+        if not printed_incoterm_place_detail(group):return None
+        context=group
+        reason='Các nguồn cùng ghi điều kiện giao hàng và cùng địa danh nguyên văn; một nguồn ghi thêm tên cảng trước địa danh đó. Khác mức độ chi tiết chưa chứng minh mâu thuẫn. Giữ nguyên từng cách ghi vào Excel, không tự thêm tên cảng vào nguồn ghi chung hoặc xác nhận đã thực hiện đúng hợp đồng.'
     elif key in ['port_loading','port_discharge']:
         broad=[r for r in group if docs.get(r['document_id'],{}).get('type') in ['Contract','Purchase Order']
                and re.fullmatch(r'ANY PORTS?(?: OF| IN)? [A-Z ]+',canonical_words(r['value'].get('text','')))]

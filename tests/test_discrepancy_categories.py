@@ -29,3 +29,20 @@ def test_explicit_contract_any_port_option_is_not_a_conflict():
     rows[-1]['value']=normalize('QINZHOU,CHINA')
     docs[0]['type']='B/L'
     assert not validation.contract_port_option_compatible(rows,docs)
+
+
+def test_same_literal_incoterm_city_with_port_detail_does_not_become_ai_conflict():
+    docs=[document('c','Contract'),document('i','Invoice')]
+    rows=[record('a','c','incoterms',normalize('CNF TESTCITY, VIETNAM')),
+          record('b','i','incoterms',normalize('CNF SAMPLE PORT, TESTCITY.'))]
+    result=consistency.scope_guard('incoterms',rows,docs,rows)
+    assert result['result']=='Not Yet Checked'
+    assert result['detail']['method']=='Evidence-bound document scope rule'
+    assert 'category' not in result['detail']
+    for opposing in ['CIF SAMPLE PORT, TESTCITY','CNF SAMPLE PORT, OTHERCITY',
+                     'CNF SAMPLE PORT, TESTCITY, CHINA']:
+        rows[1]['value']=normalize(opposing)
+        assert consistency.scope_guard('incoterms',rows,docs,rows) is None
+    rows[1]['value']=normalize('CNF SAMPLE PORT, TESTCITY')
+    rows.append(record('d','b','incoterms',normalize('CNF OTHER PORT, TESTCITY')))
+    assert consistency.scope_guard('incoterms',rows,docs,rows) is None
