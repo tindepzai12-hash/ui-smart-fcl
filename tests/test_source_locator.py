@@ -37,6 +37,27 @@ def test_wrong_vessel_reading_highlights_name_cell_not_phones(monkeypatch):
     assert all(b['evidence_only'] for b in result['boxes'])
     assert 'chưa khớp' in result['message']
 
+
+def test_bound_reader_cell_skips_slow_relocation_and_repeated_footer_name(monkeypatch):
+    import json
+    value=word('TESTJADE',.1,35,'OCR');value['y']=.37
+    cell={'key':'vessel','value':'TESTJADE','words':[value]}
+    page={'number':1,'method':'OCR','quality':'quality <source-cell>'+json.dumps(cell)+'</source-cell>',
+          'text':'Ocean vessel: TESTJADE\nRepeated footer TESTJADE'}
+    def unexpected(*a):raise AssertionError('Bound source must not repeat full-page OCR')
+    monkeypatch.setattr(source_locator,'layout',unexpected)
+    record={'key':'vessel','raw':'TESTJADE','evidence':'Ocean vessel: TESTJADE','method':'OpenAI'}
+    result=source_locator.inspect({'id':'d','path':'unused','name':'bill.pdf','ext':'.pdf'},record,page)
+    assert len(result['boxes'])==1 and result['boxes'][0]['y']==.37
+    assert not result['boxes'][0]['evidence_only']
+    record['raw']='TESTIADE'
+    result=source_locator.inspect({'id':'d','path':'unused','name':'bill.pdf','ext':'.pdf'},record,page)
+    assert result['boxes'][0]['evidence_only']
+    # Foreign values or unbounded coordinates are never trusted as positions.
+    cell['words'][0]['x']=1.2
+    page['quality']='<source-cell>'+json.dumps(cell)+'</source-cell>'
+    assert not source_locator.bound_reader_boxes(record,page)
+
 def test_repeated_values_are_explicitly_ambiguous():
     words=[word('TOTAL',.1),word('100',.2),word('OTHER',.4),word('100',.5)]
     boxes=source_locator.locate(words,'100','')

@@ -50,6 +50,32 @@ def vessel_context_boxes(words):
             boxes.extend({**w,'attribute':'vessel_cell','evidence_only':True} for w in names if abs(w['y']-first)<.012)
     return boxes
 
+
+def bound_reader_boxes(record,page):
+    """Reuse coordinates from extraction instead of locating a second name.
+
+    A repeated vessel name elsewhere (e.g. a footer) is not the labelled cell.
+    Metadata must still refer to literal source text and bounded coordinates.
+    """
+    if record.get('key')!='vessel':return []
+    boxes=[];values=set()
+    for raw in re.findall(r'<source-cell>(.*?)</source-cell>',page.get('quality','')):
+        try:
+            cell=json.loads(raw)
+            if cell.get('key')!='vessel' or 'Ocean vessel: '+cell['value'] not in page['text']:continue
+            words=cell['words']
+            if ' '.join(w['text'] for w in words)!=cell['value']:continue
+            if not all(0<=w['x']<1 and 0<=w['y']<1 and 0<w['w']<=1-w['x'] and 0<w['h']<=1-w['y'] for w in words):continue
+            values.add(cell['value'])
+            for w in words:
+                if any(abs(b['x']-w['x'])<.002 and abs(b['y']-w['y'])<.002 for b in boxes):continue
+                boxes.append({**w,'layer':'OCR labelled cell','attribute':'vessel','ambiguous':False,
+                              'evidence_only':cell['value']!=record['raw']})
+        except (ValueError,KeyError,TypeError):continue
+    if len(values)>1:
+        boxes=[{**b,'ambiguous':True} for b in boxes]
+    return boxes
+
 def ocr_words(image, psm=3):
     status = reader.ocr_status()
     if not status['ready']:
@@ -197,16 +223,17 @@ def locate(words, raw, evidence):
 
 def inspect(doc, record, page):
     method=page['method'] + (' sparse' if '[OCR sparse layer' in page['text'] else '')
-    boxes=[]; message='';retryable=False
+    boxes=bound_reader_boxes(record,page); message='';retryable=False
+    if boxes and any(b['evidence_only'] for b in boxes):message='Đánh dấu đúng ô tên tàu đã đọc; giá trị máy đọc cũ khác chữ trên ô này. Kiểm tra ký tự trước khi sửa.'
     try:
-        words=layout(doc['path'],page['number'],method)
+        words=[] if boxes else layout(doc['path'],page['number'],method)
         parts=record.get('value',{}).get('source_parts',[])
         if parts:
             for index,part in enumerate(parts):
                 if part.get('page')==page['number']:
                     boxes.extend(locate(words,{'description_part_'+str(index+1):part['text']},record['evidence']))
             if boxes:message=record.get('value',{}).get('normalization_note') or 'Từng phần của giá trị đã được đánh dấu trên ô nguồn.'
-        else:
+        elif not boxes:
             boxes=locate(words,record['raw'],record['evidence'])
         if not boxes and record.get('key')=='vessel':
             boxes=vessel_context_boxes(words)

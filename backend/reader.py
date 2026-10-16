@@ -1,5 +1,5 @@
 """Offline readers; preserve page/table boundaries. No document instructions executed."""
-import csv, io, os, shutil, subprocess, re, statistics, gc, sys, ctypes, zipfile, time, xml.etree.ElementTree as ET
+import csv, io, os, shutil, subprocess, re, statistics, gc, sys, ctypes, zipfile, time, json, xml.etree.ElementTree as ET
 from pathlib import Path
 try:
     import fitz
@@ -391,14 +391,14 @@ def _ocr(image, include_tables=False, psm=3):
         if float(data['conf'][i]) >= 0:
             scores.append(float(data['conf'][i]))
     text = '\n'.join(' '.join(v) for v in lines.values())
-    cell_tables=[]
+    cell_tables=[];vessel_words=[]
     if include_tables and psm in [3,11]:
         cell_text,cell_tables=ocr_measurement_cell(gray,data,lang)
         if cell_text:text+='\n\n[OCR labelled measurement cell — đọc trực tiếp vùng nhãn Gross weight / Measurement]\n'+cell_text
         package_text,package_tables=ocr_package_cell(gray,data,lang)
         if package_text:text+='\n\n[OCR package cell — đọc trực tiếp cột số kiện, tách cột seal]\n'+package_text
         cell_tables+=package_tables
-        vessel_text,vessel_tables,_=ocr_vessel_cell(gray,data)
+        vessel_text,vessel_tables,vessel_words=ocr_vessel_cell(gray,data)
         if vessel_text:text+='\n\n[OCR labelled vessel cell — đọc trực tiếp ô dưới nhãn Ocean vessel]\n'+vessel_text
         cell_tables+=vessel_tables
     quality = []
@@ -413,7 +413,14 @@ def _ocr(image, include_tables=False, psm=3):
     unclear=[data['text'][i].strip() for i in range(len(data['text']))
              if 0<=float(data['conf'][i])<70 and re.fullmatch(r'[A-Za-z0-9/-]*\d[A-Za-z0-9/-]{2,}',data['text'][i].strip())]
     if unclear:quality.append('Ký tự mã/số chưa rõ trong lượt này: '+', '.join(dict.fromkeys(unclear[:20]))+'.')
-    result = (text, ' '.join(quality) or 'OCR cần nhân viên kiểm tra')
+    source_quality=' '.join(quality) or 'OCR cần nhân viên kiểm tra'
+    if vessel_words:
+        # Coordinates come from the same labelled crop that supplied the value.
+        # Keep them as reader metadata, separate from quoted document text.
+        source_quality+=' <source-cell>'+json.dumps({'key':'vessel','value':vessel_tables[0][1][1],
+            'words':[{**w,'x':w['x']/gray.width,'y':w['y']/gray.height,'w':w['w']/gray.width,'h':w['h']/gray.height}
+                     for w in vessel_words]},ensure_ascii=False)+'</source-cell>'
+    result = (text, source_quality)
     return (*result, ocr_tables(data)+cell_tables) if include_tables else result
 
 def decode(data):
