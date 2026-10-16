@@ -1,5 +1,5 @@
 """Offline readers; preserve page/table boundaries. No document instructions executed."""
-import csv, io, os, shutil, subprocess, re, statistics, gc, sys, ctypes, zipfile, xml.etree.ElementTree as ET
+import csv, io, os, shutil, subprocess, re, statistics, gc, sys, ctypes, zipfile, time, xml.etree.ElementTree as ET
 from pathlib import Path
 try:
     import fitz
@@ -165,6 +165,62 @@ def ocr_packing_summary(data):
                              ['',nw[0],gw[0]],[footer,'','']]]
     return []
 
+def ocr_grid_totals(image):
+    """Read explicit total cells inside a ruled table; never sum or fill a cell.
+
+    Whole-page OCR can merge bundles, pieces and cubic metres into one stream.
+    Use printed grid boundaries and a literal Total label to retain their roles.
+    Stamps/illegible cells remain empty, not calculated from the preceding rows.
+    """
+    status=ocr_status()
+    if not status['ready']:return []
+    pytesseract.pytesseract.tesseract_cmd=status['cmd']
+    lang='eng+vie' if 'vie' in status['languages'] else 'eng'
+    started=time.monotonic();calls=0
+    def centres(values):
+        groups=[]
+        for value in values:
+            if groups and value-groups[-1][-1]<4:groups[-1].append(value)
+            else:groups.append([value])
+        return [sum(group)//len(group) for group in groups]
+    gray=ImageOps.grayscale(image)
+    mask=gray.point(lambda v:255 if v<180 else 0)
+    try:
+        ys=centres([y for y,v in enumerate(mask.resize((1,gray.height),Image.Resampling.BOX).getdata()) if v>255*.65])
+        rows=[]
+        for top,bottom in zip(ys,ys[1:]):
+            if not 20<=bottom-top<=gray.height*.22:continue
+            with mask.crop((0,top+5,gray.width,bottom-5)) as band:
+                xs=centres([x for x,v in enumerate(band.resize((gray.width,1),Image.Resampling.BOX).getdata()) if v>255*.75])
+            if 5<=len(xs)<=15 and all(b-a>=30 for a,b in zip(xs,xs[1:])):rows.append((top,bottom,xs))
+        def cell(row,index):
+            nonlocal calls
+            if calls>=40 or time.monotonic()-started>25:raise ValueError('Hết ngân sách OCR ô tổng')
+            calls+=1
+            top,bottom,xs=row
+            with gray.crop((xs[index]+5,top+5,xs[index+1]-5,bottom-5)) as crop:
+                return pytesseract.image_to_string(crop,lang=lang,config='--psm 6',timeout=5).strip()[:250]
+        for hi,row in enumerate(rows[:18]):
+            first=[cell(row,i) for i in range(min(2,len(row[2])-1))]
+            if not re.search(r'(?i)description\s+of\s+goods|commodity', ' '.join(first)):continue
+            header=first+[cell(row,i) for i in range(2,len(row[2])-1)]
+            if not re.search(r'(?i)quantity|weight|no[. ]*of', ' '.join(header)):continue
+            for footer in list(reversed(rows[hi+1:]))[:6]:
+                if len(footer[2])!=len(row[2]) or any(abs(a-b)>12 for a,b in zip(row[2],footer[2])):continue
+                label=cell(footer,0)
+                if not re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*[:：.]?\s*',label):continue
+                values=[label]+[cell(footer,i) for i in range(1,len(footer[2])-1)]
+                # Only literal numeric footer cells are usable as totals.
+                values=[values[0]]+[v if re.fullmatch(r'\d[\d., ]*',v) else '' for v in values[1:]]
+                if any(values[1:]):return [[header,values]]
+            break
+    except (ValueError,RuntimeError):
+        return []  # The original full-page OCR remains available.
+    finally:
+        gray.close();mask.close()
+    return []
+
+
 def prepare_ocr_image(image):
     image = ImageOps.exif_transpose(image).convert('RGB')
     # Small phone captures are easier to read after bounded enlargement. Never invent text.
@@ -281,6 +337,12 @@ def read_pdf_image(image):
                 quality+=' Lượt dòng: '+line_quality
         except ValueError as exc:
             quality+=' OCR dòng bổ sung chưa hoàn tất: '+str(exc)
+    if re.search(r'(?i)packing\s+list|invoice|sales?\s+contract',text):
+        grid=ocr_grid_totals(image)
+        if grid:
+            tables+=grid
+            text+='\n\n[OCR grid cells — nhãn cột và ô Total đọc trực tiếp từ cùng ảnh]\n'+'\n'.join(' | '.join(row) for table in grid for row in table)
+            quality+=' Đã giữ liên kết nhãn cột và ô tổng theo đường kẻ bảng; ô không đọc rõ để trống.'
     quality+=' Đã đọc bổ sung ô/dòng theo bố cục.'
     return text, 'OCR', quality, tables
 

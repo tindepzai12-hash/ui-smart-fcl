@@ -1,7 +1,7 @@
 """Exception-first shipment comparison. Sources are immutable; edits are separate working values."""
 import hashlib,json,re
 from decimal import Decimal
-from . import db
+from . import db, pipeline
 from .dictionary import FIELDS
 
 CONTEXT_FIELDS={'incoterms','payment_terms','shipment_terms','origin','port_loading','port_discharge',
@@ -130,10 +130,13 @@ def partial_quantity_context(documents,records):
     return group,clauses
 
 def signature(documents,records):
+    from . import ai
     body={'policy':hashlib.sha256((db.ROOT/'docs'/'AI_SHIPMENT_CONSISTENCY.md').read_bytes()).hexdigest(),
+          'pipeline':pipeline.fingerprint('review'),'model':ai._model,'extraction_policy':pipeline.digest(ai.NO_INFERENCE_POLICY),
           'documents':sorted((d['id'],d['type'],d.get('hash','')) for d in documents),
-          'records':sorted((r['id'],r['key'],db.encode(r['value']),r['status']=='rejected',
-                            r.get('page'),r.get('evidence','')) for r in records)}
+          'contract_pages':[(d['id'],db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number',(d['id'],))) for d in sorted(documents,key=lambda d:d['id']) if d['type'] in ['Contract','Purchase Order']],
+          'records':sorted((r['id'],r['key'],pipeline.digest(r['value']),r['status']=='rejected',
+                            r.get('page'),r.get('evidence',''),r.get('kind'),r.get('method'),pipeline.digest(r.get('raw'))) for r in records)}
     return hashlib.sha256(db.encode(body).encode()).hexdigest()
 
 def sources(group,documents):
@@ -287,7 +290,28 @@ def report(case,documents,records,checks):
             'ai_state':state,'ai_error':saved['error'] if saved and state=='error' else '',
             'scope':'Một hồ sơ = một lô hàng. Nguồn kế hoạch, hợp đồng giao nhiều đợt và dữ liệu chưa rõ đơn vị được cảnh báo riêng, không tự kết luận sai.'}
 
-def run_ai_review(case_id,documents,records,source_pages=None):
+def remap_review_ids(value, mapping):
+    if isinstance(value,str):return mapping.get(value,value)
+    if isinstance(value,list):return [remap_review_ids(v,mapping) for v in value]
+    if isinstance(value,dict):return {k:remap_review_ids(v,mapping) for k,v in value.items()}
+    return value
+
+
+def review_source_ids(documents,records):
+    """Case-local UUIDs are transport handles, not semantic model input."""
+    if not documents or any(not d.get('hash') for d in documents):return None
+    mapping={d['id']:'document:'+d['hash'] for d in documents}
+    counts={}
+    for r in sorted(records,key=lambda r:(r['document_id'],r['kind'],r['key'],r['page'],pipeline.digest(r['value']),pipeline.digest(r['raw']))):
+        if r['document_id'] not in mapping:return None
+        body={k:r.get(k) for k in ['kind','key','value','raw','page','evidence','method']}
+        identity=pipeline.digest({**body,'document':mapping[r['document_id']]})
+        counts[identity]=counts.get(identity,0)+1
+        mapping[r['id']]='record:'+identity+':'+str(counts[identity])
+    return mapping
+
+
+def run_ai_review(case_id,documents,records,source_pages=None,reuse=False):
     """AI only suggests semantic issues over existing IDs; never creates or corrects data."""
     from . import ai
     from pydantic import Field,create_model
@@ -316,17 +340,44 @@ def run_ai_review(case_id,documents,records,source_pages=None):
         issues:List[Issue]=Field(max_length=40)
         description_assessments:List[DescriptionAssessment]=Field(default_factory=list,min_length=1 if needs_description else 0,max_length=1)
         contextual_assessments:ContextualAssessments=Field(default_factory=ContextualAssessments)
-    sig=signature(documents,records);output=[];error=''
+    sig=signature(documents,records);output=[];error='';review_cache_key=None;source_ids=None
+    if reuse:
+        saved=db.one('SELECT signature,error FROM packet_reviews WHERE case_id=?',(case_id,))
+        if saved and not saved['error'] and saved['signature']==sig:
+            return ''
     try:
         if len(active)>350:raise ValueError('Hồ sơ hơn 350 bản ghi; chưa chạy đối chiếu ngữ nghĩa AI. Đối chiếu số liệu vẫn hoạt động.')
         payload=[{**s,'field_id':r['key'],'kind':r['kind']} for r,s in zip(active,sources(active,documents))]
         policy=(db.ROOT/'docs'/'AI_SHIPMENT_CONSISTENCY.md').read_text(encoding='utf-8')
+        request=[{'role':'system','content':ai.NO_INFERENCE_POLICY+'\n'+policy},
+                 {'role':'user','content':db.encode({'records':payload,
+                    'description_comparison_record_ids':[r['id'] for r in descriptions] if needs_description else [],
+                    'contextual_comparisons':[{'field_id':k,'record_ids':[r['id'] for r in g]} for k,g in candidates.items()],
+                    'packet_context':packet_context(documents,active,source_pages)})}]
+        source_ids=review_source_ids(documents,active) if reuse else None
+        if source_ids:
+            content=remap_review_ids(json.loads(request[1]['content']),source_ids)
+            content['records'].sort(key=lambda r:r['id'])
+            content['description_comparison_record_ids'].sort()
+            for group in content['contextual_comparisons']:group['record_ids'].sort()
+            content['contextual_comparisons'].sort(key=lambda g:g['field_id'])
+            # Context lists also carry document/record handles; preserve all text,
+            # but remove insertion-order differences from otherwise identical packets.
+            def ordered(value):
+                if isinstance(value,dict):return {k:ordered(v) for k,v in value.items()}
+                if isinstance(value,list):return sorted([ordered(v) for v in value],key=pipeline.digest)
+                return value
+            content['packet_context']=ordered(content['packet_context'])
+            review_cache_key='packet-v1:'+pipeline.digest({'input':content,'system':request[0]['content'],
+                'schema':ordered(remap_review_ids(Review.model_json_schema(),source_ids)),'pipeline':pipeline.fingerprint('review'),
+                'model':ai._model,'sampling':{'temperature':0} if ai._model.startswith(('gpt-4.1','gpt-4o')) else {}})
+            cached=db.one('SELECT payload FROM ai_cache WHERE hash=?',(review_cache_key,))
+            if cached:
+                output=remap_review_ids(json.loads(cached['payload'])['checks'],{v:k for k,v in source_ids.items()})
+                db.execute('INSERT OR REPLACE INTO packet_reviews VALUES (?,?,?,?,?)',(case_id,sig,db.encode(output),'',db.now()))
+                return ''
         response=ai.OpenAI(api_key=ai.key(),timeout=60,max_retries=1).responses.parse(model=ai._model,store=False,text_format=Review,
-            input=[{'role':'system','content':ai.NO_INFERENCE_POLICY+'\n'+policy},
-                   {'role':'user','content':db.encode({'records':payload,
-                       'description_comparison_record_ids':[r['id'] for r in descriptions] if needs_description else [],
-                       'contextual_comparisons':[{'field_id':k,'record_ids':[r['id'] for r in g]} for k,g in candidates.items()],
-                       'packet_context':packet_context(documents,active,source_pages)})}],
+            input=request,
             **({'temperature':0} if ai._model.startswith(('gpt-4.1','gpt-4o')) else {}))
         db.execute('INSERT INTO ai_usage VALUES (?,?,?,?,?,?,?)',(db.uid(),case_id,db.now(),ai._model,getattr(response.usage,'input_tokens',None),getattr(response.usage,'output_tokens',None),'packet-consistency'))
         if response.output_parsed is None:raise ValueError('AI chưa trả kết quả đối chiếu có cấu trúc.')
@@ -389,5 +440,7 @@ def run_ai_review(case_id,documents,records,source_pages=None):
             if semantic_difference(check,active):output.append(check)
     except Exception as exc:
         error=str(exc)[:500] if isinstance(exc,ValueError) else ai.safe_error(exc)
+    if not error and review_cache_key:
+        db.execute('INSERT OR REPLACE INTO ai_cache VALUES (?,?,?)',(review_cache_key,db.encode({'checks':remap_review_ids(output,source_ids)}),db.now()))
     db.execute('INSERT OR REPLACE INTO packet_reviews VALUES (?,?,?,?,?)',(case_id,sig,db.encode(output),error,db.now()))
     return error

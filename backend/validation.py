@@ -53,8 +53,37 @@ def port_detail_compatible(group):
     return len(countries)<=1
 
 
-def comparison_values(key, group, records):
+def volume_conflict(group, docs):
+    """Prove a disagreement without choosing an ambiguous separator.
+
+    Compare actual shipment documents only. A disjoint pair of all supported
+    interpretations proves a difference; intersecting alternatives prove nothing.
+    """
+    from .acceptance import readable
+    candidates=[]
+    for row in group:
+        value=row['value']
+        if docs.get(row['document_id'],{}).get('type') not in ['Invoice','Packing List','Invoice & Packing List','B/L','Sea Waybill']:continue
+        if value.get('unit')!='CBM' or not readable(row):continue
+        if value.get('number') is not None and not value.get('warning'):
+            possibilities={Decimal(value['number'])}
+        else:
+            match=re.fullmatch(r'(\d{1,3})([.,])(\d{3})\s*(?:CBM|M3|M³)?',value.get('text','').strip(),re.I)
+            if not match:continue
+            possibilities={Decimal(match[1]+'.'+match[3]),Decimal(match[1]+match[3])}
+        candidates.append((row['document_id'],possibilities))
+    return any(a!=b and av.isdisjoint(bv) for i,(a,av) in enumerate(candidates) for b,bv in candidates[i+1:])
+
+
+def comparison_values(key, group, records, docs=None):
     values=[field_comparable(key,r['value']) for r in group]
+    if key=='invoice_number':
+        for i,row in enumerate(group):
+            if (docs or {}).get(row['document_id'],{}).get('type')!='Customs Declaration':continue
+            # Only a separate labelled form marker; never strip ABC-123 or A-123.
+            marker=re.fullmatch(r'A\s+-\s+(\S+)',row['value'].get('text',''))
+            if marker and re.search(r'(?i)số\s+hóa\s+đơn',row.get('evidence','')):
+                values[i]=field_comparable(key,{'text':marker[1]})
     if key=='cargo_description':
         # A trailing, explicitly labelled origin is a separate field, not an
         # extra commodity specification. Strip only when this same source has
@@ -107,12 +136,20 @@ def build_checks(case, documents, records):
     docs = {d['id']: d for d in documents}
 
     def add(key, result, reason, sources=None, severity='warning'):
+        if key.startswith('missing:'):
+            previous=next((check for check in checks if check['key']==key),None)
+            if previous:
+                previous['detail']['reason']+=' '+reason
+                previous['detail']['sources']+=(sources or [])
+                if result=='Missing':previous['result']='Missing'
+                return previous
         checks.append({
             'key': key,
             'result': result,
             'severity': severity if result not in ['Matched', 'Not Applicable'] else 'info',
             'detail': {'reason': reason, 'sources': sources or []},
         })
+        return checks[-1]
 
     requirements = json.loads(case['requirements']) if isinstance(case['requirements'], str) else case['requirements']
     commercial = commercial_profile(requirements, case['mode'])
@@ -126,9 +163,9 @@ def build_checks(case, documents, records):
         if found:
             reason = f'Đã có chứng từ {kind} trong hồ sơ ({note_text}).'
         elif required(rule):
-            reason = f'Thiếu tệp chứng từ {kind} theo checklist ({note_text}). Tải bổ sung tệp hoặc chuyển sang Không bắt buộc kèm lý do nếu lô hàng miễn chứng từ này.'
+            reason = f'Chưa có chứng từ {kind} trong hồ sơ ({note_text}).'
         else:
-            reason = f'Miễn tệp chứng từ {kind} theo cấu hình checklist ({note_text}).'
+            reason = f'Chưa có chứng từ {kind}; nhóm này không bắt buộc ({note_text}).'
         add('document:' + kind, 'Matched' if found else 'Missing' if required(rule) else 'Not Applicable', reason, doc_sources, severity='error')
 
     for d in documents:
@@ -183,9 +220,9 @@ def build_checks(case, documents, records):
     if commercial:
         for group in REVIEW_GROUPS:
             kind = group['type']
-            matching = [d for d in documents if supports(d['type'], kind)]
+            matching = [d for d in documents if supports(d['type'], kind) or (kind=='B/L' and d['type']=='Sea Waybill')]
             rule = requirements.get(kind, {'required': False, 'note': 'Ngoài phạm vi'})
-            if kind == 'C/O' and not matching:
+            if kind in ['C/O','B/L'] and not matching:
                 continue
             keys = list(group['required_fields'])
             if kind == 'Contract':
@@ -202,8 +239,7 @@ def build_checks(case, documents, records):
                     missing_sources=[{'id':'missing:'+d['id']+':'+key,'document_id':d['id'],'document':d['name'],'type':d['type'],
                         'missing_field':key,'field_label':FIELDS[key]['label'],'value':{'text':''},'page':1} for d in missing_docs]
                     add('missing:' + key, 'Missing' if required(rule) or matching else 'Needs Verification',
-                        f"Chưa có {FIELDS[key]['label']} có nguồn từ {group['label']}" + (': '+', '.join(d['name'] for d in missing_docs) if missing_docs else '') + '. Kiểm bản gốc và bổ sung; không tự đoán.', severity='error')
-                    checks[-1]['detail']['sources']=missing_sources
+                        f"Chưa có {FIELDS[key]['label']} có nguồn từ {group['label']}" + (': '+', '.join(d['name'] for d in missing_docs) if missing_docs else '') + '. Kiểm bản gốc và bổ sung; không tự đoán.', sources=missing_sources,severity='error')
     for key, doc_kind, rule in core_specs:
         if not fields.get(key):
             if required(rule):
@@ -260,7 +296,10 @@ def build_checks(case, documents, records):
             if all(readable(r) for r in group):
                 add('field:'+key,'Not Yet Checked','Đã nhận nguyên văn. Nguồn không ghi đủ đơn vị nên chưa so sánh/quy đổi; không coi là sai lệch hoặc chữ chưa đọc rõ.',sources)
                 continue
-        values = comparison_values(key,group,active)
+        if key=='volume' and volume_conflict(group,docs):
+            add('field:'+key,'Mismatch','Thể tích trên các chứng từ giao hàng khác nhau ở cùng chỉ tiêu. Các cách hiểu dấu phân cách đều không thể làm các nguồn này bằng nhau; giữ nguyên từng ô nguồn, không tự chọn số đúng.',sources)
+            continue
+        values = comparison_values(key,group,active,docs)
         if any(v is None for v in values):
             from .acceptance import readable
             if len(group)==1 and readable(group[0]):

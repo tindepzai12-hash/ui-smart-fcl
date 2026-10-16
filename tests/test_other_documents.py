@@ -51,7 +51,7 @@ def test_openai_routes_other_and_manual_correction_is_reversible(monkeypatch):
     assert not b['documents'] and len(b['other_files']) == 1
     d = b['other_files'][0]
     assert d['classification_evidence'] == 'INTERNAL NOTE'
-    bad = client.patch('/api/documents/'+d['id']+'/collection',headers=H,json={'collection':'document','document_type':'B/L'})
+    bad = client.patch('/api/documents/'+d['id']+'/collection',headers=H,json={'collection':'document','document_type':'Insurance'})
     assert bad.status_code == 422 and bundle(cid)['other_files']
     r = client.patch('/api/documents/'+d['id']+'/collection',headers=H,json={'collection':'document','document_type':'Invoice','reason':'Staff checked original'})
     assert r.status_code == 200,r.text

@@ -16,6 +16,7 @@ from PIL import Image, ImageOps
 from openpyxl import load_workbook
 from . import db, reader, extraction, validation, ai, excel, templates, pdf_bundle, source_locator, consistency
 from .dictionary import COMPARISON_TYPES
+from . import pipeline
 from .dictionary import FIELDS, TYPES, default_requirements, commercial_profile, REVIEW_GROUPS, REVIEW_FIELDS, PROFILE_TYPES, PROFILE_VARIANTS, DOCUMENT_LABELS
 from .normalize import normalize
 
@@ -244,6 +245,26 @@ def add_record(c, case_id, document_id, r):
         (db.uid(), case_id, document_id, r['kind'], r['key'], db.encode(r['raw']), db.encode(r['value']), r['page'], r['evidence'], r['method'], 'pending', '', db.now(), 1),
     )
 
+def replace_extracted_records(c, case_id, document_id, records):
+    """Reconcile machine records; identical source/value keeps its ID and review links."""
+    existing = [validation.unpack(r) for r in c.execute('SELECT * FROM records WHERE document_id=? ORDER BY rowid', (document_id,))]
+    protected = [r for r in existing if r['status'] not in ('pending', 'auto_accepted') or r['method'].startswith('Manual')]
+    automated = [r for r in existing if r not in protected]
+    def identity(r):
+        return pipeline.digest({k:r[k] for k in ['kind','key','page','raw','value','evidence','method']})
+    kept = set()
+    for r in records:
+        if any(p['kind']==r['kind'] and p['key']==r['key'] and p['page']==r['page'] and p['raw']==r['raw'] for p in protected):
+            continue
+        match = next((old for old in automated if old['id'] not in kept and identity(old)==identity(r)), None)
+        if match:
+            kept.add(match['id'])
+        else:
+            add_record(c, case_id, document_id, r)
+    for old in automated:
+        if old['id'] not in kept:
+            c.execute('DELETE FROM records WHERE id=?', (old['id'],))
+
 @app.get('/api/health')
 def health():
     try:
@@ -267,7 +288,7 @@ def health():
 
 @app.get('/api/dictionary')
 def dictionary():
-    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES, 'extraction_rules_version':9}
+    return {'fields': FIELDS, 'document_types': COMPARISON_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES, 'extraction_rules_version':10}
 
 @app.get('/api/cases')
 def list_cases():
@@ -651,7 +672,7 @@ def worker(job_id):
     mode = job['mode']
     final_status = 'error'
     try:
-        docs = db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document'", (id,))
+        docs = db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document' ORDER BY rowid", (id,))
         if job.get('document_id'):
             docs = [d for d in docs if d['id']==job['document_id']]
         for idx, d in enumerate(docs):
@@ -661,6 +682,8 @@ def worker(job_id):
             started = time.monotonic()
             try:
                 uncertain_image = False
+                reader_signature = pipeline.fingerprint('reader')
+                reused_pages = d['status'] in ['read', 'needs_split'] and d.get('reader_signature')==reader_signature
                 if mode == 'openai' and d['ext'] in {'.png', '.jpg', '.jpeg', '.tif', '.tiff'} and not d['type_verified']:
                     job['stage'] = 'Kiểm tra ảnh có chứa chứng từ'
                     route = ai.route_image(id, d)
@@ -672,7 +695,7 @@ def worker(job_id):
                         job['warnings'].append({'document': d['name'], 'message': 'Đã đưa vào Giấy tờ khác: ' + route.reason + '. Có thể kiểm bản gốc và đưa lại vào bộ chính.'})
                         continue
                     uncertain_image = route.category == 'uncertain' or route.certainty != 'clear'
-                if d['status'] in ['read', 'needs_split']:
+                if reused_pages:
                     pages = db.rows('SELECT number,text,method,quality,table_json FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
                     for p in pages:
                         p['tables'] = json.loads(p.pop('table_json'))
@@ -689,13 +712,14 @@ def worker(job_id):
                         for p in pages:
                             c.execute('INSERT INTO pages VALUES (?,?,?,?,?,?,?)', (db.uid(), d['id'], p['number'], p['text'], p['method'], p['quality'], db.encode(p['tables'])))
                         c.execute(
-                            "UPDATE documents SET status='read',reading_method=?,elapsed=? WHERE id=?",
-                            (', '.join(sorted({p['method'] for p in pages})), time.monotonic() - started, d['id']),
+                            "UPDATE documents SET status='read',reading_method=?,elapsed=?,reader_signature=? WHERE id=?",
+                            (', '.join(sorted({p['method'] for p in pages})), time.monotonic() - started, reader_signature, d['id']),
                         )
                 job['stage'] = 'Phân loại / trích xuất ' + ('Local' if mode == 'local' else 'OpenAI')
                 extraction_warning = None
                 reading_diagnostics = []
                 source_grounded = False
+                extraction_trace = {}
                 if d['ext'] == '.pdf' and pdf_bundle.is_mixed(pages):
                     message = 'Đã đọc PDF gồm nhiều loại chứng từ. Chọn “Tách bộ PDF” để phân bổ trang trước khi trích xuất; bản gốc được giữ lại.'
                     with db.connect() as c:
@@ -710,6 +734,7 @@ def worker(job_id):
                 elif mode == 'openai':
                     result, records, info = ai.analyze(id, d, pages)
                     source_grounded = info.get('source_grounded',False)
+                    extraction_trace = {**info.get('trace',{}), 'cache_source':info.get('source','unknown')}
                     kind = result.document_type
                     evidence = result.classification_evidence
                     if info['rejected']:
@@ -748,16 +773,10 @@ def worker(job_id):
                         'UPDATE documents SET type=?,classification_evidence=?,type_verified=? WHERE id=?',
                         (kind, evidence, d['type_verified'] if kind == d['type'] else 0, d['id']),
                     )
-                    protected = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE document_id=? AND (status NOT IN ('pending','auto_accepted') OR method LIKE 'Manual%')", (d['id'],))]
-                    c.execute("DELETE FROM records WHERE document_id=? AND status IN ('pending','auto_accepted') AND method NOT LIKE 'Manual%'", (d['id'],))
-                    for r in records:
-                        if commercial and kind == 'Arrival Notice' and r['kind'] != 'field':
-                            continue  # Transport summaries/charges are not commercial item rows.
-                        if any(p['kind'] == r['kind'] and p['key'] == r['key'] and p['page'] == r['page'] and p['raw'] == r['raw'] for p in protected):
-                            continue
-                        add_record(c, id, d['id'], r)
+                    replace_extracted_records(c, id, d['id'], [r for r in records if not (commercial and kind in ['Arrival Notice','B/L','Sea Waybill','AWB','Customs Declaration','Customs Release','Warehouse Receipt'] and r['kind']!='field')])
                     c.execute("UPDATE documents SET status='read',error=?,reading_diagnostics=?,extraction_required=0,classification_method=? WHERE id=?", (extraction_warning, db.encode(reading_diagnostics), 'OpenAI' if mode=='openai' else 'Local', d['id']))
-                    db.audit(c, id, 'Đọc và trích xuất ' + mode, d['id'], after={'type': kind, 'pages': len(pages), 'records': len(records),'source_format_grounded':source_grounded})
+                    db.audit(c, id, 'Đọc và trích xuất ' + mode, d['id'], after={'type': kind, 'pages': len(pages), 'records': len(records),'source_format_grounded':source_grounded,
+                        'trace':{**extraction_trace,'pages_sha256':pipeline.digest(pages),'reader_sha256':reader_signature,'pages_source':'saved' if reused_pages else 'fresh'}})
             except InterruptedError:
                 raise
             except Exception as exc:
@@ -768,9 +787,9 @@ def worker(job_id):
                 reader.release_reader_memory()
         if mode=='openai' and not job['cancel'] and commercial_profile(json.loads(require_case(id)['requirements']),require_case(id)['mode']):
             job['stage']='OpenAI đối chiếu toàn bộ hồ sơ'
-            case_docs=db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document'",(id,))
+            case_docs=db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document' ORDER BY rowid",(id,))
             clause_pages=db.rows("SELECT p.document_id,p.number,p.text FROM pages p JOIN documents d ON d.id=p.document_id WHERE d.case_id=? AND d.collection='document' AND d.type IN ('Contract','Purchase Order') ORDER BY d.id,p.number",(id,))
-            review_error=consistency.run_ai_review(id,case_docs,working_records(id),source_pages=clause_pages)
+            review_error=consistency.run_ai_review(id,case_docs,working_records(id),clause_pages,True)
             if review_error:job['warnings'].append({'document':'Đối chiếu toàn hồ sơ','message':review_error})
         final_status = 'completed'
         if job['errors']:
@@ -1151,6 +1170,7 @@ async def restore_empty(file: UploadFile = File(...)):
             restore(archive,db.DATA,check_server=False)
             for folder in ['files','exports','backups','templates']:(db.DATA/folder).mkdir(exist_ok=True)
             db.migrate()
+            upgrade_transport_scope()
             refresh_staff_checks()
             return {'restored':db.one('SELECT count(*) n FROM cases')['n']}
         except (ValueError,zipfile.BadZipFile,sqlite3.Error) as exc:
@@ -1254,6 +1274,25 @@ def upgrade_arrival_notice_scope():
         c.execute('INSERT INTO schema_versions VALUES(3,?)',(db.now(),))
 
 upgrade_arrival_notice_scope()
+
+
+def upgrade_transport_scope():
+    """Include the newly requested transport documents without losing waivers."""
+    with db.connect() as c:
+        if c.execute('SELECT 1 FROM schema_versions WHERE version=5').fetchone():return
+        for row in c.execute("SELECT * FROM cases WHERE mode='FCL'").fetchall():
+            rules=json.loads(row['requirements'])
+            if not commercial_profile(rules,row['mode']):continue
+            rules.setdefault('B/L',default_requirements()['B/L'])
+            c.execute('UPDATE cases SET requirements=? WHERE id=?',(db.encode(rules),row['id']))
+            for doc in c.execute("SELECT * FROM documents WHERE case_id=? AND collection='reference' AND type IN ('B/L','Sea Waybill','AWB','Customs Declaration','Customs Release')",(row['id'],)).fetchall():
+                c.execute("UPDATE documents SET collection='document',collection_reason='',extraction_required=1,error=NULL WHERE id=?",(doc['id'],))
+                db.audit(c,row['id'],'Đưa vận đơn / tờ khai vào bộ đối chiếu',doc['id'],reason='Phạm vi mới; cần đọc nguồn trước khi trích xuất')
+            revalidate(c,row['id'])
+        c.execute('INSERT INTO schema_versions VALUES(5,?)',(db.now(),))
+
+
+upgrade_transport_scope()
 
 
 def refresh_staff_checks():

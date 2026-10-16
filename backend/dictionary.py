@@ -38,7 +38,7 @@ SPECS=[
 ('goods_quantity','Tổng số lượng hàng',['total quantity','goods quantity','quantity','qty','số lượng hàng'],'quantity',['Invoice','Packing List'],'A'),
 ('gross_weight','Trọng lượng cả bì',['gross weight','gross wt','g.w.','gross mass','trọng lượng cả bì'],'weight',['Packing List','B/L','Sea Waybill','AWB'],'A'),
 ('net_weight','Trọng lượng tịnh',['net weight','net wt','n.w.','trọng lượng tịnh'],'weight',['Packing List','Invoice'],'A'),
-('volume','Thể tích',['cbm','measurement','volume'],'quantity',['Packing List','B/L','Sea Waybill'],'A'),
+('volume','Thể tích',['cbm','measurement','volume','quantity (m3)','quantity (m³)'],'quantity',['Packing List','Invoice','Contract','Purchase Order','B/L','Sea Waybill'],'A'),
 ('shipping_marks','Ký mã hiệu',['shipping marks','marks and numbers'],'text',['Packing List','B/L','Sea Waybill'],'A'),
 ('origin','Nước xuất xứ',['country of origin','origin of goods','country of manufacture','xuất xứ hàng hóa'],'text',['Invoice','C/O'],'A'),
 ('co_number','Số chứng nhận xuất xứ',['c/o no','certificate of origin no','co reference'],'text',['C/O'],'A'),
@@ -136,6 +136,9 @@ REVIEW_GROUPS=[
     {'type':'C/O','label':'C/O · nếu có','required_fields':['co_number','origin'],'fields':['co_number','co_form','co_date','co_issuer','exporter','exporter_address','importer','importer_address','consignee','invoice_number','origin','origin_criteria','cargo_description','goods_quantity','packages','gross_weight','net_weight']},
 ]
 REVIEW_GROUPS.append({'type':'Arrival Notice','label':'Arrival Notice / Thông báo hàng đến','required_fields':['bl_number'],'fields':['bl_number','shipper','shipper_address','consignee','consignee_address','notify_party','vessel','voyage','port_loading','port_discharge','place_delivery','eta','arrival_date','packages','gross_weight','volume']})
+REVIEW_GROUPS.append({'type':'B/L','label':'B/L / Vận đơn đường biển','required_fields':['bl_number'],'fields':['bl_number','shipper','shipper_address','consignee','consignee_address','notify_party','vessel','voyage','port_loading','port_discharge','place_receipt','place_delivery','packages','gross_weight','volume','cargo_description','freight_terms']})
+for group in REVIEW_GROUPS:
+    if group['type'] in ['Invoice','Contract']:group['fields'].append('volume')
 FIELDS['packing_number']['label']='Số Packing List (nếu có)'
 FIELDS['packing_number']['required']=False
 FIELDS['eta']['aliases'] += ['est. arrival date','estimated arrival date','est arrival date']
@@ -147,10 +150,11 @@ PROFILE_TYPES=['Packing List','Booking','Invoice','C/O','Contract','Arrival Noti
 # Subtypes share a checklist group; they remain distinct when recognized from content.
 PROFILE_VARIANTS=PROFILE_TYPES+['Purchase Order','Invoice & Packing List']
 # Supporting documents participate in shipment consistency, not the six-type checklist.
-SUPPORTING_TYPES=['Customs Declaration','Customs Release','Warehouse Receipt']
+SUPPORTING_TYPES=['Customs Declaration','Customs Release','Warehouse Receipt','B/L','Sea Waybill','AWB']
 COMPARISON_TYPES=PROFILE_VARIANTS+SUPPORTING_TYPES
-TYPES+=SUPPORTING_TYPES
+TYPES=list(dict.fromkeys(TYPES+SUPPORTING_TYPES))
 DOCUMENT_LABELS.update({'Customs Declaration':'Tờ khai hải quan','Customs Release':'Danh sách hàng qua giám sát','Warehouse Receipt':'Phiếu / yêu cầu nhập kho'})
+DOCUMENT_LABELS.update({'B/L':'B/L · Vận đơn đường biển','Sea Waybill':'Sea Waybill · Giấy gửi hàng đường biển','AWB':'AWB · Vận đơn hàng không'})
 for key,label,aliases,value_type,kinds in [
     ('declaration_number','Số tờ khai',['số tờ khai','declaration no'],'text',SUPPORTING_TYPES[:2]),
     ('declared_weight','Tổng trọng lượng khai báo (chưa rõ gross/net)',['tổng trọng lượng hàng'],'weight',['Customs Release']),
@@ -181,6 +185,7 @@ def default_requirements(mode='FCL'):
             'Invoice':{'required':True,'note':'Bộ kiểm tra nội bộ: hóa đơn thương mại'},
             'Contract':{'required':True,'note':'Sales/Sale Contract, hợp đồng/thỏa thuận mua bán; chấp nhận Purchase Order có căn cứ'},
             'Arrival Notice':{'required':True,'note':'Thông báo hàng đến; số B/L tham chiếu không thay số Booking. Kiểm thông tin có trên bản gốc'},
+            'B/L':{'required':False,'note':'Vận đơn đường biển / Sea Waybill; có thì đọc và đối chiếu, không thay Booking'},
             'C/O':{'required':False,'note':'Nếu khách cung cấp thì nhận diện và kiểm tra; thiếu C/O không chặn duyệt nội bộ'},
         }
     return {'Invoice':{'required':True,'note':'Checklist nghiệp vụ'},'Packing List':{'required':True,'note':'Checklist nghiệp vụ'},('AWB' if mode=='AIR' else 'B/L'):{'required':True,'note':'Sea Waybill có thể thay B/L'},'C/O':{'required':False,'note':'Nếu áp dụng chứng minh xuất xứ'},'Import Permit':{'required':False,'note':'Nếu mặt hàng phải có giấy phép'},'Inspection Certificate':{'required':False,'note':'Nếu thuộc kiểm tra chuyên ngành'}}

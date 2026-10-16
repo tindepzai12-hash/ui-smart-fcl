@@ -4,7 +4,7 @@ import pytest
 from openpyxl import load_workbook
 from backend import db,extraction,validation,ai
 from backend.app import bundle,upgrade_commercial_checklists
-from backend.dictionary import default_requirements,PROFILE_TYPES,REVIEW_FIELDS
+from backend.dictionary import default_requirements,PROFILE_TYPES,COMPARISON_TYPES,REVIEW_FIELDS
 from test_core import client,H,upload,process
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -25,10 +25,10 @@ def prepared(contract='contract.txt',co=False):
 
 def test_default_profile_and_dictionary():
  id=create();b=bundle(id)
- assert list(b['case']['requirements'])==['Packing List','Booking','Invoice','Contract','Arrival Notice','C/O']
+ assert list(b['case']['requirements'])==['Packing List','Booking','Invoice','Contract','Arrival Notice','B/L','C/O']
  assert not b['case']['requirements']['C/O']['required']
  d=client.get('/api/dictionary').json()
- assert d['document_types']==PROFILE_TYPES and len(d['review_groups'])==6
+ assert d['document_types']==COMPARISON_TYPES and len(d['review_groups'])==7
  assert not {'hs_code','equipment_count','equipment_type'} & set(d['review_fields'])
  assert not any(c['key']=='document:C/O' and c['result']=='Missing' for c in b['checks'])
 
@@ -182,8 +182,8 @@ def test_arrival_notice_is_main_but_bill_does_not_supply_booking():
  upload(cid,[('1.txt',sample('arrival.txt')),('2.txt',sample('bl.txt'))])
  b,j=process(cid)
  assert not j['errors']
- assert [d['type'] for d in b['documents']]==['Arrival Notice']
- assert [d['type'] for d in b['other_files']]==['B/L']
+ assert {d['type'] for d in b['documents']}=={'Arrival Notice','B/L'}
+ assert not b['other_files']
  assert any(r['key']=='bl_number' for r in b['records'])
  assert not any(r['kind']!='field' or r['key']=='booking' for r in b['records'])
  assert next(c for c in b['checks'] if c['key']=='document:Booking')['result']=='Missing'

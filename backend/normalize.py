@@ -10,6 +10,7 @@ UNITS = {
     'CARTONS': 'CTN', 'CTNS': 'CTN', 'CARTON': 'CTN', 'CTN': 'CTN', 'CT':'CTN',
     'PALLETS': 'PLT', 'PALLET': 'PLT',
     'PKGS': 'PKG', 'PACKAGES': 'PKG', 'PACKAGE': 'PKG',
+    'BE': 'BDL', 'BDL': 'BDL', 'BUNDLE': 'BDL', 'BUNDLES': 'BDL',
     'SETS': 'SET', 'DRUMS':'DRUM', 'DRUM':'DRUM', 'CBM': 'CBM', 'M3': 'CBM',
 }
 

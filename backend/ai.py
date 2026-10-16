@@ -19,6 +19,7 @@ from .dictionary import FIELDS, REVIEW_FIELDS, PROFILE_VARIANTS, COMPARISON_TYPE
 from .extraction import classify
 from .normalize import normalize
 from .ai_guidance import EXAMPLES
+from . import pipeline
 
 _key = None
 _model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
@@ -397,6 +398,10 @@ def validate_result(result, pages):
             values={v.raw_value for v in bound if v.source_page==f.source_page}
             if values and f.raw_value not in values:
                 raise ValueError('Số kiện không thuộc ô tổng/số carton được ghi rõ; không lấy số thứ tự')
+        if f.field_id in ['goods_quantity','volume'] and result.document_type in ['Invoice','Packing List','Invoice & Packing List','Contract','Purchase Order']:
+            bound=[v for v in packing_summary_fields(pages).get(f.field_id,[]) if v.source_page==f.source_page]
+            if bound and f.raw_value not in {v.raw_value for v in bound}:
+                raise ValueError('Giá trị không thuộc ô Total của đúng cột; không lấy số một dòng thay tổng lô')
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','po_number','co_number','packing_number','do_number','booking']:
             identifier_pattern = r'[A-Za-z0-9][A-Za-z0-9/_. -]{0,99}' if f.field_id in ['contract_number','invoice_number'] else r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}'
             if not re.fullmatch(identifier_pattern, f.raw_value):
@@ -607,12 +612,14 @@ def packing_summary_fields(pages):
                 header=header or '';label=re.sub(r'\s+',' ',header).casefold()
                 key=('net_weight' if re.search(r'net\s*(?:weight|wt)|^n[.]?\s*weight',label) else
                      'gross_weight' if re.search(r'gross\s*(?:weight|wt)|^g[.]?\s*weight',label) else
-                     'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b|^no[. ]+packages',label) else None)
+                     'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b|^no[. ]+packages|^no[. ]*of\s+bdl',label) else
+                     'volume' if re.search(r'\b(?:volume|measurement|cbm)\b|quantity\s*\(\s*m[³3]\s*\)',label) else
+                     'goods_quantity' if re.fullmatch(r'total\s+(?:pcs|pieces)',label) else None)
                 if key and len(table)>1 and i<len(table[1]) and table[1][i] and re.fullmatch(r'(?i)\s*\(?\s*(?:KGS?|KGM|LBS?)\s*\)?\s*',table[1][i]):header+=' '+table[1][i]
                 if key: columns[i]=(key,header)
             for row_index,row in enumerate(table[1:],start=1):
                 if not row:continue
-                labelled=any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*',cell or '') for cell in row)
+                labelled=any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*[:：.]?\s*',cell or '') for cell in row)
                 # A printed aggregate row with blank item/code cells directly above
                 # a Tare/Total-weight footer is also layout-bound, not a calculated sum.
                 next_row=next((r for r in table[row_index+1:] if any(c for c in r)),[])
@@ -624,7 +631,7 @@ def packing_summary_fields(pages):
                 for i,(key,header) in columns.items():
                     raw=row[i] if i<len(row) else None
                     if not isinstance(raw,str) or not re.fullmatch(r'\s*\d[\d., ]*\s*',raw): continue
-                    unit_match=re.search(r'(?i)\b(KGS?|KGM|MT|LBS?|CTNS?|CARTONS?|PACKAGES?|PKGS?)\b',header)
+                    unit_match=re.search(r'(?i)\b(KGS?|KGM|MT|LBS?|CTNS?|CARTONS?|PACKAGES?|PKGS?|BDL|BUNDLES?|PCS|PIECES?|CBM|M[³3])\b',header)
                     if not unit_match: continue
                     unit=unit_match.group(0)
                     if not evidence_ok(raw,raw,page['number'],pages) or not evidence_ok(unit,unit,page['number'],pages): continue
@@ -677,7 +684,7 @@ def ground_source_format(result, pages):
     # Item descriptions already preserve independent printed rows. An optional
     # model-generated shipment summary joining them with semicolons is not a
     # printed field and must not create a spurious employee reading task.
-    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List']:
+    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List','Contract','Purchase Order']:
         def generated_item_summary(field):
             if field.field_id!='cargo_description' or ';' not in field.raw_value:return False
             if evidence_ok(field.raw_value,field.evidence_text,field.source_page,pages):return False
@@ -1247,13 +1254,6 @@ def analyze(case_id, document, pages):
     text = encode([{'page': p['number'], **({'reading_quality':p.get('quality','')} if p.get('method')=='OCR' else {}), 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)],
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
-    context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v29-literal-source-pointers|' + _model + '|' + context + '|' + text).encode()).hexdigest()
-    cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
-    if cached:
-        result = ground_source_format(DocumentResult.model_validate_json(cached['payload']),pages)
-        records, rejected = validated_subset(result, pages)
-        return result, records, {'source': 'cache', 'rejected': rejected}
     content_type, content_quote = classify(pages)
     manual_quote = manual_support_quote(staff_type,pages) if staff_type and content_type=='Other' else ''
     target_type = staff_type if manual_quote else content_type
@@ -1279,7 +1279,7 @@ def analyze(case_id, document, pages):
         'Customs Declaration: extract allowed HEADER fields only. Quantities on individual goods/item pages are not a shipment-total goods_quantity; omit them from header fields and never add them to fabricate a missing total. '
         'For Customs Declaration cargo_description only, descriptions in distinct labelled goods-description cells on the SAME page may be displayed in source order separated by a semicolon. Copy every component verbatim (whitespace may collapse), starting immediately after its own goods-description label. The contiguous evidence range must include all those labels and components. The server proves each component independently and retains the separate source parts. Never apply this exception to numbers, units, totals, roles or unlabelled text. '
         'For documents outside those main and supporting types, classify the actual type and return fields=[], items=[], containers=[]; never force unrelated content into a main type. '
-        'Staff classification context: '+encode({'selected_type':document['type'],'confirmed':bool(staff_type),'independent_support_quote':manual_quote})+'. '
+        'Staff classification context: '+encode({'selected_type':staff_type,'confirmed':bool(staff_type),'independent_support_quote':manual_quote})+'. '
         'Only when confirmed=true AND the content classifier is Other: use selected_type as the extraction target if independent_support_quote is nonempty; otherwise keep Other with no data. Quote existing identifying business labels for classification_evidence; never invent a title. When the content classifier is not Other, preserve its type, including a clear title conflicting with the staff choice. '
         'No tools/actions. Never infer HS, declaration/tax/customs codes. No invented values. '
         'Omit absent fields entirely; never return an empty raw_value or a placeholder for a missing ETA, voyage or actual arrival date. '
@@ -1287,6 +1287,9 @@ def analyze(case_id, document, pages):
         'Party name fields contain only the company/person name; addresses and telephone belong in separate fields. '
         'Origin at field and item level requires a printed Country of Origin / Origin: / Made in label and the country in the SAME evidence quote. Seller address, port, company name and certificate issuer country never prove goods origin. If no origin label is printed, omit origin on all fields and items. '
         'Quantity units must be read from the actual quantity column/header (including Quantity followed by a separate line such as (KGS)), using exact unit_line or cell_evidence. Do not leave a unit null when that applicable header is readable; do not substitute packing weight, net/gross weight or price unit for quantity. '
+        'For tables with No.of bdl / Bundles, Total pcs, and Quantity (M3), these are THREE distinct roles: packages, goods_quantity, volume. Read their own printed Total cells, not the first/last item row. M3/CBM is volume even under a Quantity heading. Copy volume from Invoice and Contract when printed too. Never calculate an absent footer or guess a stamp-obscured weight. '
+        'C/O box 7 may give a bundle/package count: that is packages, not goods_quantity unless the source explicitly counts goods pieces. Keep BE, BDL and BUNDLES as printed package units; the server normalizes documented unit aliases. '
+        'Customs invoice cells can print a separate form marker followed by a spaced hyphen before the invoice identifier (A - ...). Extract the actual invoice identifier, not that separated form marker; do not remove a prefix from an invoice number printed as one continuous identifier. '
         'incoterms contains a printed trade term such as CIF or FOB, never TT, LC or a payment sentence. Put payment conditions in payment_terms. Do not infer net_weight from quantity without a net-weight label. '
         'Arrival Notice: extract only the allowed header and shipment-summary fields; items=[] and containers=[]. Freight charges and equipment rows are not Invoice amounts or commercial items. A referenced B/L number is bl_number, never booking. '
         'Booking: eta is the ETA at Port of Discharge, not ETA at Port of Loading, final delivery or cargo availability. Equipment counts are not packages; generic Cargo Weight is not gross_weight unless explicitly labelled Gross. '
@@ -1340,9 +1343,20 @@ def analyze(case_id, document, pages):
         'Never correct inconsistent source data. Never use codes/legal classifications. Empty unavailable values=null. Fields allowed: ' + encode(permitted)
         + '\n' + EXAMPLES
     )
+    sampling = {'temperature': 0} if _model.startswith(('gpt-4.1', 'gpt-4o')) else {}
+    trace = {'file_sha256': document.get('hash'), 'input_sha256': pipeline.digest(text),
+             'prompt_sha256': pipeline.digest(instructions), 'schema_sha256': pipeline.digest(DocumentResult.model_json_schema()),
+             'pipeline_sha256': pipeline.fingerprint(), 'requested_model': _model, 'sampling': sampling}
+    digest = pipeline.digest({'version': 30, **trace})
+    trace['cache_key'] = digest
+    cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
+    if cached:
+        payload = json.loads(cached['payload'])
+        result = DocumentResult.model_validate(payload['result'])
+        records, rejected = validated_subset(result, pages)
+        return result, records, {'source': 'cache', 'rejected': rejected, 'trace': payload['trace']}
     client = OpenAI(api_key=key(), timeout=60, max_retries=1)
     try:
-        sampling = {'temperature': 0} if _model.startswith(('gpt-4.1', 'gpt-4o')) else {}
         response = client.responses.parse(
             model=_model,
             input=[{'role': 'system', 'content': instructions}, {'role': 'user', 'content': text}],
@@ -1358,6 +1372,8 @@ def analyze(case_id, document, pages):
         result = response.output_parsed
         if result is None:
             raise ValueError('AI từ chối hoặc chưa trả kết quả có cấu trúc')
+        trace['response_model'] = getattr(response, 'model', None)
+        trace['response_sha256'] = pipeline.digest(result.model_dump())
         if staff_type and content_type=='Other' and not manual_quote:
             # Selecting Invoice must never turn a meeting note into invoice values.
             result = DocumentResult.model_validate({**result.model_dump(),'document_type':'Other','fields':[],'items':[],'containers':[]})
@@ -1395,6 +1411,8 @@ def analyze(case_id, document, pages):
                     (uid(), case_id, now(), _model, getattr(usage,'input_tokens',None), getattr(usage,'output_tokens',None), 'repair_received'))
                 if retry.output_parsed is None:
                     raise ValueError('Lượt đọc lại chưa trả dữ liệu có cấu trúc')
+                trace['repair_response_sha256'] = pipeline.digest(retry.output_parsed.model_dump())
+                trace['repair_response_model'] = getattr(retry, 'model', None)
                 grounded = ground_source_format(retry.output_parsed,pages)
                 source_grounded |= grounded.model_dump()!=retry.output_parsed.model_dump()
                 result = merge_supported_repair(result, grounded, pages, targets)
@@ -1403,9 +1421,12 @@ def analyze(case_id, document, pages):
         records, rejected = validated_subset(result, pages)
         if repair_error:
             rejected.append('Lượt đọc lại chưa hoàn tất; giữ dữ liệu đã có bằng chứng. '+repair_error)
-        else:
-            execute('INSERT OR REPLACE INTO ai_cache VALUES (?,?,?)', (digest, result.model_dump_json(), now()))
-        return result, records, {'source': 'api', 'rejected': rejected, 'repair_requested': targets, 'source_grounded': source_grounded}
+        trace['result_sha256'] = pipeline.digest(result.model_dump())
+        trace['records_sha256'] = pipeline.digest(records)
+        trace['rejected_count'] = len(rejected)
+        if not repair_error:
+            execute('INSERT OR REPLACE INTO ai_cache VALUES (?,?,?)', (digest, encode({'result':result.model_dump(),'trace':trace}), now()))
+        return result, records, {'source': 'api', 'rejected': rejected, 'repair_requested': targets, 'source_grounded': source_grounded, 'trace': trace}
     except ValueError:
         raise
     except Exception as exc:

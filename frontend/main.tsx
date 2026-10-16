@@ -1026,7 +1026,7 @@ function App() {
               <div className="help-inline">
                 <ShieldCheck size={16} />
                 <span>
-                  Checklist gồm 6 nhóm chứng từ thương mại, bao gồm Arrival Notice. PO và Sales Contract được nhận diện riêng; C/O có thì kiểm, thiếu thì không chặn. Excel phục vụ kiểm tra nội bộ.
+                  Checklist gồm Packing List, Booking, Invoice, C/O, hợp đồng, Arrival Notice và B/L. PO và Sales Contract được nhận diện riêng; C/O và B/L có thì kiểm. Tờ khai cũng được đọc để đối chiếu. Excel phục vụ kiểm tra nội bộ.
                 </span>
               </div>
             </>
@@ -1606,12 +1606,12 @@ function App() {
 
               {tab === 'customs' && (
                 <section className="surface padded commercial-checklist">
-                  <div className="section-title"><div><h2>6 nhóm chứng từ cần kiểm</h2><p className="muted">Hợp đồng và PO được nhận diện riêng trong cùng một nhóm. Arrival Notice là thông báo hàng đến; B/L không thay Booking. C/O không bắt buộc; có tải lên thì kiểm nội dung.</p></div></div>
+                  <div className="section-title"><div><h2>Nhóm chứng từ</h2><p className="muted">Đã có: màu xanh lá. Chưa có: màu đỏ. Hợp đồng và PO cùng một nhóm; B/L được đọc riêng và không thay Booking. Tờ khai tham gia đối chiếu. Dữ liệu đã đọc được đưa vào Excel.</p></div></div>
                   {(dict.review_groups || []).map((group: Any) => {
-                    const matches = current.documents.filter((d: Any) => d.type === group.type || (group.type === 'Contract' && d.type === 'Purchase Order') || (['Invoice','Packing List'].includes(group.type) && d.type === 'Invoice & Packing List'));
+                    const matches = current.documents.filter((d: Any) => d.type === group.type || (group.type === 'B/L' && d.type === 'Sea Waybill') || (group.type === 'Contract' && d.type === 'Purchase Order') || (['Invoice','Packing List'].includes(group.type) && d.type === 'Invoice & Packing List'));
                     const rule = current.case.requirements[group.type] || {required:false};
                     return <details className="document-check-group" key={group.type}>
-                      <summary><span><strong>{group.type === 'Contract' ? 'Hợp đồng / Đơn đặt hàng' : group.label}</strong><small>{matches.length ? matches.map((d: Any) => d.type + ' · ' + d.name).join(' | ') : group.type === 'C/O' ? 'Chưa có C/O — không chặn hồ sơ' : 'Chưa có chứng từ trong nhóm này'}</small></span><span className={'badge '+(matches.length ? 'good' : rule.required ? 'bad' : 'neutral')}>{matches.length ? `${matches.length} tệp` : rule.required ? 'Cần bổ sung' : 'Nếu có'}</span><ChevronRight size={16} aria-hidden="true" className="checklist-chevron"/></summary>
+                      <summary><span><strong>{group.type === 'Contract' ? 'Hợp đồng / Đơn đặt hàng' : group.label}</strong><small>{matches.length ? matches.map((d: Any) => d.type + ' · ' + d.name).join(' | ') : 'Chưa có chứng từ trong nhóm này'}</small></span><span className={'badge '+(matches.length ? 'good' : 'bad')}>{matches.length ? `Đã có · ${matches.length} tệp` : 'Chưa có'}</span><ChevronRight size={16} aria-hidden="true" className="checklist-chevron"/></summary>
                       <div className="document-check-body"><p className="muted">{group.type === 'Booking' ? 'Đây là dữ liệu kế hoạch. Khác số lượng/khối lượng thực tế cần kiểm lại phạm vi, không tự kết luận chứng từ sai.' : group.type === 'Contract' ? 'Giữ riêng số và ngày PO/Sales Contract. Số lượng có thể thuộc nhiều đợt giao; kiểm đúng lô trước khi đối chiếu.' : group.type === 'C/O' ? 'Đọc số C/O, xuất xứ và dữ liệu liên quan. Kết quả đọc không xác thực tính hợp lệ của giấy.' : 'Bấm Xem nguồn để kiểm trên chứng từ gốc. Các trường chỉ có trên một số mẫu không mặc nhiên là bắt buộc.'}</p>
                       <div className="table-wrap"><table><thead><tr><th>Trường kiểm tra</th><th>Dữ liệu & nguồn</th><th>Thao tác</th></tr></thead><tbody>{group.fields.map((key: string) => {
                         const rows = current.records.filter((r: Any) => r.kind === 'field' && r.key === key && matches.some((d: Any) => d.id === r.document_id) && r.status !== 'rejected');

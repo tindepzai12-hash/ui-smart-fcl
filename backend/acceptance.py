@@ -5,7 +5,7 @@ from .normalize import decimal_text
 def printed_number(value):
     # The characters are readable even when a numeric separator convention
     # cannot be proved. Export the literal string, never guess a numeric value.
-    return bool(re.fullmatch(r'\d{1,3}(?:[,.]\d{3})+(?:\s+[A-Za-z]{2,8})?',str(value).strip()))
+    return bool(re.fullmatch(r'\d{1,3}(?:[,.]\d{3})+(?:\s+(?:[A-Za-z]{2,8}|M[³3]))?',str(value).strip()))
 
 def readable(record):
     value=record['value']

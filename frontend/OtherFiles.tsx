@@ -55,7 +55,7 @@ function OtherFile({ file, types, disabled, onRestore }: any) {
 export function OtherFiles({ files, types, disabled, onRestore }: any) {
   return <details className="other-files" open={files.length > 0}>
     <summary>Giấy tờ khác ({files.length})</summary>
-    <p>Tệp ngoài 6 loại chính được giữ ở đây sau khi đọc và nhận diện. Không tính vào checklist, dữ liệu đối chiếu hoặc Excel chính. Tệp chưa rõ loại cần xem lại bản gốc.</p>
+    <p>Tệp ngoài phạm vi chứng từ được giữ ở đây sau khi đọc và nhận diện. B/L và tờ khai thuộc bộ đối chiếu. Tệp chưa rõ loại cần xem lại bản gốc.</p>
     {files.length ? <ul>{files.map((file: any) => <OtherFile key={file.id} file={file} types={types} disabled={disabled} onRestore={onRestore} />)}</ul>
       : <p className="muted">Chưa có giấy tờ khác. Tải tất cả tệp ở “Thêm chứng từ”; hệ thống sẽ phân nhóm sau khi đọc.</p>}
   </details>;
