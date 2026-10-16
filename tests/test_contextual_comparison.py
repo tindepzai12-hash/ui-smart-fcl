@@ -52,7 +52,10 @@ def test_ai_semantics_can_accept_category_without_silencing_other_differences(mo
     monkeypatch.setattr(ai,'key',lambda:'mock')
     response={'issues':[], 'description_assessments':[{'record_ids':['a','b'],'relation':'compatible',
         'reason':'Baga và thanh nối baga là phụ tùng xe đạp; nguồn kho ghi nhóm hàng, không xác nhận từng mã.'}]}
-    def parse(**kwargs):return SimpleNamespace(output_parsed=kwargs['text_format'].model_validate(response),usage=None)
+    def parse(**kwargs):
+        assert kwargs['text_format'].model_json_schema()['properties']['description_assessments']['minItems']==1
+        assert json.loads(kwargs['input'][1]['content'])['description_comparison_record_ids']==['a','b']
+        return SimpleNamespace(output_parsed=kwargs['text_format'].model_validate(response),usage=None)
     monkeypatch.setattr(ai,'OpenAI',lambda **kwargs:SimpleNamespace(responses=SimpleNamespace(parse=parse)))
     assert not consistency.run_ai_review('test',docs,rows)
     checks=validation.build_checks({'id':'test','mode':'FCL','requirements':default_requirements()},docs,rows)
@@ -76,3 +79,9 @@ def test_ai_semantics_can_accept_category_without_silencing_other_differences(mo
     response['description_assessments'][0]['record_ids']=['a','invented']
     assert not consistency.run_ai_review('test',docs,rows)
     assert json.loads(saved['payload'])==[]
+    # Equal readable descriptions must remain Matched even if AI suggests otherwise.
+    rows[1]['value']=copy.deepcopy(rows[0]['value'])
+    response['description_assessments'][0]['record_ids']=['a','b']
+    assert not consistency.run_ai_review('test',docs,rows)
+    checks=validation.build_checks({'id':'test','mode':'FCL','requirements':default_requirements()},docs,rows)
+    assert next(c for c in checks if c['key']=='field:cargo_description')['result']=='Matched'

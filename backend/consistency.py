@@ -59,6 +59,9 @@ def ai_checks(case_id,documents,records):
 def description_assessment(case_id,documents,records,group):
     """Only a current, complete AI assessment can explain semantic compatibility."""
     if not case_id:return None
+    from .validation import comparison_values
+    values=comparison_values('cargo_description',group,records)
+    if all(v is not None for v in values) and len(set(values))==1:return None
     saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
     if not saved or saved['error'] or saved['signature']!=signature(documents,records):return None
     ids={r['id'] for r in group}
@@ -103,6 +106,9 @@ def run_ai_review(case_id,documents,records):
     from . import ai
     from pydantic import Field
     from typing import List,Literal
+    active=[r for r in records if r['status']!='rejected']
+    descriptions=[r for r in active if r['kind']=='field' and r['key']=='cargo_description']
+    needs_description=len({r['document_id'] for r in descriptions})>=2
     class Issue(ai.Strict):
         field_id:str
         record_ids:List[str]=Field(min_length=2,max_length=12)
@@ -113,21 +119,20 @@ def run_ai_review(case_id,documents,records):
         reason:str=Field(min_length=5,max_length=1000)
     class Review(ai.Strict):
         issues:List[Issue]=Field(max_length=40)
-        description_assessments:List[DescriptionAssessment]=Field(default_factory=list,max_length=1)
+        description_assessments:List[DescriptionAssessment]=Field(default_factory=list,min_length=1 if needs_description else 0,max_length=1)
     sig=signature(documents,records);output=[];error=''
-    active=[r for r in records if r['status']!='rejected']
     try:
         if len(active)>350:raise ValueError('Hồ sơ hơn 350 bản ghi; chưa chạy đối chiếu ngữ nghĩa AI. Đối chiếu số liệu vẫn hoạt động.')
         payload=[{**s,'field_id':r['key'],'kind':r['kind']} for r,s in zip(active,sources(active,documents))]
         policy=(db.ROOT/'docs'/'AI_SHIPMENT_CONSISTENCY.md').read_text(encoding='utf-8')
         response=ai.OpenAI(api_key=ai.key(),timeout=60,max_retries=1).responses.parse(model=ai._model,store=False,text_format=Review,
             input=[{'role':'system','content':ai.NO_INFERENCE_POLICY+'\n'+policy},
-                   {'role':'user','content':db.encode(payload)}],
+                   {'role':'user','content':db.encode({'records':payload,
+                       'description_comparison_record_ids':[r['id'] for r in descriptions] if needs_description else []})}],
             **({'temperature':0} if ai._model.startswith(('gpt-4.1','gpt-4o')) else {}))
         db.execute('INSERT INTO ai_usage VALUES (?,?,?,?,?,?,?)',(db.uid(),case_id,db.now(),ai._model,getattr(response.usage,'input_tokens',None),getattr(response.usage,'output_tokens',None),'packet-consistency'))
         if response.output_parsed is None:raise ValueError('AI chưa trả kết quả đối chiếu có cấu trúc.')
         index={r['id']:r for r in active};seen=set()
-        descriptions=[r for r in active if r['kind']=='field' and r['key']=='cargo_description']
         for assessment in response.output_parsed.description_assessments:
             ids=list(dict.fromkeys(assessment.record_ids))
             if (set(ids)!={r['id'] for r in descriptions} or len(ids)<2
