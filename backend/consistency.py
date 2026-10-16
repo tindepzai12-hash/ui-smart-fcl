@@ -8,6 +8,94 @@ CONTEXT_FIELDS={'incoterms','payment_terms','shipment_terms','origin','port_load
     'seller','buyer','shipper','consignee','notify_party','exporter','importer',
     'seller_address','buyer_address','shipper_address','consignee_address','exporter_address','importer_address'}
 REFERENCE_FIELDS={'booking_number','invoice_number','packing_list_number','contract_number','po_number','bl_number','awb_number'}
+COUNTRY_NAMES={'VIET NAM':'VIETNAM','VIETNAM':'VIETNAM','TAIWAN':'TAIWAN','CHINA':'CHINA',
+    'UNITED STATES':'USA','USA':'USA','GERMANY':'GERMANY','JAPAN':'JAPAN','KOREA':'KOREA',
+    'SINGAPORE':'SINGAPORE','THAILAND':'THAILAND','MALAYSIA':'MALAYSIA','INDONESIA':'INDONESIA',
+    'AUSTRALIA':'AUSTRALIA','CANADA':'CANADA','INDIA':'INDIA','FRANCE':'FRANCE','ITALY':'ITALY'}
+
+def canonical_words(text):
+    return ' '.join(re.findall(r'[^\W_]+',str(text).upper(),flags=re.UNICODE))
+
+def printed_country(text):
+    text=canonical_words(text)
+    return next((country for name,country in sorted(COUNTRY_NAMES.items(),key=lambda x:-len(x[0]))
+                 if text==name or text.endswith(' '+name)),None)
+
+def scope_guard(key,group,documents,records):
+    """Conservative source-bound limitations, NOT assertions that values match.
+
+    Models may misread a scope clause. Keep readable values but do not label an
+    unproven scope difference as an error. Genuine shipment disagreements bypass
+    these guards and continue through the normal comparator.
+    """
+    from .validation import comparison_values,port_detail_compatible
+    docs={d['id']:d for d in documents};context=[];reason=''
+    if key=='goods_quantity':
+        partial=partial_quantity_context(documents,records)
+        if not partial or {r['id'] for r in partial[0]}!={r['id'] for r in group}:return None
+        context=partial[1]
+        # A literal item identity on BOTH documents is needed for the scope rule.
+        # No guessed translation, sum, instalment schedule or majority vote.
+        identities=[]
+        for row in group:
+            items=[r for r in records if r['status']!='rejected' and r['kind']=='item'
+                   and r['document_id']==row['document_id'] and r['value'].get('description')]
+            if not items:return None
+            identities.append({(canonical_words(r['value'].get('product_code','')),
+                                canonical_words(r['value']['description'])) for r in items})
+            context.extend(items)
+        if any(v!=identities[0] for v in identities[1:]):return None
+        reason='Hợp đồng ghi rõ cho phép giao từng phần; các nguồn đang so tổng lượng hợp đồng với lượng một lô giao của cùng mặt hàng. Giữ riêng từng giá trị vào Excel; không kết luận sai lệch chỉ vì khác phạm vi. Chưa xác nhận đã giao đủ hợp đồng và không đoán dấu phân cách số.'
+    elif key in ['port_loading','port_discharge']:
+        broad=[r for r in group if docs.get(r['document_id'],{}).get('type') in ['Contract','Purchase Order']
+               and re.fullmatch(r'ANY PORTS?(?: OF| IN)? [A-Z ]+',canonical_words(r['value'].get('text','')))]
+        specific=[r for r in group if r not in broad]
+        if not broad or not specific:return None
+        values=comparison_values(key,specific,records)
+        if any(v is None for v in values) or (len(set(values))>1 and not port_detail_compatible(specific)):return None
+        countries={c for r in group if (c:=printed_country(r['value'].get('text','')))}
+        if len(countries)>1:return None
+        context=broad
+        reason='Hợp đồng cho phép lựa chọn cảng, còn chứng từ lô giao ghi cảng cụ thể. Đây là khác mức độ/phạm vi địa điểm, chưa phải hai cảng cụ thể mâu thuẫn. Giữ nguyên nguồn trong Excel; chưa khẳng định cảng cụ thể thuộc phạm vi địa lý hợp đồng nếu nguồn không chứng minh.'
+    elif key=='consignee':
+        order=[r for r in group if re.fullmatch(r'TO THE ORDER OF .+ BANK(?: .+)?',canonical_words(r['value'].get('text','')))]
+        plain=[r for r in group if r not in order]
+        if not order or not plain:return None
+        if len({canonical_words(r['value']['text']) for r in order})!=1 or len({canonical_words(r['value']['text']) for r in plain})!=1:return None
+        party=canonical_words(plain[0]['value']['text'])
+        buyers=[r for r in records if r['status']!='rejected' and r['key']=='buyer' and canonical_words(r['value'].get('text',''))==party]
+        notify=[r for r in records if r['status']!='rejected' and r['key']=='notify_party' and canonical_words(r['value'].get('text',''))==party]
+        payments=[r for r in records if r['status']!='rejected' and r['key']=='payment_terms'
+                  and r['document_id'] in {b['document_id'] for b in buyers}
+                  and re.search(r'\bL\s*/\s*C\b|\bLETTER OF CREDIT\b',r['value'].get('text',''),re.I)]
+        if not buyers or not notify or not payments:return None
+        context=buyers+notify+payments
+        reason='Một nguồn ghi nhận hàng theo lệnh ngân hàng; nguồn khác ghi bên thương mại trùng tên Buyer và Notify party trong hồ sơ có thanh toán L/C. Hai tên thuộc vai trò khác nhau, chưa đủ căn cứ báo sai người nhận. Giữ nguyên từng nguồn; không đồng nhất hai pháp nhân hoặc xác nhận quyền nhận hàng.'
+    else:return None
+    return {'key':'ai-context:'+key,'result':'Not Yet Checked','severity':'info',
+            'detail':{'reason':reason,'sources':sources(group,documents),
+                      'method':'Evidence-bound document scope rule','relation':'insufficient_context',
+                      'context_sources':sources(list({r['id']:r for r in context}.values()),documents)}}
+
+def explicit_semantic_conflict(key,group,documents):
+    """Printed different countries/trade terms cannot be waved away by AI."""
+    values=[]
+    for r in group:
+        text=canonical_words(r['value'].get('text',''))
+        if key=='incoterms':
+            terms=re.findall(r'\b(?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF)\b',text)
+            value=terms[0] if len(set(terms))==1 else None
+        elif key in ['origin','port_loading','port_discharge']:value=printed_country(text)
+        else:return None
+        if value:values.append((r,value))
+    for a,av in values:
+        for b,bv in values:
+            if av==bv or a['document_id']==b['document_id']:continue
+            return {'key':'ai-context:'+key,'result':'Needs Verification','severity':'warning',
+                'detail':{'reason':f'Hai nguồn ghi rõ {av} và {bv} khác nhau ở cùng chỉ tiêu. Đây là nội dung đối lập, không chỉ khác dấu câu hoặc mức độ chi tiết; cần kiểm chứng từ gốc.',
+                          'sources':sources(group,documents),'method':'Evidence-bound explicit contradiction rule',
+                          'relation':'contradiction','category':'difference','contradicting_record_ids':[a['id'],b['id']]}}
+    return None
 
 def partial_quantity_context(documents,records):
     """Allow scope reasoning ONLY with a printed partial-shipment clause.
@@ -92,7 +180,9 @@ def ai_checks(case_id,documents,records):
     if not case_id:return []
     saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
     if not saved or saved['error'] or saved['signature']!=signature(documents,records):return []
-    return [c for c in json.loads(saved['payload']) if c['result']=='Needs Verification' and semantic_difference(c,records)]
+    return [c for c in json.loads(saved['payload']) if c['result']=='Needs Verification' and semantic_difference(c,records)
+            and not scope_guard(c['key'].split(':',1)[-1],
+                [r for r in records if r['status']!='rejected' and r['key']==c['key'].split(':',1)[-1]],documents,records)]
 
 
 def description_assessment(case_id,documents,records,group):
@@ -127,7 +217,7 @@ def contextual_candidates(documents,records):
     if partial:
         group,_=partial
         values=comparison_values('goods_quantity',group,records)
-        if len(set(values))>1:candidates['goods_quantity']=group
+        if len(set(values))>1 and scope_guard('goods_quantity',group,documents,records):candidates['goods_quantity']=group
     return candidates
 
 def packet_context(documents,records,source_pages=None):
@@ -156,6 +246,10 @@ def packet_context(documents,records,source_pages=None):
 
 def contextual_assessment(case_id,documents,records,key,group):
     if not case_id or key not in contextual_candidates(documents,records):return None
+    guarded=scope_guard(key,group,documents,records)
+    if guarded:return guarded
+    conflict=explicit_semantic_conflict(key,group,documents)
+    if conflict:return conflict
     saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
     if not saved or saved['error'] or saved['signature']!=signature(documents,records):return None
     ids={r['id'] for r in group}
@@ -239,6 +333,14 @@ def run_ai_review(case_id,documents,records,source_pages=None):
         index={r['id']:r for r in active};seen=set()
         assessed=set()
         for key,group in candidates.items():
+            guarded=scope_guard(key,group,documents,active)
+            if guarded:
+                output.append(guarded);assessed.add(key);seen.add(key)
+                continue
+            conflict=explicit_semantic_conflict(key,group,documents)
+            if conflict:
+                output.append(conflict);assessed.add(key);seen.add(key)
+                continue
             assessment=getattr(response.output_parsed.contextual_assessments,key)
             ids={r['id'] for r in group};context_ids=list(dict.fromkeys(assessment.context_record_ids))
             if any(i not in index for i in context_ids):continue

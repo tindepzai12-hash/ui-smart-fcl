@@ -59,7 +59,7 @@ def test_related_contract_terms_and_translations_keep_genuine_gross_difference(m
     assert rows==original
     # An actual opposing term remains a task, rather than being waved away as wording.
     rows[3]['value']=normalize('CIF CAT LAI')
-    assert consistency.contextual_assessment('case',docs,rows,'incoterms',[rows[2],rows[3],rows[-1]]) is None
+    assert consistency.contextual_assessment('case',docs,rows,'incoterms',[rows[2],rows[3],rows[-1]])['result']=='Needs Verification'
     reply['contextual_assessments']['incoterms']=assessment('contradiction',['t1','t2'])
     assert not consistency.run_ai_review('case',docs,rows,pages)
     check=build(docs,rows)['field:incoterms']
@@ -133,7 +133,9 @@ def test_printed_partial_clause_allows_quantity_scope_reasoning_not_weight_waive
           record('b','i','goods_quantity',normalize('16,200 KG','quantity')),
           record('clause','c','shipment_terms',normalize('Partial shipment allowed. Not later than Mar, 28th 2020')),
           record('g1','i','gross_weight',normalize('489 KG','weight')),
-          record('g2','p','gross_weight',normalize('515.08 KG','weight'))]
+          record('g2','p','gross_weight',normalize('515.08 KG','weight')),
+          record('it1','c','goods_item',{'description':'COCONUT EXTRACT (CLASS A)','scope':'contract'},'item'),
+          record('it2','i','goods_item',{'description':'COCONUT EXTRACT (CLASS A)'},'item')]
     original=copy.deepcopy(rows)
     reply={'issues':[],'contextual_assessments':{'goods_quantity':assessment(context=['clause'])}}
     saved,requests=reviewer(monkeypatch,reply)
@@ -154,7 +156,64 @@ def test_printed_partial_clause_allows_quantity_scope_reasoning_not_weight_waive
     rows[1]['value']=normalize('16200 KG','quantity')
     rows.append(record('other','p','goods_quantity',normalize('16000 KG','quantity')))
     assert 'goods_quantity' not in consistency.contextual_candidates(docs,rows)
-    # A model must cite the actual clause before a scope finding can be used.
+    # Even a model omitting the clause cannot erase the server's actual clause sources.
     rows.pop();reply['contextual_assessments']['goods_quantity']['context_record_ids']=[]
-    assert consistency.run_ai_review('case',docs,rows)
-    assert saved['error']
+    assert not consistency.run_ai_review('case',docs,rows)
+    assert not saved['error']
+    assert 'clause' in {s['id'] for s in build(docs,rows)['field:goods_quantity']['detail']['context_sources']}
+
+
+def test_model_cannot_invent_scope_conflicts_or_certify_different_countries(monkeypatch):
+    docs=[document('c','Contract'),document('i','Invoice'),document('p','Packing List'),document('co','C/O'),document('an','Arrival Notice')]
+    rows=[record('q1','c','goods_quantity',normalize('64,800 KG','quantity')),
+          record('q2','i','goods_quantity',normalize('16,200 KG','quantity')),
+          record('clause','c','shipment_terms',normalize('Partial shipment allowed. Not later than March 2020')),
+          record('it1','c','goods_item',{'description':'COCONUT EXTRACT (CLASS A)','scope':'contract'},'item'),
+          record('it2','i','goods_item',{'description':'COCONUT EXTRACT ( CLASS A )'},'item'),
+          record('port1','c','port_discharge',normalize('ANY PORT, TAIWAN')),
+          record('port2','i','port_discharge',normalize('TAICHUNG, TAIWAN')),
+          record('con1','p','consignee',normalize('TO THE ORDER OF TAIWAN BUSINESS BANK')),
+          record('con2','co','consignee',normalize('PURESUN TRADING CO.,LTD')),
+          record('buyer','c','buyer',normalize('PURESUN TRADING CO., LTD')),
+          record('notify','an','notify_party',normalize('PURESUN TRADING CO., LTD')),
+          record('pay','c','payment_terms',normalize('By L/C through Industrial Commercial Bank')),
+          record('g1','i','gross_weight',normalize('489 KG','weight')),
+          record('g2','p','gross_weight',normalize('515.08 KG','weight'))]
+    original=copy.deepcopy(rows)
+    # Deliberately wrong model findings reproduce the real model regression.
+    reply={'issues':[],'contextual_assessments':{
+        'goods_quantity':assessment('contradiction',['q1','q2']),
+        'port_discharge':assessment('contradiction',['port1','port2']),
+        'consignee':assessment('contradiction',['con1','con2'])}}
+    reviewer(monkeypatch,reply)
+    assert not consistency.run_ai_review('case',docs,rows)
+    checks=build(docs,rows)
+    for key in ['goods_quantity','port_discharge','consignee']:
+        check=checks['field:'+key]
+        assert check['result']=='Not Yet Checked'
+        assert check['detail']['relation']=='insufficient_context'
+        assert check['detail']['method']=='Evidence-bound document scope rule'
+        assert 'category' not in check['detail']
+    assert checks['field:gross_weight']['result']=='Mismatch' and rows==original
+    assert not consistency.ai_checks('case',docs,rows)
+    # Different shipment port and different commercial consignee must not be hidden.
+    rows.append(record('port3','an','port_discharge',normalize('KEELUNG, TAIWAN')))
+    assert consistency.scope_guard('port_discharge',[r for r in rows if r['key']=='port_discharge'],docs,rows) is None
+    rows.append(record('con3','an','consignee',normalize('OTHER TRADING LTD')))
+    assert consistency.scope_guard('consignee',[r for r in rows if r['key']=='consignee'],docs,rows) is None
+    # Different goods cannot borrow the partial clause to hide their quantities.
+    rows[4]['value']['description']='COCONUT EXTRACT CLASS B'
+    assert consistency.scope_guard('goods_quantity',rows[:2],docs,rows) is None
+    assert 'goods_quantity' not in consistency.contextual_candidates(docs,rows)
+
+
+@pytest.mark.parametrize('key,first,second',[('incoterms','FOB CAT LAI','CIF CAT LAI'),
+    ('origin','VIETNAM','CHINA'),('port_discharge','ANY PORT, TAIWAN','HAMBURG, GERMANY')])
+def test_model_compatible_cannot_hide_explicit_term_or_country_conflict(monkeypatch,key,first,second):
+    docs=[document('c','Contract'),document('i','Invoice')]
+    rows=[record('a','c',key,normalize(first)),record('b','i',key,normalize(second))]
+    reviewer(monkeypatch,{'issues':[],'contextual_assessments':{key:assessment()}})
+    assert not consistency.run_ai_review('case',docs,rows)
+    check=build(docs,rows)['field:'+key]
+    assert check['result']=='Needs Verification' and check['detail']['category']=='difference'
+    assert set(check['detail']['contradicting_record_ids'])=={'a','b'}
