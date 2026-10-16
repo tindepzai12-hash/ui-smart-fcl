@@ -159,7 +159,7 @@ def report(case,documents,records,checks):
 def run_ai_review(case_id,documents,records,source_pages=None):
     """AI only suggests semantic issues over existing IDs; never creates or corrects data."""
     from . import ai
-    from pydantic import Field
+    from pydantic import Field,create_model
     from typing import List,Literal
     active=[r for r in records if r['status']!='rejected']
     descriptions=[r for r in active if r['kind']=='field' and r['key']=='cargo_description']
@@ -173,17 +173,18 @@ def run_ai_review(case_id,documents,records,source_pages=None):
         record_ids:List[str]=Field(min_length=2,max_length=30)
         relation:Literal['compatible','contradiction','uncertain']
         reason:str=Field(min_length=5,max_length=1000)
-    class ContextAssessment(ai.Strict):
-        field_id:str
-        record_ids:List[str]=Field(min_length=2,max_length=40)
-        relation:Literal['compatible','contradiction','insufficient_context']
-        contradicting_record_ids:List[str]=Field(max_length=2)
-        context_record_ids:List[str]=Field(max_length=20)
-        reason:str=Field(min_length=5,max_length=1000)
+    # The server binds each required assessment to its complete source group.
+    # Do not ask the model to copy long ID lists (which can omit a valid source).
+    context_models={key:(create_model('Context_'+key,__base__=ai.Strict,
+        relation=(Literal['compatible','contradiction','insufficient_context'],...),
+        contradicting_record_ids=(List[Literal[tuple(r['id'] for r in group)]],Field(max_length=2)),
+        context_record_ids=(List[str],Field(max_length=20)),
+        reason=(str,Field(min_length=5,max_length=1000))),...) for key,group in candidates.items()}
+    ContextualAssessments=create_model('ContextualAssessments',__base__=ai.Strict,**context_models)
     class Review(ai.Strict):
         issues:List[Issue]=Field(max_length=40)
         description_assessments:List[DescriptionAssessment]=Field(default_factory=list,min_length=1 if needs_description else 0,max_length=1)
-        contextual_assessments:List[ContextAssessment]=Field(default_factory=list,min_length=len(candidates),max_length=len(candidates))
+        contextual_assessments:ContextualAssessments=Field(default_factory=ContextualAssessments)
     sig=signature(documents,records);output=[];error=''
     try:
         if len(active)>350:raise ValueError('Hồ sơ hơn 350 bản ghi; chưa chạy đối chiếu ngữ nghĩa AI. Đối chiếu số liệu vẫn hoạt động.')
@@ -200,13 +201,16 @@ def run_ai_review(case_id,documents,records,source_pages=None):
         if response.output_parsed is None:raise ValueError('AI chưa trả kết quả đối chiếu có cấu trúc.')
         index={r['id']:r for r in active};seen=set()
         assessed=set()
-        for assessment in response.output_parsed.contextual_assessments:
-            key=assessment.field_id;group=candidates.get(key)
-            ids=set(assessment.record_ids);context_ids=list(dict.fromkeys(assessment.context_record_ids))
-            if not group or key in assessed or ids!={r['id'] for r in group} or any(i not in index for i in context_ids):continue
+        for key,group in candidates.items():
+            assessment=getattr(response.output_parsed.contextual_assessments,key)
+            ids={r['id'] for r in group};context_ids=list(dict.fromkeys(assessment.context_record_ids))
+            if any(i not in index for i in context_ids):continue
             opposing=set(assessment.contradicting_record_ids)
             if assessment.relation=='contradiction' and (len(opposing)!=2 or not opposing<=ids
                     or len({index[i]['document_id'] for i in opposing})!=2):continue
+            if assessment.relation=='contradiction':
+                pair={'detail':{'sources':sources([index[i] for i in opposing],documents)}}
+                if not semantic_difference(pair,active):continue
             if assessment.relation!='contradiction' and opposing:continue
             output.append({'key':'ai-context:'+key,
                 'result':'Needs Verification' if assessment.relation=='contradiction' else 'Not Yet Checked','severity':'warning',

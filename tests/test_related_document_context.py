@@ -22,8 +22,8 @@ def reviewer(monkeypatch,reply):
     return saved,requests
 
 
-def assessment(key,ids,relation='compatible',opposing=None,context=None):
-    return {'field_id':key,'record_ids':ids,'relation':relation,'contradicting_record_ids':opposing or [],
+def assessment(relation='compatible',opposing=None,context=None):
+    return {'relation':relation,'contradicting_record_ids':opposing or [],
             'context_record_ids':context or [],'reason':'Đối chiếu ý nghĩa điều khoản và tham chiếu trên các chứng từ nguồn.'}
 
 
@@ -40,8 +40,9 @@ def test_related_contract_terms_and_translations_keep_genuine_gross_difference(m
           record('ref1','c','contract_number',normalize('SC-01')),
           record('ref2','i','contract_number',normalize('SC-01')),
           record('g1','i','gross_weight',normalize('489 KG','weight')),
-          record('g2','pl','gross_weight',normalize('515.08 KG','weight'))]
-    reply={'issues':[], 'contextual_assessments':[assessment('payment_terms',['p1','p2'],context=['ref1','ref2']),assessment('incoterms',['t1','t2'])]}
+          record('g2','pl','gross_weight',normalize('515.08 KG','weight')),
+          record('t3','pl','incoterms',normalize('FOB CAT LAI'))]
+    reply={'issues':[], 'contextual_assessments':{'payment_terms':assessment(context=['ref1','ref2']),'incoterms':assessment()}}
     original=copy.deepcopy(rows);saved,requests=reviewer(monkeypatch,reply)
     pages=[{'document_id':'c','number':2,'text':'Delivery: partial shipments allowed. Invoice refers to SC-01.'}]
     assert not consistency.run_ai_review('case',docs,rows,pages)
@@ -52,30 +53,31 @@ def test_related_contract_terms_and_translations_keep_genuine_gross_difference(m
     checks=build(docs,rows)
     assert checks['field:payment_terms']['result']=='Not Yet Checked'
     assert checks['field:incoterms']['result']=='Not Yet Checked'
+    assert {s['id'] for s in checks['field:incoterms']['detail']['sources']}=={'t1','t2','t3'}
     assert checks['field:gross_weight']['result']=='Mismatch'
     assert checks['field:payment_terms']['detail']['context_sources'][0]['id']=='ref1'
     assert rows==original
     # An actual opposing term remains a task, rather than being waved away as wording.
     rows[3]['value']=normalize('CIF CAT LAI')
-    assert consistency.contextual_assessment('case',docs,rows,'incoterms',rows[2:4]) is None
-    reply['contextual_assessments'][1]=assessment('incoterms',['t1','t2'],'contradiction',['t1','t2'])
+    assert consistency.contextual_assessment('case',docs,rows,'incoterms',[rows[2],rows[3],rows[-1]]) is None
+    reply['contextual_assessments']['incoterms']=assessment('contradiction',['t1','t2'])
     assert not consistency.run_ai_review('case',docs,rows,pages)
     check=build(docs,rows)['field:incoterms']
     assert check['result']=='Needs Verification' and check['detail']['category']=='difference'
     assert check['detail']['contradicting_record_ids']==['t1','t2']
 
 
-@pytest.mark.parametrize('change', ['invented_context','missing_source','wrong_role','invented_opposition','duplicate_field'])
+@pytest.mark.parametrize('change', ['invented_context','missing_field','wrong_role','invented_opposition','extra_field'])
 def test_invalid_contextual_findings_cannot_waive_existing_checks(monkeypatch,change):
     docs=[document('c','Contract'),document('i','Invoice')]
     rows=[record('a','c','payment_terms',normalize('30% deposit, 70% before shipment')),
           record('b','i','payment_terms',normalize('100% after shipment'))]
-    entry=assessment('payment_terms',['a','b']);reply={'issues':[],'contextual_assessments':[entry]}
+    entry=assessment();reply={'issues':[],'contextual_assessments':{'payment_terms':entry}}
     if change=='invented_context':entry['context_record_ids']=['invented']
-    elif change=='missing_source':entry['record_ids']=['a','invented']
-    elif change=='wrong_role':entry['field_id']='gross_weight'
+    elif change=='missing_field':reply['contextual_assessments']={}
+    elif change=='wrong_role':reply['contextual_assessments']={'gross_weight':entry}
     elif change=='invented_opposition':entry.update(relation='contradiction',contradicting_record_ids=['a','invented'])
-    else:reply['contextual_assessments'].append(copy.deepcopy(entry))
+    else:reply['contextual_assessments']['gross_weight']=copy.deepcopy(entry)
     saved,_=reviewer(monkeypatch,reply)
     assert consistency.run_ai_review('case',docs,rows)
     assert saved['error'] and build(docs,rows)['field:payment_terms']['result']=='Needs Verification'
@@ -85,12 +87,23 @@ def test_readable_insufficient_detail_is_received_without_faking_equivalence(mon
     docs=[document('c','Contract'),document('i','Invoice')]
     rows=[record('a','c','seller',normalize('ABC Trading Limited')),
           record('b','i','seller',normalize('ABC Trading'))]
-    reply={'issues':[],'contextual_assessments':[assessment('seller',['a','b'],'insufficient_context')]}
+    reply={'issues':[],'contextual_assessments':{'seller':assessment('insufficient_context')}}
     reviewer(monkeypatch,reply)
     assert not consistency.run_ai_review('case',docs,rows)
     check=build(docs,rows)['field:seller']
     assert check['result']=='Not Yet Checked' and check['detail']['relation']=='insufficient_context'
     assert 'category' not in check['detail']
+
+
+def test_ai_cannot_call_equal_pair_contradictory_in_a_three_document_group(monkeypatch):
+    docs=[document('c','Contract'),document('i','Invoice'),document('p','Packing List')]
+    rows=[record('a','c','payment_terms',normalize('100% T/T before shipment')),
+          record('b','i','payment_terms',normalize('100% after shipment')),
+          record('c','p','payment_terms',normalize('100% T/T before shipment'))]
+    reply={'issues':[],'contextual_assessments':{'payment_terms':assessment('contradiction',['a','c'])}}
+    saved,_=reviewer(monkeypatch,reply)
+    assert consistency.run_ai_review('case',docs,rows)
+    assert saved['error'] and not consistency.ai_checks('case',docs,rows)
 
 
 def test_context_never_waives_typed_values_or_guesses_reference_links():
