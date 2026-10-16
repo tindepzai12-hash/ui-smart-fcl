@@ -79,6 +79,16 @@ def normalize(raw, kind='text'):
     elif kind == 'date':
         # An English ordinal does not introduce a day/month ordering guess.
         date_raw = re.sub(r'(?i)\b(\d{1,2})(?:st|nd|rd|th)\b', r'\1', raw)
+        # Keep printed local time and zone. Never infer a UTC offset from an
+        # ambiguous abbreviation or discard the time while comparing dates.
+        timed=re.fullmatch(r'(.+?)\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(?:\(([A-Za-z]{2,5})\))?',date_raw)
+        if timed:
+            date=normalize(timed.group(1),'date')
+            hour,minute,second=int(timed.group(2)),int(timed.group(3)),int(timed.group(4) or 0)
+            if not date['warning'] and hour<24 and minute<60 and second<60:
+                result['text']=date['text']+f'T{hour:02d}:{minute:02d}'+(f':{second:02d}' if timed.group(4) else '')
+                if timed.group(5):result['text']+=' ('+timed.group(5).upper()+')'
+                return result
         # Month names make this printed punctuation unambiguous; retain raw separately.
         named_date = re.fullmatch(r'(?:\d{1,2}[, .-]+[A-Za-z]{3,9}[,. ]+\d{4}|[A-Za-z]{3,9}[,. ]+\d{1,2}[,. ]+\d{4})',date_raw)
         date_text = re.sub(r'[,\.]', ' ', date_raw) if named_date else raw

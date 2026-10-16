@@ -36,6 +36,23 @@ def field_comparable(key, value):
     return comparison
 
 
+def port_detail_compatible(group):
+    """A generic port and one more detailed terminal do not prove a conflict.
+
+    Keep both strings; never assert that the generic source named that terminal.
+    Two different terminal names or conflicting printed countries still need comparison.
+    """
+    texts=[' '.join(r['value'].get('text','').upper().rstrip('.').split()) for r in group]
+    detailed=[t for t in texts if ' / ' in t]
+    generic=[t for t in texts if ' / ' not in t]
+    if not detailed or not generic or len(set(detailed))!=1:return False
+    base=detailed[0].split(' / ',1)[0].strip()
+    name=lambda s:' '.join(re.sub(r'\bPORT\b','',s.split(',',1)[0]).split())
+    if not base or any(name(t)!=name(base) for t in generic):return False
+    countries={t.split(',',1)[1].replace('VIET NAM','VIETNAM').strip() for t in generic+[base] if ',' in t}
+    return len(countries)<=1
+
+
 def comparison_values(key, group, records):
     values=[field_comparable(key,r['value']) for r in group]
     if key=='cargo_description':
@@ -246,7 +263,10 @@ def build_checks(case, documents, records):
             # Same field across multiple independent invoices cannot automatically be a conflict.
             doc_types = [s['type'] for s in sources]
             contract_scope=any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight','port_loading','port_discharge','incoterms']
-            if any(isinstance(v,tuple) and v[0]=='literal' for v in values):
+            if key in ['port_loading','port_discharge'] and port_detail_compatible(group):
+                result='Not Yet Checked'
+                reason='Đã nhận nguyên văn vào Excel. Một nguồn ghi thêm terminal/bến bên cạnh cùng tên cảng; chưa có thông tin đối lập để báo sai lệch. Không tự bổ sung terminal vào nguồn ghi chung.'
+            elif any(isinstance(v,tuple) and v[0]=='literal' for v in values):
                 result = 'Needs Verification'
                 reason = 'Các nguồn ghi số/ngày theo định dạng khác nhau. Giữ nguyên giá trị nguồn; chưa kết luận sai lệch số học khi dấu phân cách hoặc thứ tự ngày/tháng chưa rõ.'
             elif commercial and 'Booking' in doc_types and not contract_scope:

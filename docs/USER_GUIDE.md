@@ -94,6 +94,10 @@ Hiện Sai lệch với cả hai nguồn; bấm Xem lý do. Không tự chọn f
 
 Hiện ở Sai lệch / khác phạm vi để xem điều khoản partial delivery; khác tổng hợp đồng và một Invoice chưa chứng minh giấy tờ sai. Không ép các giá trị bằng nhau.
 
+### Booking có nhiều ngày và tên cảng xuống dòng
+
+Tên cảng đọc rõ được ghép từ đúng ô nguồn và tự đưa vào Excel. ETA cảng dỡ, ETA nơi giao cuối, ngày hàng sẵn sàng và các hạn SI/CY/VGM lưu riêng; chúng không phải các giá trị mâu thuẫn của cùng một trường. Chỉ thêm terminal vào một nguồn chưa đủ để báo sai lệch.
+
 ### Chỉ có một nguồn hoặc chữ scan không rõ
 
 Một nguồn đọc rõ: tự nhận vào Excel, không cần kiểm lại. Chữ scan quá mờ/biến dạng: Cần làm rõ, mở vùng xanh để nhập tay. Hai trạng thái này khác nhau.

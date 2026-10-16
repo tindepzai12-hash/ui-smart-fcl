@@ -357,8 +357,11 @@ def validate_result(result, pages):
         if not spec or result.document_type not in spec['documents']:
             raise ValueError('AI trả field ngoài dictionary/loại chứng từ')
         field_evidence=source_quote(f.source_page,f.evidence_text,f.evidence_start_line,f.evidence_end_line,pages)
+        from .booking import route_parts, milestones
+        source_page = next((p for p in pages if p['number'] == f.source_page), {})
+        cell_parts=route_parts(f.field_id,f.raw_value,field_evidence,source_page) if result.document_type=='Booking' and evidence_ok(field_evidence,field_evidence,f.source_page,pages) else []
         description_parts = labelled_cargo_parts(f, field_evidence, pages) if result.document_type == 'Customs Declaration' else []
-        if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages) and not description_parts:
+        if not evidence_ok(f.raw_value, field_evidence, f.source_page, pages) and not description_parts and not cell_parts:
             raise ValueError('AI trả giá trị không có bằng chứng nguồn')
         if f.field_id=='invoice_total' and result.document_type=='Customs Declaration' and not re.search(r'(?i)tổng\s+trị\s+giá\s+hóa\s+đơn|total\s+invoice\s+(?:value|amount)',field_evidence):
             raise ValueError('Tổng trị giá hóa đơn trên tờ khai cần nhãn tổng; không dùng trị giá tính thuế hoặc từng dòng hàng')
@@ -413,8 +416,12 @@ def validate_result(result, pages):
             norm = lambda s: re.sub(r'\s+',' ',s).casefold().strip()
             source = norm(source)
             labels=DISCHARGE_LABEL
-            if not any(norm(f.raw_value) in norm(source[m.end():m.end()+160]) for m in re.finditer(labels,source)):
+            if not cell_parts and not any(norm(f.raw_value) in norm(source[m.end():m.end()+160]) for m in re.finditer(labels,source)):
                 raise ValueError('Cảng dỡ thiếu nhãn chứng minh vai trò; không dùng cảng xếp/nơi phát hành thay thế')
+        if f.field_id in ['vgm_cut_off','cy_cut_off','si_cut_off','final_eta','cargo_available_at'] and not any(
+            m['key']==f.field_id and m['value']==f.raw_value and evidence_ok(m['evidence'],field_evidence,f.source_page,pages)
+            for m in milestones(source_page)):
+            raise ValueError('Mốc thời gian chưa thuộc đúng nhãn sự kiện trên Booking')
         if f.field_id == 'booking':
             source = next((p['text'] for p in pages if p['number']==f.source_page),'')
             norm = lambda s: re.sub(r'\s+',' ',s).casefold().strip()
@@ -469,6 +476,9 @@ def validate_result(result, pages):
             if not any(norm(f.raw_value) in norm(source[m.end():m.end()+80]) for m in re.finditer(labels,source)):
                 raise ValueError('Ngày hàng đến thực tế thiếu nhãn Arrival Date; không thay bằng ETA/ngày phát hành')
         normalized = normalize(f.raw_value, spec['type'])
+        if cell_parts:
+            normalized['source_parts']=cell_parts
+            normalized['normalization_note']='Ghép các dòng của cùng ô có nhãn trên trang gốc; không lấy cột ngày giờ bên cạnh.'
         if description_parts:
             normalized['source_parts'] = description_parts
             normalized['normalization_note'] = ('Mô tả gồm '+str(len(description_parts))+' đoạn nguyên văn ở các ô Mô tả hàng hóa trên cùng trang. '
@@ -734,7 +744,38 @@ def ground_source_format(result, pages):
     grounded.fields=[f for f in grounded.fields if f.field_id!='arrival_date' or any(
         p['number']==f.source_page and re.search(r'(?im)^\s*(?:actual\s+)?arrival\s*date\s*[:：]?',p['text']) for p in pages)]
     if grounded.document_type=='Booking':
-        grounded.fields=[f for f in grounded.fields if not (f.field_id=='packages' and re.fullmatch(r'(?i)\s*\d+\s*[x×]\s*(?:20|40|45)\s*(?:DC|GP|HC|HQ|RF)\s*',f.raw_value))]
+        from .booking import route_cells,milestones
+        events=[m for p in pages for m in milestones(p)]
+        kept=[]
+        for f in grounded.fields:
+            page=next((p for p in pages if p['number']==f.source_page),{})
+            cells=[c for c in route_cells(page,f.field_id) if re.sub(r'\s+',' ',c['value']).casefold()==re.sub(r'\s+',' ',f.raw_value).casefold()]
+            if len(cells)==1:
+                f.evidence_text=cells[0]['evidence'];f.evidence_start_line=None;f.evidence_end_line=None
+            # An equipment proposal is not a failed reading of a cargo-package
+            # cell. Omit it only if its exact value and equipment label exist.
+            equipment=any(p['number']==f.source_page and re.search(r'(?i)(?:BOOKING\s+QTY\s+SIZE/TYPE|TOTAL BOOKING CONTAINER[^\n]*)\s*[:：]?\s*'+re.escape(f.raw_value),p['text']) for p in pages)
+            if f.field_id=='packages' and (re.fullmatch(r'(?i)\s*\d+\s*[x×]\s*(?:20|40|45)\s*(?:DC|GP|HC|HQ|RF)\s*',f.raw_value)
+                or re.search(r'(?i)container|hi.cube|reefer|\b(?:20|40|45)\s*(?:DC|GP|HC|HQ|RF)\b',f.raw_value) and equipment):continue
+            # Keep final-delivery/availability dates under their own printed
+            # event, not the port-discharge ETA. Generic cut-offs become three
+            # independent fields so SI, CY and VGM are never compared together.
+            if f.field_id in ['cut_off','eta']:
+                bound=[m for m in events if m['page']==f.source_page and m['value']==f.raw_value
+                       and (f.field_id=='eta' and m['key'] in ['final_eta','cargo_available_at'] or f.field_id=='cut_off' and m['key'].endswith('cut_off'))]
+                if bound:
+                    # A genuine discharge ETA with the same date must remain.
+                    quote=f.evidence_text
+                    if f.field_id=='cut_off' or not re.search(r'(?i)port\s+of\s+discharge',quote):continue
+            kept.append(f)
+        for m in events:
+            if not any(f.field_id==m['key'] and f.raw_value==m['value'] and f.source_page==m['page'] for f in kept):
+                kept.append(FieldResult(field_id=m['key'],raw_value=m['value'],source_page=m['page'],evidence_text=m['evidence']))
+        grounded.fields=kept
+    # A blank optional B/L number followed by a printed DATED clause is not a
+    # readable identifier and must not become an employee reading task.
+    grounded.fields=[f for f in grounded.fields if not (f.field_id=='bl_number' and re.fullmatch(r'(?i)DATED\s+\d{1,2}[- /][A-Za-z]{3,9}[- /]\d{4}',f.raw_value)
+        and any(p['number']==f.source_page and re.search(r'(?i)BILL OF LADING NO\.?\s*:\s*'+re.escape(f.raw_value),p['text']) for p in pages))]
     if grounded.document_type=='C/O':
         for f in grounded.fields:
             if f.field_id!='origin':continue
@@ -1247,6 +1288,7 @@ def analyze(case_id, document, pages):
         'incoterms contains a printed trade term such as CIF or FOB, never TT, LC or a payment sentence. Put payment conditions in payment_terms. Do not infer net_weight from quantity without a net-weight label. '
         'Arrival Notice: extract only the allowed header and shipment-summary fields; items=[] and containers=[]. Freight charges and equipment rows are not Invoice amounts or commercial items. A referenced B/L number is bl_number, never booking. '
         'Booking: eta is the ETA at Port of Discharge, not ETA at Port of Loading, final delivery or cargo availability. Equipment counts are not packages; generic Cargo Weight is not gross_weight unless explicitly labelled Gross. '
+        'Keep final_eta, cargo_available_at, si_cut_off, cy_cut_off and vgm_cut_off separate under their own printed event labels. Route names may wrap in their own left column; never append the adjacent ETA column to a port name. '
         'Packing List: re-read the NUMBER OF CARTONS/packages and NET WEIGHT columns as separate header fields even if the item quantity uses cartons. Do not include CONT/SEAL labels, numbers or bank information in item descriptions. A standalone No.: directly under the Packing List title can be its own packing_number; an Invoice No. cannot. '
         'For OCR packing summary table_hints, Net and Gross are bound to distinct physical columns. Read only the literal cell under that column; Total (kgs) alone never proves Net. Warehouse Receipt: STT/No. is a row index, not the Quantity. In a row No., Unit, Quantity, Weight, Volume use the Quantity cell and its printed packing unit, never No. or Lan nhap. '
         'C/O: co_number is the labelled Reference/Certificate No, not an unlabelled serial or barcode. co_date belongs to Certification/Issue Date, not the Invoice date in box 10 or Departure date. origin_criteria is the actual row code in box 8, not the form instructions RVC criterion. co_issuer must be the named certifying organization, not the Issued in country. The exporter declaration that all products were produced in a named country can support origin; an exporter address cannot. If a stamp or OCR makes the code/date/reference unreadable, omit it and never repair a character by guessing. '

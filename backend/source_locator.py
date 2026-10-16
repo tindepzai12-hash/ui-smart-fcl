@@ -137,7 +137,7 @@ def inspect(doc, record, page):
             for index,part in enumerate(parts):
                 if part.get('page')==page['number']:
                     boxes.extend(locate(words,{'description_part_'+str(index+1):part['text']},record['evidence']))
-            if boxes:message='Từng đoạn mô tả đã được kiểm chứng và đánh dấu riêng trên ô nguồn; dấu chấm phẩy chỉ dùng khi hiển thị.'
+            if boxes:message=record.get('value',{}).get('normalization_note') or 'Từng phần của giá trị đã được đánh dấu trên ô nguồn.'
         else:
             boxes=locate(words,record['raw'],record['evidence'])
         if not boxes and record['evidence']:

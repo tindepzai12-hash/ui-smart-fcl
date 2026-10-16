@@ -57,11 +57,12 @@ def ai_checks(case_id,documents,records):
 
 def semantic_difference(check,records):
     """AI prose cannot override equal, typed source values (including cached reviews)."""
-    from .validation import comparison_values
+    from .validation import comparison_values,port_detail_compatible
     index={r['id']:r for r in records if r['status']!='rejected'}
     group=[index[s['id']] for s in check['detail'].get('sources',[]) if s['id'] in index]
     if len(group)<2:return False
     if all(r['kind']=='field' for r in group):
+        if group[0]['key'] in ['port_loading','port_discharge'] and port_detail_compatible(group):return False
         values=comparison_values(group[0]['key'],group,list(index.values()))
         if all(v is not None for v in values) and len(set(values))==1:return False
     return True

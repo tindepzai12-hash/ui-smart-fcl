@@ -101,6 +101,11 @@ for key, label, aliases, value_type, kinds in [
     ('carrier','Hãng tàu / đơn vị xác nhận booking',['carrier','shipping line','ocean carrier'],'text',['Booking','B/L','Sea Waybill']),
     ('etd','Ngày đi dự kiến (ETD)',['etd','estimated time of departure','estimated departure date'],'date',['Booking','B/L','Sea Waybill']),
     ('cut_off','Thời hạn cut-off ghi trên booking',['cargo cut-off','cargo cut off','cy cut-off','cy cut off','cut-off'],'text',['Booking']),
+    ('vgm_cut_off','Hạn nộp VGM',['vgm cut-off'],'date',['Booking']),
+    ('cy_cut_off','Hạn hạ bãi CY',['cy cut-off','fcl cy cut-off'],'date',['Booking']),
+    ('si_cut_off','Hạn nộp SI',['si cut-off','esi cut-off'],'date',['Booking']),
+    ('final_eta','Ngày đến nơi giao cuối dự kiến',['final destination eta'],'date',['Booking']),
+    ('cargo_available_at','Ngày hàng sẵn sàng dự kiến',['estimated cargo availability at destination hub'],'date',['Booking']),
     ('contract_date','Ngày hợp đồng / thỏa thuận',['contract date','sales contract date','agreement date','ngày hợp đồng'],'date',['Contract']),
     ('contract_total','Tổng trị giá hợp đồng',['contract total','total contract value','contract amount'],'number',['Contract']),
     ('po_date','Ngày đơn đặt hàng',['po date','purchase order date'],'date',['Purchase Order']),
@@ -135,6 +140,9 @@ FIELDS['packing_number']['label']='Số Packing List (nếu có)'
 FIELDS['packing_number']['required']=False
 FIELDS['eta']['aliases'] += ['est. arrival date','estimated arrival date','est arrival date']
 REVIEW_FIELDS=list(dict.fromkeys(key for group in REVIEW_GROUPS for key in group['fields']))
+BOOKING_MILESTONES=['vgm_cut_off','cy_cut_off','si_cut_off','final_eta','cargo_available_at']
+next(group for group in REVIEW_GROUPS if group['type']=='Booking')['fields']+=BOOKING_MILESTONES
+REVIEW_FIELDS+=BOOKING_MILESTONES
 PROFILE_TYPES=['Packing List','Booking','Invoice','C/O','Contract','Arrival Notice']
 # Subtypes share a checklist group; they remain distinct when recognized from content.
 PROFILE_VARIANTS=PROFILE_TYPES+['Purchase Order','Invoice & Packing List']
