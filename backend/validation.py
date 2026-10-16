@@ -282,7 +282,18 @@ def build_checks(case, documents, records):
             item_desc = v.get('description') or ('Dòng ' + str(v.get('line_number', '?')))
             item_summary = f"{item_desc}: {v.get('quantity', '?')} {v.get('unit', '')} × {v.get('unit_price', '?')} = {v.get('line_amount', '?')} {v.get('currency', '')}".strip()
             item_sources = [{'id': r['id'], 'document': d['name'], 'type': 'Invoice', 'value': {'text': item_summary}, 'page': r['page']}]
-            if all(n is not None for n in nums):
+            # USD445/CBM is a price per volume, not a price per piece. Only use
+            # a denominator printed next to this exact price in its own quote.
+            from .normalize import UNITS
+            evidence=r.get('evidence','')
+            price_quote=evidence.split('[unit_price] ',1)[1].split('\n[',1)[0] if '[unit_price] ' in evidence else evidence
+            bases={UNITS.get(m.group(1).upper(),m.group(1).upper()) for m in re.finditer(
+                r'(?i)(?<![\d.,])'+re.escape(str(v.get('unit_price') or ''))+r'\s*/\s*(CBM|M3|KGS?|KGM|MT|PCS|PIECES?|SETS?|LBS?)\b',price_quote)} if v.get('unit_price') else set()
+            unit=UNITS.get(str(v.get('unit') or '').upper(),str(v.get('unit') or '').upper())
+            if bases and bases!={unit}:
+                add('arithmetic:' + r['id'], 'Not Yet Checked',
+                    f"Đã nhận nguyên văn. Đơn giá tính theo {' / '.join(sorted(bases))}, số lượng theo {unit}; không nhân hai đơn vị khác nhau. Giữ số lượng, đơn giá và thành tiền gốc trong Excel.",item_sources)
+            elif all(n is not None for n in nums):
                 good = Decimal(nums[0]) * Decimal(nums[1]) == Decimal(nums[2])
                 add('arithmetic:' + r['id'], 'Matched' if good else 'Mismatch', f"Kiểm tra số lượng × đơn giá = thành tiền ({item_desc}; không tự điều chỉnh thuế/chiết khấu).", item_sources)
             else:
@@ -291,7 +302,18 @@ def build_checks(case, documents, records):
                 add('arithmetic:' + r['id'], 'Not Yet Checked' if clear else 'Needs Verification',
                     ('Đã đọc nguyên văn các số. Chưa tính số học vì dấu phân cách chưa được quy thành số; Excel giữ nguyên chuỗi nguồn.' if clear else f"Thiếu hoặc chưa đọc rõ số lượng/đơn giá/thành tiền ({item_desc}). Nhập lại ô bắt buộc."), item_sources)
         amounts = [decimal_text(r['value'].get('line_amount', '')) for r in items]
-        if items and totals and all(v is not None for v in amounts) and totals[0]['value'].get('number') is not None:
+        diagnostics = d.get('reading_diagnostics') or []
+        if isinstance(diagnostics, str):
+            try:
+                diagnostics = json.loads(diagnostics)
+            except (ValueError, TypeError):
+                diagnostics = []
+        # A rejected row is not a zero-valued row. Its reading warning already
+        # takes the employee to the missing source; summing the remaining rows
+        # would falsely turn incomplete extraction into an invoice discrepancy.
+        incomplete_items = any(isinstance(entry, dict) and entry.get('candidate_kind') == 'item'
+                               for entry in (diagnostics if isinstance(diagnostics, list) else []))
+        if items and totals and not incomplete_items and all(v is not None for v in amounts) and totals[0]['value'].get('number') is not None:
             sum_val = sum((Decimal(v) for v in amounts), Decimal(0))
             inv_val = Decimal(totals[0]['value']['number'])
             same = sum_val == inv_val

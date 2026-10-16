@@ -378,7 +378,7 @@ def validate_result(result, pages):
             raise ValueError('Số Packing List thiếu nhãn số chứng từ; không dùng số kiện hoặc số Invoice thay thế')
         if f.field_id == 'origin' and not origin_supported(f.raw_value, field_evidence):
             raise ValueError('Xuất xứ thiếu nhãn nguồn; không suy ra từ địa chỉ người bán/cảng đi')
-        if f.field_id == 'incoterms' and not re.search(r'(?i)\b(?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF|DAT|DAF|DES|DEQ|DDU)\b', f.raw_value):
+        if f.field_id == 'incoterms' and not re.search(r'(?i)\b(?:EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF|DAT|DAF|DES|DEQ|DDU|CNF|C&F)\b', f.raw_value):
             raise ValueError('Điều kiện giao hàng phải có mã Incoterms; không dùng điều khoản thanh toán thay thế')
         if f.field_id == 'net_weight' and not any(re.search(NET_WEIGHT_LABEL,p['text']) for p in pages if p['number']==f.source_page):
             raise ValueError('Trọng lượng tịnh thiếu nhãn Net Weight/N.W.; không suy ra từ số lượng hàng')
@@ -613,6 +613,28 @@ def ground_source_format(result, pages):
     """Ground formatting and explicit price-header terms in literal source evidence."""
     from .normalize import decimal_text
     grounded = DocumentResult.model_validate(result.model_dump())
+    # Preserve a correct literal quote when only its line pointer is wrong.
+    # Never look up the proposed value elsewhere or repair an invented quote.
+    def literal_pointer(value, quote, page, start, end):
+        if start is None and end is None:
+            return False
+        if not quote or not evidence_ok(value,quote,page,pages):
+            return False
+        try:
+            pointed=source_quote(page,quote,start,end,pages)
+        except ValueError:
+            return True
+        return not evidence_ok(value,pointed,page,pages)
+    for field in grounded.fields:
+        if literal_pointer(field.raw_value,field.evidence_text,field.source_page,field.evidence_start_line,field.evidence_end_line):
+            field.evidence_start_line=None;field.evidence_end_line=None
+    for item in grounded.items:
+        if literal_pointer(item.evidence_text,item.evidence_text,item.source_page,item.evidence_start_line,item.evidence_end_line):
+            item.evidence_start_line=None;item.evidence_end_line=None
+        for cell in item.cell_evidence:
+            value=getattr(item,cell.attribute,None)
+            if value and literal_pointer(value,cell.evidence_text,item.source_page,cell.start_line,cell.end_line):
+                cell.start_line=None;cell.end_line=None
     content_type,content_quote=classify(pages)
     if content_type!='Other' and grounded.document_type in ['Other',content_type]:
         grounded.document_type=content_type;grounded.classification_evidence=content_quote
@@ -1132,7 +1154,7 @@ def analyze(case_id, document, pages):
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     context = encode({'confirmed_type':staff_type,'policy':NO_INFERENCE_POLICY})
-    digest = hashlib.sha256(('schema-v28-ocr-form-role-binding|' + _model + '|' + context + '|' + text).encode()).hexdigest()
+    digest = hashlib.sha256(('schema-v29-literal-source-pointers|' + _model + '|' + context + '|' + text).encode()).hexdigest()
     cached = one('SELECT payload FROM ai_cache WHERE hash=?', (digest,))
     if cached:
         result = ground_source_format(DocumentResult.model_validate_json(cached['payload']),pages)
@@ -1197,6 +1219,8 @@ def analyze(case_id, document, pages):
         'When another column interrupts a description in the source text, copy a contiguous commodity-name fragment with its own source quote; do not concatenate fragments or omit an otherwise supported row. Missing description details remain for human review in the original. '
         'For Contract and Purchase Order, read independent item rows and their quantity/price/currency headers as printed, including MT quantities and USD/MT prices. Retain source units without converting raw values. '
         'Document numbers must contain only the identifier, without NO: or other labels; container and seal identifiers are separate attributes, never a bl_number. '
+        'Never put a container number in product_code, even when its column spans several goods rows. Omit absent product codes. '
+        'Keep printed trade terms such as CNF or C&F verbatim with their named location; do not expand or replace them with another term. '
         'container_number contains exactly four uppercase letters followed by seven digits, even if a printed container type or slash touches it with no space. Copy the 11-character substring; seal_number and container_type are separate. '
         'eta is only the estimated arrival date marked ETA/Est. Arrival Date/Estimated Arrival, never Est. Issued Date, on-board date or departure date. Omit it if not present. '
         'arrival_date is the actual Arrival Date printed on a delivery order/arrival notice. Do not confuse it with eta or free time until. '

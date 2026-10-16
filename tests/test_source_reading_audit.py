@@ -1,6 +1,32 @@
 import pytest
 from backend import ai
 
+
+def test_correct_literal_quote_survives_incorrect_line_pointer():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nInvoice No: INV-12\nTOTAL: 100.00\nAluminum alloy bracket 600 PCS 0.54 324.00'}]
+    data=ai.DocumentResult(document_type='Invoice',classification_evidence='COMMERCIAL INVOICE',
+        fields=[ai.FieldResult(field_id='invoice_number',raw_value='INV-12',source_page=1,
+               evidence_text='Invoice No: INV-12',evidence_start_line=3)],
+        items=[ai.ItemResult(line_number='1',description='Aluminum alloy bracket',quantity='600',unit='PCS',source_page=1,
+               evidence_text='Aluminum alloy bracket 600 PCS 0.54 324.00',evidence_start_line=3,
+               cell_evidence=[ai.CellEvidence(attribute='description',evidence_text='Aluminum alloy bracket',start_line=3)])],containers=[])
+    grounded=ai.ground_source_format(data,pages)
+    records,rejected=ai.validated_subset(grounded,pages)
+    assert len(records)==2 and not rejected
+    data.fields[0].raw_value='INV-99'
+    data.items[0].description='Steel alloy bracket'
+    with pytest.raises(ValueError,match='bằng chứng'):
+        ai.validated_subset(ai.ground_source_format(data,pages),pages)
+
+
+def test_source_printed_cnf_is_retained_without_rewriting_trade_term():
+    pages=[{'number':1,'text':'COMMERCIAL INVOICE\nUNIT PRICE: CNF HO CHI MINH PORT, VIETNAM'}]
+    data=ai.DocumentResult(document_type='Invoice',classification_evidence='COMMERCIAL INVOICE',
+        fields=[ai.FieldResult(field_id='incoterms',raw_value='CNF HO CHI MINH PORT, VIETNAM',source_page=1,
+                evidence_text='UNIT PRICE: CNF HO CHI MINH PORT, VIETNAM')],items=[],containers=[])
+    rows=ai.validate_result(data,pages)
+    assert rows[0]['raw']=='CNF HO CHI MINH PORT, VIETNAM'
+
 TEXT = ('Tờ khai hàng hóa xuất khẩu (thông quan)\n'
         'Mô tả hàng hóa BLUE STEEL BICYCLE CARRIER\n'
         '  MADE IN VIET NAM\nSố lượng (1) 600 PCE\nTrị giá 3918 USD\n'

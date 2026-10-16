@@ -2191,7 +2191,7 @@ function SettingsPage({ health, refresh, run, notify }: Any) {
         </div>
       </section>
       <section className="surface padded">
-        <h2>Backup dữ liệu local</h2>
+        <h2>Sao lưu dữ liệu</h2>
         <p className="muted">
           Bao gồm SQLite, chứng từ gốc, Excel và template; không chứa API key.
         </p>
@@ -2203,15 +2203,15 @@ function SettingsPage({ health, refresh, run, notify }: Any) {
               const a = document.createElement('a');
               a.href = b.download;
               a.click();
-              notify('Đã tạo backup local');
+              notify('Đã tạo bản sao lưu dữ liệu');
             })
           }
         >
           <Download size={16} />
-          Tạo & tải backup
+          Tải bản sao lưu
         </button>
         <p className="muted">
-          Khôi phục bằng restore-local.ps1 khi backend đã dừng. Backup chứa dữ liệu thương mại; lưu ở nơi bạn quản lý.
+          Bản sao lưu chứa hồ sơ và chứng từ gốc; hãy lưu ở nơi bạn quản lý. Bản trên máy có thể khôi phục bằng restore-local.ps1 khi backend đã dừng.
         </p>
       </section>
       <section className="surface padded">
@@ -2220,6 +2220,7 @@ function SettingsPage({ health, refresh, run, notify }: Any) {
           ONP / TMS / WMS và template import phần mềm khai báo: chưa kết nối. Giao diện hiện tại tập trung bộ phận chứng từ FCL.
         </p>
       </section>
+      <p className="settings-credit">designed by Justin Nguyen</p>
     </>
   );
 }

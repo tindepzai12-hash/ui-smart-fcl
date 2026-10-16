@@ -174,6 +174,35 @@ def test_combined_packing_rows_do_not_enter_invoice_arithmetic():
     assert not any(c['key']=='arithmetic:pl' for c in cs)
     assert next(c for c in cs if c['key']=='total:combined')['result']=='Matched'
 
+
+def test_rejected_invoice_row_does_not_create_false_total_mismatch():
+    doc=document('invoice','Invoice')
+    doc['reading_diagnostics']=[{'candidate_kind':'item','field_label':'Dòng hàng',
+                                'candidate_raw':{'line_amount':'324.00'}}]
+    rows=[record('line1','invoice','goods_item',{'description':'CARRIER','quantity':'600','unit':'PCS',
+          'unit_price':'6.53','line_amount':'3918.00'},'item'),
+          record('total','invoice','invoice_total',normalize('4242.00 USD','number'))]
+    assert not any(c['key']=='total:invoice' for c in checks([doc],rows))
+    # An unrelated rejected field must not suppress a genuine arithmetic error.
+    doc['reading_diagnostics']='[{"candidate_kind":"field","field_id":"port_discharge"}]'
+    assert next(c for c in checks([doc],rows) if c['key']=='total:invoice')['result']=='Mismatch'
+    rows.append(record('line2','invoice','goods_item',{'description':'BRACKET','quantity':'600','unit':'PCS',
+                'unit_price':'0.54','line_amount':'324.00'},'item'))
+    doc['reading_diagnostics']=[]
+    assert next(c for c in checks([doc],rows) if c['key']=='total:invoice')['result']=='Matched'
+
+
+def test_invoice_price_per_volume_is_not_multiplied_by_piece_count():
+    row=record('line','invoice','goods_item',{'description':'PLYWOOD','quantity':'5120','unit':'PCS',
+               'unit_price':'445','line_amount':'12208.13','currency':'USD'},'item')
+    row['evidence']='PLYWOOD 5120PCS/27.434CBM USD445/CBM USD12208.13\n[unit_price] USD445/CBM'
+    c=next(c for c in checks([document('invoice','Invoice')],[row]) if c['key']=='arithmetic:line')
+    assert c['result']=='Not Yet Checked' and 'CBM' in c['detail']['reason']
+    # An unrelated price in another cell must not suppress a real row error.
+    row['evidence']='USD445/CBM\n[unit_price] USD445/PCS'
+    c=next(c for c in checks([document('invoice','Invoice')],[row]) if c['key']=='arithmetic:line')
+    assert c['result']=='Mismatch'
+
 def test_different_item_readings_on_two_pages_of_one_pdf_are_compared():
     docs=[document('two-pl')]
     a=record('a','two-pl','goods_item',{'product_code':'A1','quantity':'600','unit':'PCS','scope':'packing'},'item')
