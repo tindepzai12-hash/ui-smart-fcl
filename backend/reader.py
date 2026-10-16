@@ -348,6 +348,11 @@ def release_reader_memory():
             pass  # Non-glibc platforms can still release Python/PDF objects.
 
 
+def quality_note(quality):
+    """Human-readable quality only; source coordinates are internal metadata."""
+    return re.sub(r'\s*<source-cell>.*?</source-cell>','',quality or '').strip()
+
+
 def pdf_ocr_image(page):
     # OCR already reads grayscale. Avoid simultaneous RGB pixmap, PNG buffer,
     # decoded RGB image and grayscale copies of a full page.

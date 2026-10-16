@@ -189,6 +189,7 @@ def bundle(id):
         if diagnostics and all(e.get('review') for e in diagnostics):
             d['reviewed_reading_warning']=d['error'];d['error']=''
         d['pages'] = db.rows('SELECT number,method,quality,length(text) characters FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
+        for p in d['pages']:p['quality']=reader.quality_note(p['quality'])
         if d['ext'] == '.pdf' and len(d['pages']) > 1:
             text_pages = db.rows('SELECT number,text FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
             d['split_suggestion'] = pdf_bundle.suggest(text_pages)
@@ -197,6 +198,7 @@ def bundle(id):
     references = db.rows("SELECT id,name,type,ext,size,collection_reason,classification_evidence,reading_method,status,error FROM documents WHERE case_id=? AND collection='reference' ORDER BY rowid", (id,))
     for d in references:
         d['pages'] = db.rows('SELECT number,method,quality,length(text) characters FROM pages WHERE document_id=? ORDER BY number', (d['id'],))
+        for p in d['pages']:p['quality']=reader.quality_note(p['quality'])
     records = working_records(id)
     checks = db.rows('SELECT * FROM checks WHERE case_id=? ORDER BY rowid', (id,))
     for c in checks:
@@ -532,6 +534,7 @@ def get_page(id: str, number: int):
     if not page:
         raise HTTPException(404, 'Trang chưa được đọc')
     page['tables'] = json.loads(page.pop('table_json'))
+    page['quality']=reader.quality_note(page['quality'])
     return page
 
 @app.get('/api/documents/{id}/preview/{number}')

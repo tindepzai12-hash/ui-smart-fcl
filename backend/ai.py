@@ -1317,7 +1317,8 @@ def analyze(case_id, document, pages):
         raise ValueError('Chưa cấu hình OpenAI. Bạn có thể tiếp tục bằng chế độ Local.')
     if sum(len(p['text']) for p in pages) > 90000:
         raise ValueError('Tài liệu vượt 90.000 ký tự cho một yêu cầu AI; chia tài liệu để tránh bỏ sót.')
-    text = encode([{'page': p['number'], **({'reading_quality':p.get('quality','')} if p.get('method')=='OCR' else {}), 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)],
+    from .reader import quality_note
+    text = encode([{'page': p['number'], **({'reading_quality':quality_note(p.get('quality',''))} if p.get('method')=='OCR' else {}), 'lines': [{'line':i,'text':line} for i,line in enumerate(p['text'].splitlines(),1)],
                    'table_hints': p.get('tables', [])} for p in pages])
     staff_type = document['type'] if document.get('type_verified') else None
     content_type, content_quote = classify(pages)

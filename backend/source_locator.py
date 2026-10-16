@@ -272,7 +272,7 @@ def inspect(doc, record, page):
     elif record['method'].startswith('Manual'):
         message='Giá trị đã được hiệu chỉnh. Vùng khoanh dựa vào chữ máy đọc gốc, không tự chứng minh bản sửa đúng.'
     return {'document_id':doc['id'],'name':doc['name'],'ext':doc['ext'],'page':page['number'],
-        'method':page['method'],'quality':page['quality'],'text':page['text'],
+        'method':page['method'],'quality':reader.quality_note(page['quality']),'text':page['text'],
         'raw':record['raw'],'evidence':record['evidence'],'boxes':boxes,'low_confidence_words':low,
         'ambiguous':any(b.get('ambiguous',False) for b in boxes),'message':message,'retryable':retryable,
         'confidence_note':'Độ tin cậy OCR chỉ phản ánh khả năng nhận chữ, không xác nhận giá trị đúng nghiệp vụ.'}

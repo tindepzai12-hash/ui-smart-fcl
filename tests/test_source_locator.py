@@ -49,6 +49,7 @@ def test_bound_reader_cell_skips_slow_relocation_and_repeated_footer_name(monkey
     record={'key':'vessel','raw':'TESTJADE','evidence':'Ocean vessel: TESTJADE','method':'OpenAI'}
     result=source_locator.inspect({'id':'d','path':'unused','name':'bill.pdf','ext':'.pdf'},record,page)
     assert len(result['boxes'])==1 and result['boxes'][0]['y']==.37
+    assert result['quality']=='quality'
     assert not result['boxes'][0]['evidence_only']
     record['raw']='TESTIADE'
     result=source_locator.inspect({'id':'d','path':'unused','name':'bill.pdf','ext':'.pdf'},record,page)
