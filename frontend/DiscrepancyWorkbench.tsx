@@ -81,7 +81,7 @@ export function DiscrepancyWorkbench({current,dict,busy,onSaved,onDocuments,onSo
   const chosenIds=new Set((chosen?.detail.sources||[]).map((s:any)=>s.id));
   const unclear=current.records.some((r:any)=>chosenIds.has(r.id)&&!['verified','auto_accepted','rejected'].includes(r.status)&&r.value?.warning);
   const blocked=reviewBlockReason({busy:!!busy,saving,checked,note,unclear});
-  const difference=(c:any)=>c.result==='Mismatch'||c.detail.category==='difference';
+  const difference=(c:any)=>c.result==='Mismatch';
   const list=filter==='gaps'?report.gaps:filter==='matched'?report.matched:filter==='single'?report.single_source:filter==='resolved'?all.filter((c:any)=>c.resolution):report.issues.filter((c:any)=>!c.resolution&&(filter!=='mismatch'||difference(c)));
   const title=(c:any)=>c.title||dict.fields[c.key.replace(/^(?:field|ai-semantic|missing):/,'')]?.label||c.key;
   function close(){setSelected('');setNote('');setChecked(false);setError('');opener.current?.focus();}

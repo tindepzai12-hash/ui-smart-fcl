@@ -39,6 +39,12 @@ test('Extraction warnings show excluded attempts, matched rows are green, and un
   assert.ok(!legacy.includes('<strong>old.pdf</strong>'));
   const matched=render({key:'field:booking',result:'Matched',detail:{reason:'Khớp',sources:[]}});
   assert.ok(matched.includes('exception-row is-matched')&&matched.includes('badge good'));
+  const uncertain=render({key:'field:gross_weight',result:'Needs Verification',detail:{reason:'Dấu phân cách chưa rõ',category:'difference',sources:[]}});
+  assert.ok(!uncertain.includes('exception-row is-mismatch'));
+  assert.ok(!uncertain.includes('Sai lệch / khác phạm vi'));
+  assert.ok(uncertain.includes('badge warn'));
+  const actualMismatch=render({key:'field:volume',result:'Mismatch',detail:{reason:'Hai ô nguồn khác nhau',sources:[]}});
+  assert.ok(actualMismatch.includes('exception-row is-mismatch'));
 });
 
 test('Staff sees the precise save prerequisite; number formatting is an explicit suggestion only',async()=>{

@@ -204,7 +204,7 @@ def description_assessment(case_id,documents,records,group):
 
 def contextual_candidates(documents,records):
     """Semantic review is bounded: it can never waive numbers, dates or identifiers."""
-    from .validation import comparison_values,port_detail_compatible
+    from .validation import comparison_values,port_detail_compatible,contract_port_option_compatible
     groups={}
     for r in records:
         if r['status']!='rejected' and r['kind']=='field' and r['key'] in CONTEXT_FIELDS:
@@ -215,6 +215,7 @@ def contextual_candidates(documents,records):
         values=comparison_values(key,group,records)
         if any(v is None for v in values) or len(set(values))<=1:continue
         if key in ['port_loading','port_discharge'] and port_detail_compatible(group):continue
+        if key in ['port_loading','port_discharge'] and contract_port_option_compatible(group,documents) and not scope_guard(key,group,documents,records):continue
         candidates[key]=group
     partial=partial_quantity_context(documents,records)
     if partial:
@@ -286,7 +287,7 @@ def report(case,documents,records,checks):
     saved=db.one('SELECT signature,error,created_at FROM packet_reviews WHERE case_id=?',(case['id'],))
     state='not_run' if not saved else 'stale' if saved['signature']!=signature(documents,records) else 'error' if saved['error'] else 'completed'
     return {'issues':issues,'matched':matched,'single_source':single,'gaps':gaps,
-            'open_count':sum(not c.get('resolution') for c in issues),'mismatch_count':sum((c['result']=='Mismatch' or c['detail'].get('category')=='difference') and not c.get('resolution') for c in issues),
+            'open_count':sum(not c.get('resolution') for c in issues),'mismatch_count':sum(c['result']=='Mismatch' and not c.get('resolution') for c in issues),
             'ai_state':state,'ai_error':saved['error'] if saved and state=='error' else '',
             'scope':'Một hồ sơ = một lô hàng. Nguồn kế hoạch, hợp đồng giao nhiều đợt và dữ liệu chưa rõ đơn vị được cảnh báo riêng, không tự kết luận sai.'}
 

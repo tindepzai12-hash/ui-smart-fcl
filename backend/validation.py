@@ -77,6 +77,25 @@ def port_detail_compatible(group):
     return len(countries)<=1
 
 
+def contract_port_option_compatible(group, documents):
+    """An explicitly unrestricted country in a contract permits its named port.
+
+    This only compares printed countries; it never looks up a port's country or
+    accepts a conflicting specific port/terminal on another source.
+    """
+    docs={d['id']:d for d in documents}
+    options=[];actual=[]
+    for row in group:
+        text=' '.join(re.findall(r'[A-Z0-9]+',row['value'].get('text','').upper()))
+        match=re.fullmatch(r'ANY (?:OF )?PORT(?: IN| OF)? ([A-Z ]+)',text)
+        if match and docs.get(row['document_id'],{}).get('type') in ['Contract','Purchase Order']:
+            options.append(match[1])
+        else:actual.append(text)
+    if not options or not actual or len(set(options))!=1 or len(set(actual))!=1:return False
+    country=options[0]
+    return actual[0].endswith(' '+country) and actual[0]!=country
+
+
 def volume_conflict(group, docs):
     """Prove a disagreement without choosing an ambiguous separator.
 
@@ -340,7 +359,10 @@ def build_checks(case, documents, records):
             # Same field across multiple independent invoices cannot automatically be a conflict.
             doc_types = [s['type'] for s in sources]
             contract_scope=any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight','port_loading','port_discharge','incoterms']
-            if key in ['port_loading','port_discharge'] and port_detail_compatible(group):
+            if key in ['port_loading','port_discharge'] and contract_port_option_compatible(group,documents):
+                result='Not Yet Checked'
+                reason='Hợp đồng cho phép bất kỳ cảng nào trong quốc gia ghi rõ; các chứng từ giao hàng thống nhất một cảng và cùng quốc gia đó. Giữ nguyên từng cách ghi vào Excel, không coi điều khoản lựa chọn là sai lệch.'
+            elif key in ['port_loading','port_discharge'] and port_detail_compatible(group):
                 result='Not Yet Checked'
                 reason='Đã nhận nguyên văn vào Excel. Một nguồn ghi thêm terminal/bến bên cạnh cùng tên cảng; chưa có thông tin đối lập để báo sai lệch. Không tự bổ sung terminal vào nguồn ghi chung.'
             elif any(isinstance(v,tuple) and v[0]=='literal' for v in values):
