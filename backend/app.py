@@ -267,7 +267,7 @@ def health():
 
 @app.get('/api/dictionary')
 def dictionary():
-    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES, 'extraction_rules_version':2}
+    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES, 'extraction_rules_version':3}
 
 @app.get('/api/cases')
 def list_cases():

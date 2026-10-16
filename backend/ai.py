@@ -494,6 +494,8 @@ def validate_result(result, pages):
             else:
                 normalized = normalize(f.raw_value+' '+f.unit, spec['type'])
             evidence += '\n[Đơn vị] '+unit_evidence
+        from .normalize import source_number_convention
+        normalized=source_number_convention(normalized,f.field_id,result.document_type,pages)
         records.append({
             'kind': 'field',
             'key': f.field_id,

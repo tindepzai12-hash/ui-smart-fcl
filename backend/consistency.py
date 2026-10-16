@@ -53,7 +53,19 @@ def ai_checks(case_id,documents,records):
     if not case_id:return []
     saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
     if not saved or saved['signature']!=signature(documents,records):return []
-    return [c for c in json.loads(saved['payload']) if semantic_difference(c,records)]
+    return [c for c in json.loads(saved['payload']) if c['result']=='Needs Verification' and semantic_difference(c,records)]
+
+
+def description_assessment(case_id,documents,records,group):
+    """Only a current, complete AI assessment can explain semantic compatibility."""
+    if not case_id:return None
+    saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
+    if not saved or saved['error'] or saved['signature']!=signature(documents,records):return None
+    ids={r['id'] for r in group}
+    for check in json.loads(saved['payload']):
+        if check['key']!='ai-description:cargo_description':continue
+        if {s['id'] for s in check['detail']['sources']}==ids:return check
+    return None
 
 def semantic_difference(check,records):
     """AI prose cannot override equal, typed source values (including cached reviews)."""
@@ -90,13 +102,18 @@ def run_ai_review(case_id,documents,records):
     """AI only suggests semantic issues over existing IDs; never creates or corrects data."""
     from . import ai
     from pydantic import Field
-    from typing import List
+    from typing import List,Literal
     class Issue(ai.Strict):
         field_id:str
         record_ids:List[str]=Field(min_length=2,max_length=12)
         reason:str=Field(min_length=5,max_length=1000)
+    class DescriptionAssessment(ai.Strict):
+        record_ids:List[str]=Field(min_length=2,max_length=30)
+        relation:Literal['compatible','contradiction','uncertain']
+        reason:str=Field(min_length=5,max_length=1000)
     class Review(ai.Strict):
         issues:List[Issue]=Field(max_length=40)
+        description_assessments:List[DescriptionAssessment]=Field(default_factory=list,max_length=1)
     sig=signature(documents,records);output=[];error=''
     active=[r for r in records if r['status']!='rejected']
     try:
@@ -110,6 +127,17 @@ def run_ai_review(case_id,documents,records):
         db.execute('INSERT INTO ai_usage VALUES (?,?,?,?,?,?,?)',(db.uid(),case_id,db.now(),ai._model,getattr(response.usage,'input_tokens',None),getattr(response.usage,'output_tokens',None),'packet-consistency'))
         if response.output_parsed is None:raise ValueError('AI chưa trả kết quả đối chiếu có cấu trúc.')
         index={r['id']:r for r in active};seen=set()
+        descriptions=[r for r in active if r['kind']=='field' and r['key']=='cargo_description']
+        for assessment in response.output_parsed.description_assessments:
+            ids=list(dict.fromkeys(assessment.record_ids))
+            if (set(ids)!={r['id'] for r in descriptions} or len(ids)<2
+                    or len({r['document_id'] for r in descriptions})<2):continue
+            output.append({'key':'ai-description:cargo_description',
+                'result':'Not Yet Checked' if assessment.relation=='compatible' else 'Needs Verification','severity':'warning',
+                'detail':{'reason':assessment.reason,'sources':sources(descriptions,documents),
+                          'method':'OpenAI contextual description comparison','relation':assessment.relation,
+                          **({'category':'difference'} if assessment.relation=='contradiction' else {})}})
+            seen.add('cargo_description')
         for issue in response.output_parsed.issues:
             ids=list(dict.fromkeys(issue.record_ids))
             if len(ids)<2 or any(i not in index for i in ids):continue

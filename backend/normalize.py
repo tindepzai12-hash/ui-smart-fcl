@@ -121,3 +121,32 @@ def comparable(value):
     if value.get('number') is not None:
         return (Decimal(value['number']), value.get('unit'))
     return re.sub(r'\s+', ' ', value.get('text', '')).casefold().strip()
+
+
+def source_number_convention(value, key, document_type, pages):
+    """Resolve grouped money only from this document's explicit decimal prices.
+
+    Never choose the interpretation that happens to agree with another file.
+    Keep printed text and record the independent convention evidence.
+    """
+    if key not in ['invoice_total','contract_total'] or document_type!='Customs Declaration':
+        return value
+    if value.get('number') is not None or not str(value.get('warning','')).startswith('Dấu phân cách số'):
+        return value
+    match=re.fullmatch(r'(\d{1,3}(?:\.\d{3})+)\s*([A-Z]{3})?',value.get('text','').strip())
+    if not match:return value
+    proofs=[]
+    for page in pages:
+        text=page.get('text','').split('[PDF content-order layer',1)[0].split('[OCR image layer',1)[0]
+        for line in text.splitlines():
+            # A named monetary cell with comma decimals establishes the format;
+            # dates, addresses, codes and weights cannot establish money format.
+            if not re.search(r'Đơn giá hóa đơn|Đơn giá tính thuế',line,re.I):continue
+            if re.search(r'(?<![\d.,])\d+(?:\.\d{3})*,\d{1,2}(?![\d.,])',line):
+                proofs.append({'page':page['number'],'text':line.strip()})
+            if re.search(r'(?<![\d.,])\d+(?:,\d{3})*\.\d{1,2}(?![\d.,])',line):
+                return value  # Mixed conventions: retain uncertainty.
+    if not proofs:return value
+    return {**value,'number':match.group(1).replace('.',''),'warning':None,
+            'normalization_note':'Dấu chấm nhóm nghìn theo các ô đơn giá dùng dấu phẩy thập phân trên cùng tờ khai; giữ nguyên giá trị in.',
+            'normalization_evidence':proofs}

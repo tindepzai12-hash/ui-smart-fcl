@@ -241,6 +241,13 @@ def build_checks(case, documents, records):
             'value': r['value'],
             'page': r['page'],
         } for r in group]
+        if key=='cargo_description' and len(group)>1:
+            from .consistency import description_assessment
+            assessment=description_assessment(case.get('id'),documents,records,group)
+            if assessment:
+                add('field:'+key,assessment['result'],assessment['detail']['reason'],sources)
+                checks[-1]['detail'].update({k:v for k,v in assessment['detail'].items() if k!='sources'})
+                continue
         if key in ['cargo_weight','declared_weight','volume'] and any(not r['value'].get('unit') for r in group):
             from .acceptance import readable
             if all(readable(r) for r in group):
