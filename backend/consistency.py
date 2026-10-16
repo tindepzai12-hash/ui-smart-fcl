@@ -133,7 +133,7 @@ def run_ai_review(case_id,documents,records):
             if (set(ids)!={r['id'] for r in descriptions} or len(ids)<2
                     or len({r['document_id'] for r in descriptions})<2):continue
             output.append({'key':'ai-description:cargo_description',
-                'result':'Not Yet Checked' if assessment.relation=='compatible' else 'Needs Verification','severity':'warning',
+                'result':'Needs Verification' if assessment.relation=='contradiction' else 'Not Yet Checked','severity':'warning',
                 'detail':{'reason':assessment.reason,'sources':sources(descriptions,documents),
                           'method':'OpenAI contextual description comparison','relation':assessment.relation,
                           **({'category':'difference'} if assessment.relation=='contradiction' else {})}})

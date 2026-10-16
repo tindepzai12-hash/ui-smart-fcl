@@ -59,6 +59,10 @@ def test_ai_semantics_can_accept_category_without_silencing_other_differences(mo
     assert next(c for c in checks if c['key']=='field:cargo_description')['result']=='Not Yet Checked'
     assert next(c for c in checks if c['key']=='field:gross_weight')['result']=='Mismatch'
     assert rows==original
+    response['description_assessments'][0].update(relation='uncertain',reason='Nguồn kho ghi nhóm hàng, chưa thể kiểm từng mã; không có chi tiết đối lập.')
+    assert not consistency.run_ai_review('test',docs,rows)
+    checks=validation.build_checks({'id':'test','mode':'FCL','requirements':default_requirements()},docs,rows)
+    assert next(c for c in checks if c['key']=='field:cargo_description')['result']=='Not Yet Checked'
     # No stale approval when a source changes.
     rows[1]['value']=normalize('Phụ tùng ô tô')
     assert consistency.description_assessment('test',docs,rows,rows[:2]) is None
