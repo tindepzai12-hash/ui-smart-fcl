@@ -45,6 +45,9 @@ test('Extraction warnings show excluded attempts, matched rows are green, and un
   assert.ok(uncertain.includes('badge warn'));
   const actualMismatch=render({key:'field:volume',result:'Mismatch',detail:{reason:'Hai ô nguồn khác nhau',sources:[]}});
   assert.ok(actualMismatch.includes('exception-row is-mismatch'));
+  const stale=renderToStaticMarkup(React.createElement(DiscrepancyWorkbench,{current:{documents:[{needs_reprocess:true}],records:[],consistency:{issues:[],gaps:[],matched:[],single_source:[],open_count:0,mismatch_count:0,ai_state:'stale'}},dict:{fields:{}},onDocuments:()=>{}}));
+  assert.ok(stale.includes('1 tài liệu cần đọc lại sau cập nhật.'));
+  assert.ok(stale.includes('Mở chứng từ để đọc lại'));
 });
 
 test('Staff sees the precise save prerequisite; number formatting is an explicit suggestion only',async()=>{

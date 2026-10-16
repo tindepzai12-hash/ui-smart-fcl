@@ -152,10 +152,41 @@ def test_changed_reader_version_refreshes_saved_pages(monkeypatch):
     fingerprint=pipeline.fingerprint;reads=[];read=reader.read_document
     monkeypatch.setattr(pipeline,'fingerprint',lambda scope='extraction':'updated-reader-version' if scope=='reader' else fingerprint(scope))
     monkeypatch.setattr(reader,'read_document',lambda *args,**kw:(reads.append(args[0]) or read(*args,**kw)))
+    stale=client.get('/api/cases/'+cid).json()
+    assert stale['documents'][0]['needs_reprocess']
+    assert any('đọc lại bằng phiên bản hiện tại' in b for b in stale['blockers'])
+    saved=next(c for c in stale['checks'] if c['key']=='field:invoice_number')
+    assert saved['result']=='Needs Verification' and saved['detail']['stale_source']
     process(client,cid,did)
     assert len(reads)==1
     assert db.one('SELECT reader_signature FROM documents WHERE id=?',(did,))['reader_signature']!=old
     process(client,cid,did);assert len(reads)==1
+    assert not client.get('/api/cases/'+cid).json()['documents'][0]['needs_reprocess']
+
+
+def test_stale_machine_discrepancy_is_warning_without_mutating_saved_review():
+    import copy
+    checks=[{'key':'field:vessel','result':'Mismatch','resolution':'Prior staff note',
+             'detail':{'reason':'Old OCR differs','category':'difference','sources':[{'id':'r'}]}}]
+    before=copy.deepcopy(checks)
+    viewed=app.stale_reading_checks(checks,[{'id':'d','needs_reprocess':True}],[{'id':'r','document_id':'d'}])
+    assert checks==before
+    assert viewed[0]['result']=='Needs Verification'
+    assert viewed[0]['detail']['category']=='stale_reading'
+    assert viewed[0]['detail']['previous_resolution']=='Prior staff note'
+    assert not viewed[0]['resolution']
+
+
+def test_stale_reader_blocks_reviewed_export_even_when_other_blockers_are_empty(monkeypatch):
+    client=TestClient(app.app,headers={'X-UI-Smart':'local'})
+    cid=client.post('/api/cases',json={'name':'Stale approval gate'}).json()['case']['id']
+    client.post('/api/cases/'+cid+'/documents',files={'files':('invoice.txt',PAGES[0]['text'].encode(),'text/plain')})
+    first=process(client,cid)
+    db.execute('UPDATE documents SET reader_signature=? WHERE id=?',('obsolete-reader',first['documents'][0]['id']))
+    db.execute("UPDATE cases SET status='Reviewed',reviewed_at=? WHERE id=?",(db.now(),cid))
+    monkeypatch.setattr(app.validation,'blockers',lambda *args:[])
+    assert client.post('/api/cases/'+cid+'/review').status_code==409
+    assert client.post('/api/cases/'+cid+'/export',json={'mode':'Reviewed'}).status_code==409
 
 def test_changed_machine_value_replaces_stale_row_but_keeps_manual_record():
     client=TestClient(app.app,headers={'X-UI-Smart':'local'})

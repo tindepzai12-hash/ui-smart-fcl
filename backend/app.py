@@ -180,11 +180,30 @@ def busy(case_id):
     if any(j['case_id'] == case_id and j['status'] == 'running' for j in JOBS.values()):
         raise HTTPException(409, 'Hồ sơ đang xử lý. Hủy/chờ hoàn tất trước khi chỉnh sửa.')
 
+def stale_reading_checks(checks, documents, records):
+    """View old machine readings as pending reread; preserve stored reviews."""
+    stale={d['id'] for d in documents if d.get('needs_reprocess')}
+    index={r['id']:r for r in records}
+    output=[]
+    for check in checks:
+        affected=any(s.get('document_id') in stale or index.get(s['id'],{}).get('document_id') in stale
+                     for s in check['detail'].get('sources',[]))
+        if affected and check['result'] in ['Mismatch','Matched','Not Yet Checked','Needs Verification']:
+            check={**check,'result':'Needs Verification','severity':'warning','resolution':'',
+                   'detail':{**check['detail'],'category':'stale_reading','stale_source':True,
+                     'previous_result':check['result'],'previous_reason':check['detail'].get('reason',''),
+                     'previous_resolution':check.get('resolution',''),
+                     'reason':'Kết quả này được lưu từ phiên bản đọc cũ. Cần đọc lại bằng phiên bản hiện tại trước khi kết luận khớp hoặc sai lệch; chưa duyệt hồ sơ từ dữ liệu này.'}}
+        output.append(check)
+    return output
+
+
 def bundle(id):
     case = require_case(id)
     docs = db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document' ORDER BY rowid", (id,))
     for d in docs:
         d.pop('path')
+        d['needs_reprocess']=bool(d.get('reader_signature') and d['reader_signature']!=pipeline.fingerprint('reader'))
         diagnostics=json.loads(d.get('reading_diagnostics') or '[]')
         if diagnostics and all(e.get('review') for e in diagnostics):
             d['reviewed_reading_warning']=d['error'];d['error']=''
@@ -205,7 +224,11 @@ def bundle(id):
         c['detail'] = json.loads(c.pop('detail_json'))
         c['title'] = validation.human_check_label(c['key'], {d['id']: d for d in docs})
     checks=[c for c in checks if not c['key'].startswith('ai-semantic:') or consistency.semantic_difference(c,records)]
+    checks=stale_reading_checks(checks,docs,records)
     case['requirements'] = json.loads(case['requirements'])
+    blockers=validation.blockers(case,docs,records,checks)
+    if count:=sum(d['needs_reprocess'] for d in docs):
+        blockers.append(f'{count} tài liệu cần đọc lại bằng phiên bản hiện tại; chưa được duyệt từ dữ liệu cũ')
     return {
         'case': case,
         'documents': docs,
@@ -214,7 +237,7 @@ def bundle(id):
         'records': records,
         'checks': checks,
         'consistency':consistency.report(case,docs,records,checks),
-        'blockers': validation.blockers(case, docs, records, checks),
+        'blockers': blockers,
         'exports': db.rows('SELECT id,created_at,version,mode,workbook_type,case_revision FROM exports WHERE case_id=? ORDER BY version DESC', (id,)),
         'active_job': next((j for j in JOBS.values() if j['case_id'] == id and j['status'] == 'running'), None),
     }
