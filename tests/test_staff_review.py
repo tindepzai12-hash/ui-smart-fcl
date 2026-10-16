@@ -6,6 +6,21 @@ from backend.normalize import normalize
 from test_core import client,H,new,upload,process
 from fixtures import INVOICE,PACKING,BL
 
+
+def test_saved_cases_receive_new_comparison_rules_without_overwriting_values():
+    from backend.app import refresh_staff_checks
+    cid=new();upload(cid,[('inv.txt',INVOICE.encode()),('pl.txt',PACKING.encode()),('bl.txt',BL.encode())]);before,_=process(cid)
+    snapshot={r['id']:(r['value'],r['raw'],r['version']) for r in before['records']}
+    db.execute("UPDATE checks SET result='Mismatch' WHERE case_id=? AND key='field:gross_weight'",(cid,))
+    db.execute('DELETE FROM schema_versions WHERE version=4')
+    refresh_staff_checks()
+    after=client.get('/api/cases/'+cid).json()
+    assert next(c for c in after['checks'] if c['key']=='field:gross_weight')['result']=='Matched'
+    assert {r['id']:(r['value'],r['raw'],r['version']) for r in after['records']}==snapshot
+    ids=[c['id'] for c in after['checks']]
+    refresh_staff_checks()
+    assert [c['id'] for c in client.get('/api/cases/'+cid).json()['checks']]==ids
+
 def test_equal_canonical_sources_never_become_ai_exceptions():
     for key,a,b,kind in [('packages','56 CT','56 CTN','quantity'),('declaration_number','307537505830','307537505830','text')]:
         rows=[{'id':str(i),'key':key,'kind':'field','status':'pending','value':normalize(v,kind)} for i,v in enumerate([a,b])]

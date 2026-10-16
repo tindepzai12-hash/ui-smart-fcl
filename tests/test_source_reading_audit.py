@@ -27,6 +27,46 @@ def test_source_printed_cnf_is_retained_without_rewriting_trade_term():
     rows=ai.validate_result(data,pages)
     assert rows[0]['raw']=='CNF HO CHI MINH PORT, VIETNAM'
 
+
+@pytest.mark.parametrize('summary_quote',['printed_context','generated_summary'])
+def test_unprinted_shipment_summary_does_not_discard_supported_goods_rows(summary_quote):
+    text='PACKING LIST\nALUMINUM ALLOY CARRIER 600 PCS\nALUMINUM ALLOY BRACKET 600 PCS'
+    pages=[{'number':1,'text':text}]
+    data=ai.DocumentResult(document_type='Packing List',classification_evidence='PACKING LIST',
+        fields=[ai.FieldResult(field_id='cargo_description',raw_value='ALUMINUM ALLOY CARRIER; ALUMINUM ALLOY BRACKET',source_page=1,evidence_text=text if summary_quote=='printed_context' else 'ALUMINUM ALLOY CARRIER; ALUMINUM ALLOY BRACKET')],
+        items=[ai.ItemResult(line_number=str(n),description=name,quantity='600',unit='PCS',source_page=1,evidence_text=name+' 600 PCS')
+               for n,name in enumerate(['ALUMINUM ALLOY CARRIER','ALUMINUM ALLOY BRACKET'],1)],containers=[])
+    records,rejected=ai.validated_subset(ai.ground_source_format(data,pages),pages)
+    assert len(records)==2 and not rejected and all(r['kind']=='item' for r in records)
+    data.fields[0].raw_value='ALUMINUM ALLOY CARRIER; GOLD BRACKET'
+    _,rejected=ai.validated_subset(ai.ground_source_format(data,pages),pages)
+    assert rejected
+
+
+def test_notify_name_is_read_from_its_labelled_cell_not_adjacent_agent():
+    text='ARRIVAL NOTICE\n3.Notify Patry Insert Name Address and phone/E-mail\nSILICA GEL TRADING CO.,LTD.\nSINOVITRANS LOGISTICS CO., LTD'
+    pages=[{'number':1,'text':text,'tables':[[['3.Notify Patry Insert Name Address and phone/E-mail\nSILICA GEL TRADING CO.,LTD.\nADD: EXAMPLE ROAD','SINOVITRANS LOGISTICS CO., LTD\nAs Agent for CARRIER LIMITED']]]}]
+    data=ai.DocumentResult(document_type='Arrival Notice',classification_evidence='ARRIVAL NOTICE',
+        fields=[ai.FieldResult(field_id='notify_party',raw_value='SINOVITRANS LOGISTICS CO., LTD',source_page=1,evidence_text=text)],items=[],containers=[])
+    rows,rejected=ai.validated_subset(ai.ground_source_format(data,pages),pages)
+    assert not rejected and rows[0]['raw']=='SILICA GEL TRADING CO.,LTD.'
+    # Conflicting labelled cells must remain ambiguous; never choose one.
+    pages[0]['tables'][0].append(['3.Notify Party\nOTHER TRADING CO.,LTD.'])
+    pages[0]['text']+='\nOTHER TRADING CO.,LTD.'
+    with pytest.raises(ValueError,match='vai trò'):
+        ai.validated_subset(ai.ground_source_format(data,pages),pages)
+
+
+def test_merged_packing_header_binds_net_gross_to_agreeing_printed_footer():
+    header='Marks&Nos. Quantity,Packing and Description N.W.(KGS) G.W.(KGS) Meas.(CBM) Qty(BAGS)'
+    table=[[header,None,None,None,None,None],['N/M','SILICA GEL','21000','21168','27','840'],['TOTAL: 21000 21168 27 840',None,None,None,None,None]]
+    pages=[{'number':1,'text':'PACKING LIST\n'+header+'\nSILICA GEL 21000 21168 27 840\nTOTAL: 21000 21168 27 840','tables':[table]}]
+    data=ai.DocumentResult(document_type='Packing List',classification_evidence='PACKING LIST',fields=[],items=[],containers=[])
+    rows,rejected=ai.validated_subset(ai.ground_source_format(data,pages),pages)
+    assert not rejected and {r['key']:r['value']['number'] for r in rows}=={'net_weight':'21000','gross_weight':'21168'}
+    table[2][0]='TOTAL: 99999 21168 27 840'
+    assert not ai.packing_summary_fields(pages)
+
 TEXT = ('Tờ khai hàng hóa xuất khẩu (thông quan)\n'
         'Mô tả hàng hóa BLUE STEEL BICYCLE CARRIER\n'
         '  MADE IN VIET NAM\nSố lượng (1) 600 PCE\nTrị giá 3918 USD\n'

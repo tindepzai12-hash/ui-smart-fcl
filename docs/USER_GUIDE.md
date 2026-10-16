@@ -70,6 +70,10 @@ Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là v
 
 ## Các tình huống để biết phải xử lý thế nào
 
+### Đơn giá theo CBM, số lượng theo PCS
+
+Web giữ nguyên số lượng, đơn giá và thành tiền. Không nhân số PCS với đơn giá/CBM để kết luận hóa đơn sai. Nếu AI chưa đọc đủ dòng hàng, xử lý mục đọc nguồn trước; hệ thống không lấy tổng các dòng còn lại để báo sai tổng hóa đơn.
+
 ### Cần xử lý: AI chưa đủ bằng chứng
 
 Bấm Xem lỗi đọc & bản gốc: vùng chữ cần kiểm được bôi xanh, có phóng to và kính lúp. Sửa ô Giá trị đã kiểm tra nếu AI đọc sai, tích đã kiểm tra rồi lưu; ghi chú không bắt buộc. Trường bắt buộc còn trống không thể duyệt. Nếu chữ biến dạng không định vị chính xác được, xem vùng nhãn hoặc yêu cầu bản rõ hơn; không tạo trích dẫn giả. Lần đọc cũ cần chạy lại OpenAI để dùng workflow mới.

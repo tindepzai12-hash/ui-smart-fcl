@@ -26,6 +26,8 @@ def field_comparable(key, value):
     if key == 'goods_quantity' and value.get('number') is not None and value.get('unit') in ['KG','MT','LB']:
         factor = {'KG':Decimal(1),'MT':Decimal(1000),'LB':Decimal('0.45359237')}[value['unit']]
         return (Decimal(value['number'])*factor,'KG')
+    if key=='cargo_description':
+        return tuple(re.findall(r'[^\W_]+',value.get('text','').casefold(),flags=re.UNICODE))
     if key in ['seller','buyer','shipper','consignee','notify_party','exporter','importer','seller_address','buyer_address','shipper_address','consignee_address','exporter_address','importer_address']:
         text=value.get('text','')
         if key.endswith('_address'):
@@ -36,6 +38,18 @@ def field_comparable(key, value):
 
 def comparison_values(key, group, records):
     values=[field_comparable(key,r['value']) for r in group]
+    if key=='cargo_description':
+        # A trailing, explicitly labelled origin is a separate field, not an
+        # extra commodity specification. Strip only when this same source has
+        # independently extracted that exact country. Keep all raw values.
+        for i,row in enumerate(group):
+            text=row['value'].get('text','')
+            match=re.search(r'(?i)\b(?:country\s+of\s+origin\s*:|origin\s+of|made\s+in)\s*([A-Za-z][A-Za-z .]{1,50})\s*$',text)
+            if not match or not text[:match.start()].strip():continue
+            country=re.sub(r'[^a-z]','',match.group(1).casefold())
+            origin=[r for r in records if r['key']=='origin' and r['document_id']==row['document_id'] and r['page']==row['page'] and r['status']!='rejected']
+            if origin and all(re.sub(r'[^a-z]','',r['value'].get('text','').casefold())==country for r in origin):
+                values[i]=field_comparable(key,{'text':text[:match.start()].strip()})
     if any(v is None for v in values):
         from .acceptance import readable
         if all(readable(r) for r in group):
@@ -232,7 +246,10 @@ def build_checks(case, documents, records):
             # Same field across multiple independent invoices cannot automatically be a conflict.
             doc_types = [s['type'] for s in sources]
             contract_scope=any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight','port_loading','port_discharge','incoterms']
-            if commercial and 'Booking' in doc_types and not contract_scope:
+            if any(isinstance(v,tuple) and v[0]=='literal' for v in values):
+                result = 'Needs Verification'
+                reason = 'Các nguồn ghi số/ngày theo định dạng khác nhau. Giữ nguyên giá trị nguồn; chưa kết luận sai lệch số học khi dấu phân cách hoặc thứ tự ngày/tháng chưa rõ.'
+            elif commercial and 'Booking' in doc_types and not contract_scope:
                 result = 'Needs Verification'
                 reason = 'Booking là kế hoạch đặt chỗ. Giá trị khác nguồn thương mại/đóng gói cần kiểm phạm vi và phiên bản; chưa kết luận chứng từ sai.'
             elif commercial and any(t in ['Contract','Purchase Order'] for t in doc_types) and key in ['goods_quantity','packages','gross_weight','net_weight']:
@@ -311,7 +328,7 @@ def build_checks(case, documents, records):
         # A rejected row is not a zero-valued row. Its reading warning already
         # takes the employee to the missing source; summing the remaining rows
         # would falsely turn incomplete extraction into an invoice discrepancy.
-        incomplete_items = any(isinstance(entry, dict) and entry.get('candidate_kind') == 'item'
+        incomplete_items = any(isinstance(entry, dict) and entry.get('candidate_kind') == 'item' and not entry.get('review')
                                for entry in (diagnostics if isinstance(diagnostics, list) else []))
         if items and totals and not incomplete_items and all(v is not None for v in amounts) and totals[0]['value'].get('number') is not None:
             sum_val = sum((Decimal(v) for v in amounts), Decimal(0))

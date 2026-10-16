@@ -3,6 +3,14 @@ import pytest
 from PIL import Image
 from fastapi.testclient import TestClient
 from backend import reader,source_locator,db
+
+
+def test_joined_quantity_unit_highlights_exact_original_word():
+    words=[word('42240SETS',.1,90,'OCR'),word('19,560KGS',.5,90,'OCR')]
+    assert [b['text'] for b in source_locator.locate(words,'42240','42240SETS')]==['42240SETS']
+    assert [b['text'] for b in source_locator.locate(words,'19,560','19,560KGS')]==['19,560KGS']
+    assert not source_locator.locate(words,'4224O','42240SETS')
+    assert not source_locator.locate([word('REF42240SETS',.1,90,'OCR')],'42240','')
 from backend.app import app,add_record
 from fixtures import pdf
 

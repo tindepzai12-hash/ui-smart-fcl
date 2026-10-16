@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {AlertTriangle,ArrowRight,Check,Download,Eye,FileText,Loader2,X} from 'lucide-react';
 import {api,patch,post,textValue,label} from './api';
 import {SourceImageViewer} from './SourceImageViewer';
-import {numberFormatSuggestion,reviewBlockReason} from './review';
+import {numberFormatSuggestion,reviewBlockReason,diagnosticBlockReason} from './review';
 
 function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false,caseId}:any){
   const [value,setValue]=useState(textValue(record?.value||source.value));
@@ -13,6 +13,7 @@ function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false,
   const [checked,setChecked]=useState(false);
   const suggestion=typeof value==='string'&&record?.value?.warning?numberFormatSuggestion(value):null;
   const imageType=/\.(pdf|png|jpe?g|tiff?)$/i.test(source.document||'');
+  const attemptBlock=diagnosticBlockReason({kind:source.candidate_kind,draft,scope:source.candidate_scope||'invoice',checked,hasSource:!!data,busy:disabled,saving});
   useEffect(()=>{setValue(textValue(record?.value||source.value));setItemValue(record?.value||{});setError('');},[record?.version,source.id]);
   useEffect(()=>{if(!show)return;let active=true;setError('');setData(null);
     if(!record){
@@ -59,8 +60,8 @@ function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false,
       {!source.candidate_kind&&<p className="alert warn">Kết quả cũ chưa có cấu trúc ô. Đọc lại bằng OpenAI để xác nhận giá trị tại đây; vẫn có thể loại đề xuất kèm lý do.</p>}
       <label className="form-label">Ghi chú (không bắt buộc)<textarea value={note} onChange={e=>setNote(e.target.value)}/></label>
       <label className="row"><input type="checkbox" required checked={checked} onChange={e=>setChecked(e.target.checked)}/> Tôi đã đối chiếu với bản gốc.</label>
-      {!checked&&<p className="muted">Tích đã kiểm tra bản gốc để bật nút lưu. Ô chưa đọc rõ phải nhập giá trị, không được để trống.</p>}
-      <div className="row"><button className="btn primary small" disabled={disabled||saving||!source.candidate_kind||!checked||!data||(source.candidate_kind==='field'&&!String(draft||'').trim())}>{saving?'Đang lưu…':'Xác nhận giá trị & lưu vào hồ sơ'}</button><button type="button" className="btn small" disabled={disabled||saving||!checked||!data} onClick={()=>reviewAttempt('exclude')}>Loại đề xuất, lưu lý do</button></div>
+      {attemptBlock&&<p className="muted" role="status">{attemptBlock}</p>}
+      <div className="row"><button className="btn primary small" disabled={!!attemptBlock}>{saving?'Đang lưu…':'Xác nhận giá trị & lưu vào hồ sơ'}</button><button type="button" className="btn small" disabled={disabled||saving||!checked||!data} onClick={()=>reviewAttempt('exclude')}>Loại đề xuất, lưu lý do</button></div>
     </form>}
     {error&&<p className="alert bad" role="alert">{error}</p>}
   </article>;

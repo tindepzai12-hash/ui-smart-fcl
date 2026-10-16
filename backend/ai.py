@@ -55,14 +55,15 @@ def co_declaration_dates(page):
             if not normalize(raw,'date')['warning']:out.append((raw,m.group(0)))
     return list({normalize(raw,'date')['text']:(raw,quote) for raw,quote in out}.values())
 
-def party_cell_support(field_id, value, page):
-    """A labelled form cell binds a party role; adjacent columns do not."""
-    labels = {
+PARTY_CELL_LABELS = {
         'shipper': r'(?i)^\s*(?:\d+[.)]?\s*)?shipper\b',
         'consignee': r'(?i)^\s*(?:\d+[.)]?\s*)?consignee\b',
         'notify_party': r'(?i)^\s*(?:\d+[.)]?\s*)?notify\s+(?:party|patry)\b',
-    }
-    label = labels.get(field_id)
+}
+
+def party_cell_support(field_id, value, page):
+    """A labelled form cell binds a party role; adjacent columns do not."""
+    label = PARTY_CELL_LABELS.get(field_id)
     if not label:
         return None
     cells = [cell for table in page.get('tables', []) for row in table for cell in row
@@ -539,6 +540,21 @@ def packing_summary_fields(pages):
     for page in pages:
         for table in page.get('tables',[]):
             if not table: continue
+            # Some PDF tables merge the entire header and TOTAL footer into
+            # single cells. Bind the four numeric columns only when the full
+            # printed header, one commodity row and footer agree exactly.
+            for hi,header_row in enumerate(table):
+                header=header_row[0] if header_row else None
+                if not isinstance(header,str) or any(header_row[1:]):continue
+                match=re.fullmatch(r'(?i)Marks\s*&\s*Nos\.\s+Quantity,\s*Packing\s+and\s+Description\s+(N\.W\.\(KGS\))\s+(G\.W\.\(KGS\))\s+Meas\.\(CBM\)\s+Qty\(BAGS\)', ' '.join(header.split()))
+                if not match:continue
+                goods=[r for r in table[hi+1:] if len(r)==6 and all(isinstance(v,str) and re.fullmatch(r'\d[\d.,]*',v.strip()) for v in r[2:])]
+                totals=[re.fullmatch(r'(?i)TOTAL\s*:\s*(\d[\d.,]*)\s+(\d[\d.,]*)\s+(\d[\d.,]*)\s+(\d[\d.,]*)',str(r[0] or '').strip()) for r in table[hi+1:] if r and not any(r[1:])]
+                if len(goods)!=1 or not any(t and list(t.groups())==[v.strip() for v in goods[0][2:]] for t in totals):continue
+                for index,key in enumerate(['net_weight','gross_weight']):
+                    raw=goods[0][index+2].strip();unit_header=match.group(index+1)
+                    if evidence_ok(raw,raw,page['number'],pages) and evidence_ok(unit_header,unit_header,page['number'],pages):
+                        recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw,unit='KGS',unit_evidence=unit_header,source_page=page['number'],evidence_text=raw))
             # A merged TOTAL WEIGHT header binds its Net/Gross subcolumns.
             # A single printed commodity row is not a calculated sum. Never
             # substitute the neighbouring per-package weights or sum many rows.
@@ -646,7 +662,42 @@ def ground_source_format(result, pages):
     # Missing is not a rejected fabricated value. Empty model slots create no
     # record and no employee action; required missing fields remain in checklist.
     grounded.fields=[f for f in grounded.fields if f.raw_value.strip()]
+    # Item descriptions already preserve independent printed rows. An optional
+    # model-generated shipment summary joining them with semicolons is not a
+    # printed field and must not create a spurious employee reading task.
+    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List']:
+        def generated_item_summary(field):
+            if field.field_id!='cargo_description' or ';' not in field.raw_value:return False
+            if evidence_ok(field.raw_value,field.evidence_text,field.source_page,pages):return False
+            parts=[p.strip() for p in field.raw_value.split(';')]
+            if len(parts)<2 or not all(parts):return False
+            return all(any(item.description==part
+                           and any(p['number']==field.source_page and evidence_ok(part,part,p['number'],pages) for p in pages)
+                           and any(p['number']==item.source_page and evidence_ok(part,part,p['number'],pages) for p in pages)
+                           for item in grounded.items) for part in parts)
+        grounded.fields=[f for f in grounded.fields if not generated_item_summary(f)]
     grounded.fields=[f for f in grounded.fields if not (f.field_id in ['seller','buyer','shipper','consignee','notify_party','exporter','importer'] and re.search(PARTY_ADDRESS,f.raw_value))]
+    for field in grounded.fields:
+        page=next((p for p in pages if p['number']==field.source_page),{})
+        if party_cell_support(field.field_id,field.raw_value,page) is not False:continue
+        names=set()
+        for table in page.get('tables',[]):
+            for row in table:
+                for cell in row:
+                    if not isinstance(cell,str) or not re.search(PARTY_CELL_LABELS[field.field_id],cell):continue
+                    lines=[line.strip() for line in cell.splitlines()[1:] if line.strip()]
+                    if not lines:continue
+                    name=lines[0]
+                    if (re.search(r'(?i)\b(?:LTD\.?|LIMITED|CORPORATION|GMBH)\b',name)
+                            and not re.search(r'(?i)\b(?:ADD(?:RESS)?\s*:|TEL\s*:|FAX\s*:|AS\s+AGENT)\b',name)
+                            and evidence_ok(name,name,field.source_page,pages)):
+                        names.add(name)
+        if len(names)==1:
+            field.raw_value=field.evidence_text=next(iter(names))
+            field.evidence_start_line=None;field.evidence_end_line=None
+    if grounded.document_type=='Packing List':
+        grounded.fields=[f for f in grounded.fields if f.field_id!='consignee' or any(
+            p['number']==f.source_page and re.search(CONSIGNEE_LABEL,p['text']) for p in pages)]
     address_roles={'exporter_address':r'(?i)\b(?:consignor|exporter)\b', 'importer_address':r'(?i)\b(?:consignee|importer)\b',
                    'seller_address':r'(?i)\bseller\b','buyer_address':BUYER_LABEL,
                    'shipper_address':r'(?i)\bshipper\b','consignee_address':CONSIGNEE_LABEL}

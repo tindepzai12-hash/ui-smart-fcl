@@ -39,13 +39,19 @@ test('Extraction warnings show excluded attempts, matched rows are green, and un
 
 test('Staff sees the precise save prerequisite; number formatting is an explicit suggestion only',async()=>{
   const js=compileTsx(fs.readFileSync('frontend/review.ts','utf8'),'review.ts');
-  const {numberFormatSuggestion,reviewBlockReason}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+  const {numberFormatSuggestion,reviewBlockReason,diagnosticBlockReason}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
   const ready={busy:false,saving:false,checked:true,note:'Đã đối chiếu bản gốc',unclear:false};
   assert.equal(reviewBlockReason(ready),'');
   assert.equal(reviewBlockReason({...ready,note:''}),'');
   assert.match(reviewBlockReason({...ready,checked:false}),/Đánh dấu/);
   assert.match(reviewBlockReason({...ready,unclear:true}),/từng nguồn/);
   assert.match(reviewBlockReason({...ready,busy:true}),/Chờ/);
+  const attempted={kind:'field',draft:'BK-123',scope:'invoice',checked:true,hasSource:true,busy:false,saving:false};
+  assert.equal(diagnosticBlockReason(attempted),'');
+  assert.match(diagnosticBlockReason({...attempted,draft:'  '}),/không được để trống/);
+  assert.match(diagnosticBlockReason({...attempted,checked:false}),/Tích/);
+  assert.match(diagnosticBlockReason({...attempted,kind:'item',draft:{description:'Bolts',quantity:'10',unit:'PCS'}}),/đơn giá, thành tiền, tiền tệ/);
+  assert.equal(diagnosticBlockReason({...attempted,kind:'item',scope:'packing',draft:{description:'Bolts',quantity:'10',unit:'PCS'}}),'');
   assert.equal(numberFormatSuggestion('19,560 KGS'),'19560 KGS');
   assert.equal(numberFormatSuggestion('16,200 KG'),'16200 KG');
   for(const v of ['19,56 KG','19.560 KG','19,560','19,560.00 KGS','Chưa đọc được'])assert.equal(numberFormatSuggestion(v),null);

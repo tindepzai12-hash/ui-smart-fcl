@@ -188,7 +188,7 @@ def test_rejected_invoice_row_does_not_create_false_total_mismatch():
     assert next(c for c in checks([doc],rows) if c['key']=='total:invoice')['result']=='Mismatch'
     rows.append(record('line2','invoice','goods_item',{'description':'BRACKET','quantity':'600','unit':'PCS',
                 'unit_price':'0.54','line_amount':'324.00'},'item'))
-    doc['reading_diagnostics']=[]
+    doc['reading_diagnostics']=[{'candidate_kind':'item','review':{'action':'accept','record_id':'line2'}}]
     assert next(c for c in checks([doc],rows) if c['key']=='total:invoice')['result']=='Matched'
 
 
@@ -202,6 +202,29 @@ def test_invoice_price_per_volume_is_not_multiplied_by_piece_count():
     row['evidence']='USD445/CBM\n[unit_price] USD445/PCS'
     c=next(c for c in checks([document('invoice','Invoice')],[row]) if c['key']=='arithmetic:line')
     assert c['result']=='Mismatch'
+
+
+def test_ambiguous_number_format_is_not_a_proven_invoice_discrepancy():
+    docs=[document('invoice','Invoice'),document('decl','Customs Declaration')]
+    rows=[record('a','invoice','invoice_total',normalize('4242.00 USD','number')),
+          record('b','decl','invoice_total',normalize('4.242 USD','number'))]
+    c=next(c for c in checks(docs,rows) if c['key']=='field:invoice_total')
+    assert c['result']=='Needs Verification' and c['detail']['category']=='difference'
+    assert rows[1]['value']['text']=='4.242 USD'
+    rows[0]['value']=normalize('4.242 USD','number')
+    assert next(c for c in checks(docs,rows) if c['key']=='field:invoice_total')['result']=='Matched'
+
+
+def test_description_origin_suffix_compares_separately_only_with_same_source_origin():
+    docs=[document('pl'),document('co','C/O')]
+    rows=[record('a','pl','cargo_description',normalize('COCONUT SAP AND EXTRACT (CLASS A) ORIGIN OF VIETNAM','text')),
+          record('b','co','cargo_description',normalize('COCONUT SAP AND EXTRACT (CLASS A)','text'))]
+    assert next(c for c in checks(docs,rows) if c['key']=='field:cargo_description')['result']=='Needs Verification'
+    rows.append(record('origin','pl','origin',normalize('VIETNAM','text')))
+    assert next(c for c in checks(docs,rows) if c['key']=='field:cargo_description')['result']=='Matched'
+    assert rows[0]['value']['text'].endswith('ORIGIN OF VIETNAM')
+    rows[1]['value']=normalize('COCONUT SAP AND EXTRACT (CLASS B)','text')
+    assert next(c for c in checks(docs,rows) if c['key']=='field:cargo_description')['result']=='Needs Verification'
 
 def test_different_item_readings_on_two_pages_of_one_pdf_are_compared():
     docs=[document('two-pl')]

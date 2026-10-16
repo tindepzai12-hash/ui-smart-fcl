@@ -2049,7 +2049,7 @@ function SettingsPage({ health, refresh, run, notify }: Any) {
       <div className="page-heading">
         <div>
           <h1>Cài đặt không gian làm việc</h1>
-          <p>Kiểm tra dịch vụ local và kết nối AI khi cần.</p>
+          <p>Kiểm tra hệ thống và kết nối OpenAI.</p>
         </div>
       </div>
       <section className="surface padded">

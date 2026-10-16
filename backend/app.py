@@ -1141,6 +1141,7 @@ async def restore_empty(file: UploadFile = File(...)):
             restore(archive,db.DATA,check_server=False)
             for folder in ['files','exports','backups','templates']:(db.DATA/folder).mkdir(exist_ok=True)
             db.migrate()
+            refresh_staff_checks()
             return {'restored':db.one('SELECT count(*) n FROM cases')['n']}
         except (ValueError,zipfile.BadZipFile,sqlite3.Error) as exc:
             raise HTTPException(422,'Bản sao lưu không hợp lệ; không thể khôi phục.') from None
@@ -1243,6 +1244,19 @@ def upgrade_arrival_notice_scope():
         c.execute('INSERT INTO schema_versions VALUES(3,?)',(db.now(),))
 
 upgrade_arrival_notice_scope()
+
+
+def refresh_staff_checks():
+    """Apply corrected comparison rules to saved cases without re-reading files."""
+    with db.connect() as c:
+        if c.execute('SELECT 1 FROM schema_versions WHERE version=4').fetchone():
+            return
+        for row in c.execute('SELECT id FROM cases').fetchall():
+            revalidate(c,row['id'])
+        c.execute('INSERT INTO schema_versions VALUES(4,?)',(db.now(),))
+
+
+refresh_staff_checks()
 
 if (db.ROOT / 'dist').exists():
     app.mount('/', StaticFiles(directory=db.ROOT / 'dist', html=True), name='frontend')

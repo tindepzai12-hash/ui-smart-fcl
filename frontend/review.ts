@@ -11,3 +11,19 @@ export function reviewBlockReason({busy,saving,checked,note,unclear}:{busy:boole
   if(!checked)return 'Đánh dấu đã đối chiếu các nguồn để xác nhận.';
   return '';
 }
+
+export function diagnosticBlockReason({kind,draft,scope,checked,hasSource,busy,saving}:any){
+  if(saving)return 'Đang lưu kết quả kiểm tra…';
+  if(busy)return 'Chờ tác vụ đang chạy hoàn tất.';
+  if(!kind)return 'Đọc lại bằng OpenAI để lấy các ô dữ liệu có thể xác nhận.';
+  if(!hasSource)return 'Chờ bản gốc tải xong trước khi xác nhận.';
+  if(kind==='field'&&!String(draft||'').trim())return 'Nhập giá trị đã đọc trên bản gốc. Ô này không được để trống dù đã tích kiểm tra.';
+  if(kind==='item'){
+    const required=scope==='invoice'?['description','quantity','unit','unit_price','line_amount','currency']:['description','quantity','unit'];
+    const titles:any={description:'mô tả hàng',quantity:'số lượng',unit:'đơn vị',unit_price:'đơn giá',line_amount:'thành tiền',currency:'tiền tệ'};
+    const missing=required.filter(k=>!String(draft?.[k]??'').trim());
+    if(missing.length)return 'Nhập đủ '+missing.map(k=>titles[k]).join(', ')+' từ bản gốc trước khi lưu.';
+  }
+  if(!checked)return 'Tích đã kiểm tra bản gốc để bật nút lưu.';
+  return '';
+}

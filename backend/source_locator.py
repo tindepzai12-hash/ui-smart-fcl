@@ -24,7 +24,13 @@ def quote_boxes(words,evidence):
     return out
 
 def tokens(text):
-    return re.findall(r'\w+', str(text).casefold(), re.UNICODE)
+    out=[]
+    for token in re.findall(r'\w+', str(text).casefold(), re.UNICODE):
+        # OCR often joins a quantity to its printed unit (42240SETS). Keep
+        # numeric characters exact and leave alphanumeric reference codes intact.
+        joined=re.fullmatch(r'(\d+)(kgs|kgm|kg|mt|lbs|lb|pcs|pce|sets|set|bags|ctn|drums|cbm)',token)
+        out.extend(joined.groups() if joined else [token])
+    return out
 
 def ocr_words(image, psm=3):
     status = reader.ocr_status()
