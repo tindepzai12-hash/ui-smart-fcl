@@ -845,8 +845,8 @@ function App() {
             <img src="/ui-logistics-logo.png" alt="U&I Logistics" width="68" height="38" />
           </div>
           <div className="brand-copy">
-            <strong>U&I SMART</strong>
-            <span>Chứng từ FCL</span>
+            <strong>Uni Cross</strong>
+            <span>Đối chiếu chứng từ</span>
           </div>
         <button
           className="collapse"
@@ -946,7 +946,7 @@ function App() {
               <div className="page-heading">
                 <div>
                   <h1>{view === 'overview' ? 'Tổng quan hồ sơ' : 'Hồ sơ logistics'}</h1>
-                  <p>Tiếp nhận, kiểm tra và chuẩn bị dữ liệu từ bộ chứng từ nhập khẩu FCL đường biển.</p>
+                  <p>Tiếp nhận, đối chiếu và chuẩn bị dữ liệu từ bộ chứng từ của cùng một lô hàng.</p>
                 </div>
                 <button className="btn primary" onClick={() => setDialog({ kind: 'case' })}>
                   <Plus size={18} />
@@ -975,7 +975,7 @@ function App() {
                   </div>
                   <div className="workflow-intro">
                     <div>
-                      <h2>Bàn làm việc chứng từ nhập khẩu FCL · Nguồn dữ liệu minh bạch</h2>
+                      <h2>Bàn làm việc chứng từ · Nguồn dữ liệu minh bạch</h2>
                       <p>
                         Tải bộ chứng từ → AI đọc & đối chiếu → xử lý sai lệch → xuất báo cáo. Nhân viên tập trung vào các điểm có vấn đề.
                       </p>
@@ -1653,8 +1653,8 @@ function App() {
           )}
 
           <footer className="app-footer">
-            U&I SMART · Hồ sơ chứng từ nhập khẩu FCL{' '}
-            <span>U&I SMART 1.1 · Nhân viên xử lý sai lệch</span>
+            Uni Cross · Hồ sơ chứng từ{' '}
+            <span>Uni Cross 1.1 · Nhân viên xử lý sai lệch</span>
           </footer>
         </main>
       </div>
@@ -2217,7 +2217,7 @@ function SettingsPage({ health, refresh, run, notify }: Any) {
       <section className="surface padded">
         <h2>Phạm vi tích hợp</h2>
         <p className="muted">
-          ONP / TMS / WMS và template import phần mềm khai báo: chưa kết nối. Giao diện hiện tại tập trung bộ phận chứng từ FCL.
+          ONP / TMS / WMS và template import phần mềm khai báo: chưa kết nối. Giao diện hiện tại tập trung bộ phận chứng từ.
         </p>
       </section>
       <p className="settings-credit">designed by Justin Nguyen</p>

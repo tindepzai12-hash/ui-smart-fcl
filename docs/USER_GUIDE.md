@@ -1,4 +1,4 @@
-# Hướng dẫn nhân viên xử lý hồ sơ U&I SMART
+# Hướng dẫn nhân viên xử lý hồ sơ Uni Cross
 
 4 bước: tải chứng từ cùng một lô → AI đọc & đối chiếu → xử lý sai lệch → xuất báo cáo.
 
@@ -6,7 +6,7 @@ Dành cho nhân viên chứng từ U&I/FWD. Không cần xác minh lần lượt
 
 ## Ví dụ thật: bộ HS XUAT SAI GW
 
-Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là ví dụ xuất khẩu để kiểm thử sai lệch trọng lượng, không phải bộ nhập khẩu đầy đủ.
+Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Bộ này được dùng để kiểm thử sai lệch trọng lượng trên chứng từ thực tế.
 
 - **Packing List:** Gross 489.00 KG; net 391.20 KG; 56 cartons; 1200 PCS.
 - **Tờ khai 307537505830:** Tổng trọng lượng hàng (Gross): 515,08 KGM.
@@ -98,14 +98,14 @@ Hiện ở Sai lệch / khác phạm vi để xem điều khoản partial delive
 
 Một nguồn đọc rõ: tự nhận vào Excel, không cần kiểm lại. Chữ scan quá mờ/biến dạng: Cần làm rõ, mở vùng xanh để nhập tay. Hai trạng thái này khác nhau.
 
-## Phần việc thực hiện bên ngoài U&I SMART
+## Phần việc thực hiện bên ngoài Uni Cross
 
 - Trao đổi với khách để xác nhận sai lệch thực tế và xin chứng từ rõ/đúng phiên bản.
 - Các thủ tục hải quan, giấy phép, kiểm tra chuyên ngành và giao nhận thực hiện theo quy trình riêng của đơn vị.
 
 AI hỗ trợ đọc và gợi ý ngữ nghĩa. Đối chiếu số học dùng quy tắc và đơn vị rõ ràng. Nhân viên quyết định nguồn đúng; web không tự sửa giấy gốc hoặc tự nộp tờ khai.
 
-Nguồn: [Phạm vi và thao tác U&I SMART](https://ui-smart-fcl.onrender.com/). Bộ dừa VinaTrain gồm 5 chứng từ công khai và Arrival Notice giả lập có ghi rõ nhãn, chỉ để kiểm thử. Bộ AB2507002 do người dùng cung cấp là chứng từ thật.
+Nguồn: [Phạm vi và thao tác Uni Cross](https://ui-smart-fcl.onrender.com/). Bộ dừa VinaTrain gồm 5 chứng từ công khai và Arrival Notice giả lập có ghi rõ nhãn, chỉ để kiểm thử. Bộ AB2507002 do người dùng cung cấp là chứng từ thật.
 
 ## Khi gặp vấn đề với web
 

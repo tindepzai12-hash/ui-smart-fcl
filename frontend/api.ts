@@ -152,7 +152,7 @@ export function humanCheckTitle(key: string, fieldsDict: Record<string, any> = {
   }
   if (key.startsWith('transport:')) {
     const docId = key.slice('transport:'.length);
-    return { title: `Phương thức vận tải: ${docsMap[docId]?.name || 'Tài liệu'}`, category: 'Kiểm tra nghiệp vụ FCL' };
+    return { title: `Phương thức vận tải: ${docsMap[docId]?.name || 'Tài liệu'}`, category: 'Kiểm tra nghiệp vụ chứng từ' };
   }
   if (key.startsWith('missing:')) {
     const sub = key.slice('missing:'.length);

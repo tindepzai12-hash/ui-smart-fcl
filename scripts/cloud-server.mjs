@@ -37,7 +37,7 @@ async function startWhenReady() {
     try {
       const response = await fetch(`http://127.0.0.1:${backendPort}/api/health`, { signal: AbortSignal.timeout(2000) });
       if (response.ok && (await response.json()).ok) {
-        server.listen(port, '0.0.0.0', () => console.log(`U&I SMART Node gateway listening on port ${port}`));
+        server.listen(port, '0.0.0.0', () => console.log(`Uni Cross Node gateway listening on port ${port}`));
         return;
       }
     } catch { /* Processor is still importing libraries or migrating its empty database. */ }

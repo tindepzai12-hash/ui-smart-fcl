@@ -3,7 +3,7 @@
   "scope": "Dành cho nhân viên chứng từ U&I/FWD. Không cần xác minh lần lượt mọi trường. Sáu nhóm chính vẫn là Packing List, Booking, Invoice, Hợp đồng/PO, Arrival Notice và C/O nếu có. Tờ khai, danh sách qua giám sát và phiếu nhập kho có thể làm nguồn đối chiếu bổ sung; tài liệu không liên quan vào Giấy tờ khác.",
   "scenario": {
     "title": "Ví dụ thật: bộ HS XUAT SAI GW",
-    "notice": "Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Đây là ví dụ xuất khẩu để kiểm thử sai lệch trọng lượng, không phải bộ nhập khẩu đầy đủ.",
+    "notice": "Các chứng từ do người dùng cung cấp, cùng lô AB2507002. Bộ này được dùng để kiểm thử sai lệch trọng lượng trên chứng từ thực tế.",
     "facts": [
       [
         "Packing List",
@@ -97,7 +97,7 @@
   ],
   "limitation": "AI hỗ trợ đọc và gợi ý ngữ nghĩa. Đối chiếu số học dùng quy tắc và đơn vị rõ ràng. Nhân viên quyết định nguồn đúng; web không tự sửa giấy gốc hoặc tự nộp tờ khai.",
   "source": {
-    "title": "Phạm vi và thao tác U&I SMART",
+    "title": "Phạm vi và thao tác Uni Cross",
     "url": "https://ui-smart-fcl.onrender.com/",
     "note": "Bộ dừa VinaTrain gồm 5 chứng từ công khai và Arrival Notice giả lập có ghi rõ nhãn, chỉ để kiểm thử. Bộ AB2507002 do người dùng cung cấp là chứng từ thật."
   },
