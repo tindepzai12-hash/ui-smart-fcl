@@ -250,7 +250,7 @@ def build_checks(case, documents, records):
                 continue
         if len(group)>1:
             from .consistency import CONTEXT_FIELDS,contextual_assessment
-            assessment=contextual_assessment(case.get('id'),documents,records,key,group) if key in CONTEXT_FIELDS else None
+            assessment=contextual_assessment(case.get('id'),documents,records,key,group) if key in CONTEXT_FIELDS or key=='goods_quantity' else None
             if assessment:
                 add('field:'+key,assessment['result'],assessment['detail']['reason'],sources)
                 checks[-1]['detail'].update({k:v for k,v in assessment['detail'].items() if k!='sources'})

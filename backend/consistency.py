@@ -9,6 +9,38 @@ CONTEXT_FIELDS={'incoterms','payment_terms','shipment_terms','origin','port_load
     'seller_address','buyer_address','shipper_address','consignee_address','exporter_address','importer_address'}
 REFERENCE_FIELDS={'booking_number','invoice_number','packing_list_number','contract_number','po_number','bl_number','awb_number'}
 
+def partial_quantity_context(documents,records):
+    """Allow scope reasoning ONLY with a printed partial-shipment clause.
+
+    Never waive differences between shipment sources or an explicit over-quantity.
+    Ambiguous but readable numbers remain strings; this does not certify fulfilment.
+    """
+    from .acceptance import readable
+    from .validation import field_comparable
+    docs={d['id']:d for d in documents}
+    group=[r for r in records if r['status']!='rejected' and r['kind']=='field' and r['key']=='goods_quantity']
+    contract=[r for r in group if docs.get(r['document_id'],{}).get('type') in ['Contract','Purchase Order']]
+    shipment=[r for r in group if r not in contract]
+    if not contract or not shipment or not all(readable(r) for r in group):return None
+    if len({r['value'].get('unit') for r in group})!=1 or not group[0]['value'].get('unit'):return None
+    clauses=[]
+    for row in contract:
+        found=[r for r in records if r['status']!='rejected' and r['document_id']==row['document_id']
+               and r['key']=='shipment_terms' and re.search(r'\bpartial\s+shipments?\s+(?:are\s+)?allowed\b',r['value'].get('text',''),re.I)
+               and not re.search(r'\b(?:no\s+partial\s+shipments?|partial\s+shipments?\s+(?:are\s+)?(?:not|never|prohibited|disallowed))\b',r['value'].get('text',''),re.I)]
+        if not found:return None
+        clauses.extend(found)
+    values=[field_comparable('goods_quantity',r['value']) for r in shipment]
+    if any(v is None for v in values):
+        if len({' '.join(r['value'].get('text','').upper().split()) for r in shipment})!=1:return None
+    elif len(set(values))>1:return None
+    for c in contract:
+        total=field_comparable('goods_quantity',c['value'])
+        for s in shipment:
+            amount=field_comparable('goods_quantity',s['value'])
+            if isinstance(total,tuple) and isinstance(amount,tuple) and total[1]==amount[1] and amount[0]>total[0]:return None
+    return group,clauses
+
 def signature(documents,records):
     body={'policy':hashlib.sha256((db.ROOT/'docs'/'AI_SHIPMENT_CONSISTENCY.md').read_bytes()).hexdigest(),
           'documents':sorted((d['id'],d['type'],d.get('hash','')) for d in documents),
@@ -91,6 +123,11 @@ def contextual_candidates(documents,records):
         if any(v is None for v in values) or len(set(values))<=1:continue
         if key in ['port_loading','port_discharge'] and port_detail_compatible(group):continue
         candidates[key]=group
+    partial=partial_quantity_context(documents,records)
+    if partial:
+        group,_=partial
+        values=comparison_values('goods_quantity',group,records)
+        if len(set(values))>1:candidates['goods_quantity']=group
     return candidates
 
 def packet_context(documents,records,source_pages=None):
@@ -212,6 +249,9 @@ def run_ai_review(case_id,documents,records,source_pages=None):
                 pair={'detail':{'sources':sources([index[i] for i in opposing],documents)}}
                 if not semantic_difference(pair,active):continue
             if assessment.relation!='contradiction' and opposing:continue
+            if key=='goods_quantity' and assessment.relation!='contradiction':
+                partial=partial_quantity_context(documents,active)
+                if not partial or not {r['id'] for r in partial[1]}<=set(context_ids):continue
             output.append({'key':'ai-context:'+key,
                 'result':'Needs Verification' if assessment.relation=='contradiction' else 'Not Yet Checked','severity':'warning',
                 'detail':{'reason':assessment.reason,'sources':sources(group,documents),
