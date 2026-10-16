@@ -121,6 +121,28 @@ def ocr_labelled_weights(data):
     return [[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],*rows]] if rows else []
 
 
+def ocr_measurement_cell(image,data,lang):
+    """Re-read a labelled weight/measurement cell missed by page segmentation."""
+    words=[{'text':t.strip(),'x':data['left'][i],'y':data['top'][i],'h':data['height'][i]}
+           for i,t in enumerate(data['text']) if t.strip() and float(data['conf'][i])>=0]
+    for word in words:
+        if word['x']<image.width*.6 or not re.fullmatch(r'(?i)gross',word['text']):continue
+        if not any(re.fullmatch(r'(?i)weight\W*',w['text']) and 0<w['x']-word['x']<image.width*.15
+                   and abs(w['y']-word['y'])<max(10,word['h']) for w in words):continue
+        with image.crop((max(0,word['x']-15),max(0,word['y']-10),image.width,
+                         min(image.height,word['y']+int(image.height*.15)))) as crop:
+            try:text=pytesseract.image_to_string(crop,lang=lang,config='--psm 6',timeout=8).strip()
+            except RuntimeError:return '',[]
+        if not re.search(r'(?i)gross\s+weight',text) or not re.search(r'(?i)measurement',text):return '',[]
+        pairs=re.findall(r'(?im)^\s*(\d[\d., ]*)\s*\n?\s*(KGS?|KGM|CBM|M[³3])\b',text)
+        weights=[(v.strip(),u) for v,u in pairs if re.fullmatch(r'(?i)KGS?|KGM',u)]
+        volumes=[(v.strip(),u) for v,u in pairs if re.fullmatch(r'(?i)CBM|M[³3]',u)]
+        if len(weights)!=1 or len(volumes)!=1:return text,[]
+        return text,[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],
+                      ['Gross weight',*weights[0]],['Measurement',*volumes[0]]]]
+    return '',[]
+
+
 def ocr_packing_summary(data):
     """Bind printed PL total cells by OCR coordinates, never calculate totals."""
     words=[{'text':t.strip(),'x':data['left'][i],'y':data['top'][i]+data['height'][i]/2,
@@ -165,7 +187,7 @@ def ocr_packing_summary(data):
                              ['',nw[0],gw[0]],[footer,'','']]]
     return []
 
-def ocr_grid_totals(image):
+def ocr_grid_totals(image, diagnostics=None):
     """Read explicit total cells inside a ruled table; never sum or fill a cell.
 
     Whole-page OCR can merge bundles, pieces and cubic metres into one stream.
@@ -176,7 +198,10 @@ def ocr_grid_totals(image):
     if not status['ready']:return []
     pytesseract.pytesseract.tesseract_cmd=status['cmd']
     lang='eng+vie' if 'vie' in status['languages'] else 'eng'
-    started=time.monotonic();calls=0
+    started=time.monotonic();calls=0;rows=[]
+    def note(reason):
+        if diagnostics is not None:
+            diagnostics.append('OCR grid: '+reason+'; rows='+str(len(rows))+'; cells='+str(calls))
     def centres(values):
         groups=[]
         for value in values:
@@ -184,40 +209,60 @@ def ocr_grid_totals(image):
             else:groups.append([value])
         return [sum(group)//len(group) for group in groups]
     gray=ImageOps.grayscale(image)
-    mask=gray.point(lambda v:255 if v<180 else 0)
+    mask=None
     try:
-        ys=centres([y for y,v in enumerate(mask.resize((1,gray.height),Image.Resampling.BOX).getdata()) if v>255*.65])
-        rows=[]
-        for top,bottom in zip(ys,ys[1:]):
-            if not 20<=bottom-top<=gray.height*.22:continue
-            with mask.crop((0,top+5,gray.width,bottom-5)) as band:
-                xs=centres([x for x,v in enumerate(band.resize((gray.width,1),Image.Resampling.BOX).getdata()) if v>255*.75])
-            if 5<=len(xs)<=15 and all(b-a>=30 for a,b in zip(xs,xs[1:])):rows.append((top,bottom,xs))
         def cell(row,index):
             nonlocal calls
             if calls>=40 or time.monotonic()-started>25:raise ValueError('Hết ngân sách OCR ô tổng')
             calls+=1
             top,bottom,xs=row
             with gray.crop((xs[index]+5,top+5,xs[index+1]-5,bottom-5)) as crop:
-                return pytesseract.image_to_string(crop,lang=lang,config='--psm 6',timeout=5).strip()[:250]
-        for hi,row in enumerate(rows[:18]):
-            first=[cell(row,i) for i in range(min(2,len(row[2])-1))]
-            if not re.search(r'(?i)description\s+of\s+goods|commodity', ' '.join(first)):continue
-            header=first+[cell(row,i) for i in range(2,len(row[2])-1)]
-            if not re.search(r'(?i)quantity|weight|no[. ]*of', ' '.join(header)):continue
-            for footer in list(reversed(rows[hi+1:]))[:6]:
-                if len(footer[2])!=len(row[2]) or any(abs(a-b)>12 for a,b in zip(row[2],footer[2])):continue
-                label=cell(footer,0)
-                if not re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*[:：.]?\s*',label):continue
-                values=[label]+[cell(footer,i) for i in range(1,len(footer[2])-1)]
-                # Only literal numeric footer cells are usable as totals.
-                values=[values[0]]+[v if re.fullmatch(r'\d[\d., ]*',v) else '' for v in values[1:]]
-                if any(values[1:]):return [[header,values]]
-            break
-    except (ValueError,RuntimeError):
+                raw=pytesseract.image_to_string(crop,lang=lang,config='--psm 6',timeout=5).strip()[:250]
+                if re.fullmatch(r'(?i)total\s+pes',raw) and calls<40:
+                    # Re-read the unit word, rather than aliasing an OCR typo.
+                    calls+=1
+                    with crop.crop((0,crop.height//2,crop.width,crop.height)) as word:
+                        with word.resize((crop.width*3,crop.height*2),Image.Resampling.LANCZOS) as enlarged:
+                            unit=pytesseract.image_to_string(enlarged,lang=lang,config='--psm 7',timeout=5).strip()
+                    if re.fullmatch(r'(?i)pcs',unit):raw=raw.split()[0]+'\n'+unit
+                return raw
+        # Thin gray rules need a second detection threshold. Keep one shared
+        # time/call budget and OCR the original pixels under both thresholds.
+        for threshold in [180,245]:
+            if mask is not None:mask.close()
+            mask=gray.point(lambda v:255 if v<threshold else 0)
+            ys=centres([y for y,v in enumerate(mask.resize((1,gray.height),Image.Resampling.BOX).getdata()) if v>255*.65])
+            rows=[]
+            for top,bottom in zip(ys,ys[1:]):
+                if not 20<=bottom-top<=gray.height*.22:continue
+                with mask.crop((0,top+5,gray.width,bottom-5)) as band:
+                    xs=centres([x for x,v in enumerate(band.resize((gray.width,1),Image.Resampling.BOX).getdata()) if v>255*.75])
+                if 5<=len(xs)<=15 and all(b-a>=30 for a,b in zip(xs,xs[1:])):rows.append((top,bottom,xs))
+            for hi,row in enumerate(rows[:18]):
+                first=[cell(row,i) for i in range(min(2,len(row[2])-1))]
+                if not re.search(r'(?i)description\s+of\s+goods|commodity', ' '.join(first)):continue
+                header=first+[cell(row,i) for i in range(2,len(row[2])-1)]
+                if not re.search(r'(?i)quantity|weight|no[. ]*of', ' '.join(header)):continue
+                for footer in list(reversed(rows[hi+1:]))[:6]:
+                    # Total may span the Item/Description columns. Each numeric
+                    # cell still needs its own printed left/right boundaries.
+                    if any(not any(abs(a-b)<=12 for b in row[2]) for a in footer[2]):continue
+                    label=cell(footer,0)
+                    if not re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*[:：.]?\s*',label):continue
+                    aligned=(footer[0],footer[1],row[2])
+                    values=[label]+[cell(aligned,i) if all(any(abs(edge-x)<=12 for x in footer[2]) for edge in row[2][i:i+2]) else '' for i in range(1,len(row[2])-1)]
+                    values=[values[0]]+[v if re.fullmatch(r'\d[\d., ]*',v) else '' for v in values[1:]]
+                    if any(values[1:]):
+                        note('total cells retained; threshold='+str(threshold))
+                        return [[header,values]]
+                break
+    except (ValueError,RuntimeError) as exc:
+        note('budget exceeded' if isinstance(exc,ValueError) else 'cell OCR timeout')
         return []  # The original full-page OCR remains available.
     finally:
-        gray.close();mask.close()
+        gray.close()
+        if mask is not None:mask.close()
+    note('no bound total cells')
     return []
 
 
@@ -285,6 +330,10 @@ def _ocr(image, include_tables=False, psm=3):
         if float(data['conf'][i]) >= 0:
             scores.append(float(data['conf'][i]))
     text = '\n'.join(' '.join(v) for v in lines.values())
+    cell_tables=[]
+    if include_tables and psm in [3,11]:
+        cell_text,cell_tables=ocr_measurement_cell(gray,data,lang)
+        if cell_text:text+='\n\n[OCR labelled measurement cell — đọc trực tiếp vùng nhãn Gross weight / Measurement]\n'+cell_text
     quality = []
     if not text.strip():
         raise ValueError('OCR không đọc được chữ. Hãy dùng bản scan rõ hơn.')
@@ -298,7 +347,7 @@ def _ocr(image, include_tables=False, psm=3):
              if 0<=float(data['conf'][i])<70 and re.fullmatch(r'[A-Za-z0-9/-]*\d[A-Za-z0-9/-]{2,}',data['text'][i].strip())]
     if unclear:quality.append('Ký tự mã/số chưa rõ trong lượt này: '+', '.join(dict.fromkeys(unclear[:20]))+'.')
     result = (text, ' '.join(quality) or 'OCR cần nhân viên kiểm tra')
-    return (*result, ocr_tables(data)) if include_tables else result
+    return (*result, ocr_tables(data)+cell_tables) if include_tables else result
 
 def decode(data):
     for encoding in ['utf-8-sig', 'utf-16', 'cp1258']:
@@ -338,7 +387,9 @@ def read_pdf_image(image):
         except ValueError as exc:
             quality+=' OCR dòng bổ sung chưa hoàn tất: '+str(exc)
     if re.search(r'(?i)packing\s+list|invoice|sales?\s+contract',text):
-        grid=ocr_grid_totals(image)
+        grid_diagnostics=[]
+        grid=ocr_grid_totals(image,grid_diagnostics)
+        quality+=' '+' '.join(grid_diagnostics)
         if grid:
             tables+=grid
             text+='\n\n[OCR grid cells — nhãn cột và ô Total đọc trực tiếp từ cùng ảnh]\n'+'\n'.join(' | '.join(row) for table in grid for row in table)

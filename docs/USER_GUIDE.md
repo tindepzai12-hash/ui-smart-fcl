@@ -2,7 +2,7 @@
 
 4 bước: tải chứng từ cùng một lô → AI đọc & đối chiếu → xử lý sai lệch → xuất báo cáo.
 
-Dành cho nhân viên chứng từ U&I/FWD. Không cần xác minh lần lượt mọi trường. Sáu nhóm chính vẫn là Packing List, Booking, Invoice, Hợp đồng/PO, Arrival Notice và C/O nếu có. Tờ khai, danh sách qua giám sát và phiếu nhập kho có thể làm nguồn đối chiếu bổ sung; tài liệu không liên quan vào Giấy tờ khác.
+Dành cho nhân viên chứng từ U&I/FWD. Không cần xác minh lần lượt mọi trường. Các nhóm gồm Packing List, Booking, Invoice, Hợp đồng/PO, Arrival Notice, C/O và B/L. Đã có màu xanh lá, chưa có màu đỏ; C/O và B/L có thì đọc và đối chiếu. B/L không thay Booking. Tờ khai, danh sách qua giám sát và phiếu nhập kho cũng làm nguồn đối chiếu; tài liệu không liên quan vào Giấy tờ khác. Dữ liệu AI đọc rõ được đưa vào Excel.
 
 ## Ví dụ thật: bộ HS XUAT SAI GW
 

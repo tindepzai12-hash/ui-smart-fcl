@@ -10,7 +10,7 @@ UNITS = {
     'CARTONS': 'CTN', 'CTNS': 'CTN', 'CARTON': 'CTN', 'CTN': 'CTN', 'CT':'CTN',
     'PALLETS': 'PLT', 'PALLET': 'PLT',
     'PKGS': 'PKG', 'PACKAGES': 'PKG', 'PACKAGE': 'PKG',
-    'BE': 'BDL', 'BDL': 'BDL', 'BUNDLE': 'BDL', 'BUNDLES': 'BDL',
+    'BE': 'BDL', 'BDL': 'BDL', 'BUNDLE': 'BDL', 'BUNDLES': 'BDL', 'BUNDLE(S)': 'BDL',
     'SETS': 'SET', 'DRUMS':'DRUM', 'DRUM':'DRUM', 'CBM': 'CBM', 'M3': 'CBM',
 }
 
@@ -50,12 +50,13 @@ def normalize(raw, kind='text'):
     raw = str(raw).strip()
     result = {'text': raw, 'number': None, 'unit': None, 'warning': None}
     if kind in ['number', 'weight', 'quantity']:
-        m = re.search(r'([+-]?\d[\d.,]*(?:[ ]\d{3})*)', raw)
+        numeric_source=re.sub(r'(?<=\d)\s+(?=[.,]\d)|(?<=[.,])\s+(?=\d)','',raw)
+        m = re.search(r'([+-]?\d[\d.,]*(?:[ ]\d{3})*)', numeric_source)
         if not m:
             result['warning'] = 'Không xác định được giá trị số'
             return result
         num = decimal_text(m.group(1))
-        unit = raw[m.end():].strip().upper().rstrip('.')
+        unit = numeric_source[m.end():].strip().upper().rstrip('.')
         unit = UNITS.get(unit, unit or None)
         # Countable pieces cannot be fractional. A comma-grouped integer in PCS
         # is unambiguous here; weights, money and unknown units stay conservative.

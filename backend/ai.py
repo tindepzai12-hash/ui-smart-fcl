@@ -391,6 +391,13 @@ def validate_result(result, pages):
             bound=[v for v in packing_summary_fields(pages).get(f.field_id,[]) if v.source_page==f.source_page]
             if bound and f.raw_value not in {v.raw_value for v in bound}:
                 raise ValueError('Trọng lượng không thuộc ô tổng của đúng cột Net/Gross; không lấy số cột bên cạnh')
+            role=r'(?i)net\s*(?:weight|wt)' if f.field_id=='net_weight' else r'(?i)(?:gross|gw)\s*(?:weight|wt)'
+            unreadable_total=any(
+                any(re.fullmatch(r'(?i)\s*(?:grand\s+)?total\s*[:：.]?\s*',c or '') for c in row)
+                and any(re.search(role,h or '') and (i>=len(row) or not row[i]) for i,h in enumerate(table[0]))
+                for table in source_page.get('tables',[]) if table for row in table[1:])
+            if not bound and unreadable_total:
+                raise ValueError('Ô tổng trọng lượng bị che/không đọc rõ; cần xem bản gốc, không dùng trọng lượng một dòng hàng thay tổng')
             if not bound and f.field_id=='net_weight' and (not re.search(NET_WEIGHT_LABEL,field_evidence) or re.search(r'(?i)gross\s*(?:weight|wt)',field_evidence)):
                 raise ValueError('Chưa gắn được số trọng lượng tịnh với đúng nhãn/cột Net; cần xem bản gốc')
         if f.field_id=='packages' and result.document_type in ['Packing List','Invoice & Packing List']:
@@ -402,6 +409,15 @@ def validate_result(result, pages):
             bound=[v for v in packing_summary_fields(pages).get(f.field_id,[]) if v.source_page==f.source_page]
             if bound and f.raw_value not in {v.raw_value for v in bound}:
                 raise ValueError('Giá trị không thuộc ô Total của đúng cột; không lấy số một dòng thay tổng lô')
+            if f.field_id=='goods_quantity' and normalize(f.raw_value+' '+(f.unit or ''),'quantity').get('unit')=='CBM' and any(
+                    any(re.fullmatch(r'(?i)total\s+p[ce]s',h or '') for h in table[0]) and
+                    any(re.search(r'(?i)quantity\s*\(\s*m[³3]\s*\)',h or '') for h in table[0])
+                    for table in source_page.get('tables',[]) if table):
+                raise ValueError('Giá trị thuộc cột thể tích M3, không phải cột Total pcs của bảng này')
+        if f.field_id in ['gross_weight','volume','packages'] and result.document_type in ['B/L','Sea Waybill']:
+            bound=[v for v in transport_summary_fields(pages).get(f.field_id,[]) if v.source_page==f.source_page]
+            if bound and f.raw_value not in {v.raw_value for v in bound}:
+                raise ValueError('Giá trị không thuộc đúng ô trọng lượng/thể tích/bao bì của vận đơn')
         if f.field_id in ['bl_number','awb_number','invoice_number','contract_number','po_number','co_number','packing_number','do_number','booking']:
             identifier_pattern = r'[A-Za-z0-9][A-Za-z0-9/_. -]{0,99}' if f.field_id in ['contract_number','invoice_number'] else r'[A-Za-z0-9][A-Za-z0-9/_.-]{0,99}'
             if not re.fullmatch(identifier_pattern, f.raw_value):
@@ -551,6 +567,26 @@ def validate_result(result, pages):
     return records
 
 
+def transport_summary_fields(pages):
+    """Literal labelled measurement cells, not neighbouring equipment counts."""
+    recovered={}
+    for page in pages:
+        for table in page.get('tables',[]):
+            if not table or table[0]!=['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT']:continue
+            for row in table[1:]:
+                if len(row)!=3:continue
+                label,raw,unit=row
+                key=('gross_weight' if re.fullmatch(r'(?i)gross\s+weight',label) else
+                     'volume' if re.fullmatch(r'(?i)measurement',label) else None)
+                if key and evidence_ok(raw,raw,page['number'],pages) and evidence_ok(unit,unit,page['number'],pages):
+                    recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw,unit=unit,
+                        unit_evidence=unit,source_page=page['number'],evidence_text=raw))
+        for match in re.finditer(r'(?i)(?:[({]\s*)?(\d[\d,.]*)\s*(BUNDLE\(S\)|BUNDLES?|BDL)(?!\w)',page['text']):
+            recovered.setdefault('packages',[]).append(FieldResult(field_id='packages',raw_value=match[1],unit=match[2],
+                unit_evidence=match[2],source_page=page['number'],evidence_text=match[0]))
+    return recovered
+
+
 def packing_summary_fields(pages):
     """Read source-bound total cells; retain conflicting candidates without picking one."""
     recovered={}
@@ -612,7 +648,7 @@ def packing_summary_fields(pages):
                 header=header or '';label=re.sub(r'\s+',' ',header).casefold()
                 key=('net_weight' if re.search(r'net\s*(?:weight|wt)|^n[.]?\s*weight',label) else
                      'gross_weight' if re.search(r'gross\s*(?:weight|wt)|^g[.]?\s*weight',label) else
-                     'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b|^no[. ]+packages|^no[. ]*of\s+bdl',label) else
+                     'packages' if re.search(r'number of (?:cartons|packages)|total packages|^ctn\b|^no[. ]+packages|^no[. ]*of\s+bdl|^bundles?$',label) else
                      'volume' if re.search(r'\b(?:volume|measurement|cbm)\b|quantity\s*\(\s*m[³3]\s*\)',label) else
                      'goods_quantity' if re.fullmatch(r'total\s+(?:pcs|pieces)',label) else None)
                 if key and len(table)>1 and i<len(table[1]) and table[1][i] and re.fullmatch(r'(?i)\s*\(?\s*(?:KGS?|KGM|LBS?)\s*\)?\s*',table[1][i]):header+=' '+table[1][i]
@@ -648,6 +684,13 @@ def ground_source_format(result, pages):
     """Ground formatting and explicit price-header terms in literal source evidence."""
     from .normalize import decimal_text
     grounded = DocumentResult.model_validate(result.model_dump())
+    # A clearly labelled equipment count is outside packages/goods quantity.
+    # Do not retain a known role error as an unreadable-character staff task.
+    equipment_count=r'(?i)^\s*(?:số\s+lượng\s+container|(?:number|no[.]?)\s+of\s+containers?)\s*[:：]?\s*\d+\s*$'
+    grounded.fields=[f for f in grounded.fields if not (
+        f.field_id in ['packages','goods_quantity'] and (re.fullmatch(equipment_count,f.evidence_text)
+        or re.fullmatch(r'(?i)CTRS|CONTAINERS?',f.unit or '')
+        or re.search(r'(?i)(?<!\d)'+re.escape(f.raw_value)+r'\s+CTRS\b',f.evidence_text)))]
     # Preserve a correct literal quote when only its line pointer is wrong.
     # Never look up the proposed value elsewhere or repair an invented quote.
     def literal_pointer(value, quote, page, start, end):
@@ -684,7 +727,7 @@ def ground_source_format(result, pages):
     # Item descriptions already preserve independent printed rows. An optional
     # model-generated shipment summary joining them with semicolons is not a
     # printed field and must not create a spurious employee reading task.
-    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List','Contract','Purchase Order']:
+    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List']:
         def generated_item_summary(field):
             if field.field_id!='cargo_description' or ';' not in field.raw_value:return False
             if evidence_ok(field.raw_value,field.evidence_text,field.source_page,pages):return False
@@ -809,8 +852,8 @@ def ground_source_format(result, pages):
     # Recover only labelled TOTAL or footer-bounded aggregate cells. The printed raw value
     # and header unit must also exist literally in this page's text. This does not
     # reconstruct rows, guess separators, or mark any value verified.
-    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List']:
-        recovered=packing_summary_fields(pages)
+    if grounded.document_type in ['Invoice','Packing List','Invoice & Packing List','Contract','Purchase Order','B/L','Sea Waybill']:
+        recovered=(transport_summary_fields(pages) if grounded.document_type in ['B/L','Sea Waybill'] else packing_summary_fields(pages))
         base={**grounded.model_dump(),'fields':[],'items':[],'containers':[]}
         for key,candidates in recovered.items():
             if len({(f.raw_value,normalize(f.raw_value+' '+f.unit,FIELDS[key]['type']).get('unit')) for f in candidates})!=1: continue
@@ -1289,6 +1332,7 @@ def analyze(case_id, document, pages):
         'Quantity units must be read from the actual quantity column/header (including Quantity followed by a separate line such as (KGS)), using exact unit_line or cell_evidence. Do not leave a unit null when that applicable header is readable; do not substitute packing weight, net/gross weight or price unit for quantity. '
         'For tables with No.of bdl / Bundles, Total pcs, and Quantity (M3), these are THREE distinct roles: packages, goods_quantity, volume. Read their own printed Total cells, not the first/last item row. M3/CBM is volume even under a Quantity heading. Copy volume from Invoice and Contract when printed too. Never calculate an absent footer or guess a stamp-obscured weight. '
         'C/O box 7 may give a bundle/package count: that is packages, not goods_quantity unless the source explicitly counts goods pieces. Keep BE, BDL and BUNDLES as printed package units; the server normalizes documented unit aliases. '
+        'On EVERY document type, an explicit So luong container / Number of containers is equipment count, never packages or goods_quantity; omit equipment counts from these fields. '
         'Customs invoice cells can print a separate form marker followed by a spaced hyphen before the invoice identifier (A - ...). Extract the actual invoice identifier, not that separated form marker; do not remove a prefix from an invoice number printed as one continuous identifier. '
         'incoterms contains a printed trade term such as CIF or FOB, never TT, LC or a payment sentence. Put payment conditions in payment_terms. Do not infer net_weight from quantity without a net-weight label. '
         'Arrival Notice: extract only the allowed header and shipment-summary fields; items=[] and containers=[]. Freight charges and equipment rows are not Invoice amounts or commercial items. A referenced B/L number is bl_number, never booking. '

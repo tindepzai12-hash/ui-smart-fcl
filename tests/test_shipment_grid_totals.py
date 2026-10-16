@@ -32,6 +32,38 @@ def test_no_total_label_means_no_guessed_summary():
     assert not ai.packing_summary_fields([page])
 
 
+def test_blank_weight_total_cannot_be_replaced_by_first_row_weight():
+    page=grid_page();page['text']+='\n19000 KG'
+    result=ai.DocumentResult(document_type='Packing List',classification_evidence='PACKING LIST',
+        fields=[ai.FieldResult(field_id='gross_weight',raw_value='19000',unit='KG',unit_evidence='KG',source_page=1,evidence_text='19000 KG')],items=[],containers=[])
+    with pytest.raises(ValueError,match='Ô tổng trọng lượng'):
+        ai.validate_result(result,[page])
+
+
+def test_cubic_metres_cannot_be_pieces_when_source_has_both_columns():
+    page=grid_page();page['text']+='\n27.28 M3'
+    result=ai.DocumentResult(document_type='Packing List',classification_evidence='PACKING LIST',
+        fields=[ai.FieldResult(field_id='goods_quantity',raw_value='27.28',unit='M3',unit_evidence='M3',source_page=1,evidence_text='27.28 M3')],items=[],containers=[])
+    with pytest.raises(ValueError):ai.validate_result(result,[page])
+
+
+def test_faint_grid_with_merged_total_label_preserves_numeric_column_roles(monkeypatch):
+    from backend import reader
+    from PIL import Image,ImageDraw
+    monkeypatch.setattr(reader,'ocr_status',lambda:{'ready':True,'cmd':'tesseract','languages':['eng']})
+    cells=iter(['Item','Description of goods','Bundles','Total pcs','Quantity (M3)',
+                'Total:','140','8720','410.72'])
+    monkeypatch.setattr(reader.pytesseract,'image_to_string',lambda *a,**kw:next(cells))
+    with Image.new('L',(1000,1000),255) as image:
+        draw=ImageDraw.Draw(image)
+        for y in [350,450,550]:draw.line((50,y,950,y),fill=230,width=2)
+        for x in [50,200,500,650,800,950]:draw.line((x,350,x,450),fill=230,width=2)
+        for x in [50,500,650,800,950]:draw.line((x,450,x,550),fill=230,width=2)
+        diagnostics=[];table=reader.ocr_grid_totals(image,diagnostics)
+        assert table==[[['Item','Description of goods','Bundles','Total pcs','Quantity (M3)'],['Total:','','140','8720','410.72']]]
+        assert any('threshold=245' in s for s in diagnostics)
+
+
 @pytest.mark.parametrize('unit',['BE','BDL','BUNDLE','BUNDLES'])
 def test_documented_bundle_units(unit):
     assert normalize('120 '+unit,'quantity')['unit']=='BDL'
@@ -70,3 +102,39 @@ def test_bl_and_customs_are_supported_and_bl_has_separate_checklist_group():
     assert any(g['type']=='B/L' for g in REVIEW_GROUPS)
     assert not default_requirements()['B/L']['required']
     assert {'Invoice','Contract','Purchase Order'}<=set(FIELDS['volume']['documents'])
+
+
+def test_labelled_container_count_cannot_become_packages():
+    pages=[{'number':1,'text':'Tờ khai hàng hóa nhập khẩu\nSố lượng container 10\nSố lượng kiện 120 BE','tables':[]}]
+    result=ai.DocumentResult(document_type='Customs Declaration',classification_evidence='Tờ khai hàng hóa nhập khẩu',
+        fields=[ai.FieldResult(field_id='packages',raw_value='10',source_page=1,evidence_text='Số lượng container 10'),
+                ai.FieldResult(field_id='packages',raw_value='120',unit='BE',unit_evidence='BE',source_page=1,evidence_text='Số lượng kiện 120 BE')],items=[],containers=[])
+    grounded=ai.ground_source_format(result,pages)
+    assert [(f.raw_value,f.unit) for f in grounded.fields]==[('120','BE')]
+
+
+def test_transport_weight_and_measurement_are_bound_to_their_own_units():
+    page={'number':1,'text':'BILL OF LADING\nGross weight / Measurement\n123 ,456.000\nKGS\n376.2200\nCBM\n(140 BUNDLE(S))',
+          'tables':[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Gross weight','123 ,456.000','KGS'],['Measurement','376.2200','CBM']]]}
+    result=ai.DocumentResult(document_type='B/L',classification_evidence='BILL OF LADING',fields=[
+        ai.FieldResult(field_id='gross_weight',raw_value='376.2200',unit='KGS',unit_evidence='KGS',source_page=1,evidence_text='376.2200'),
+        ai.FieldResult(field_id='packages',raw_value='10',unit='CTRS',unit_evidence='CTRS',source_page=1,evidence_text='10 CTRS')],items=[],containers=[])
+    rows=ai.validate_result(ai.ground_source_format(result,[page]),[page])
+    values={r['key']:r['value'] for r in rows}
+    assert values['gross_weight']['number']=='123456.000'
+    assert values['gross_weight']['text']=='123 ,456.000 KGS'
+    assert values['volume']['number']=='376.2200' and values['volume']['unit']=='CBM'
+    assert values['packages']['number']=='140' and values['packages']['unit']=='BDL'
+
+
+def test_measurement_crop_requires_both_printed_labels_and_distinct_units(monkeypatch):
+    from backend import reader
+    from PIL import Image
+    data={'text':['Gross','weight'],'left':[750,810],'top':[100,100],'height':[20,20],'conf':[90,90]}
+    monkeypatch.setattr(reader.pytesseract,'image_to_string',lambda *a,**kw:'Gross weight /\nMeasurement\n123 ,456.000\nKGS\n376.2200\nCBM')
+    with Image.new('L',(1000,1500),255) as image:
+        text,tables=reader.ocr_measurement_cell(image,data,'eng')
+        assert tables[0][1]==['Gross weight','123 ,456.000','KGS']
+        assert '123 ,456.000' in text
+        monkeypatch.setattr(reader.pytesseract,'image_to_string',lambda *a,**kw:'Gross weight /\n123456 KGS')
+        assert reader.ocr_measurement_cell(image,data,'eng')==('',[])
