@@ -88,7 +88,7 @@ def test_scan_uses_one_segmentation_when_value_matches(tmp_path,monkeypatch):
     value=source_locator.inspect({'id':'d','path':str(path),'name':'scan.png','ext':'.png'},
         {'raw':'1200','evidence':'Total 1200','method':'OpenAI'},
         {'number':1,'method':'OCR','quality':'','text':'Total 1200'})
-    assert value['boxes'] and calls==[3] and not value['retryable']
+    assert value['boxes'] and calls==[11] and not value['retryable']
 
 def test_timeout_returns_retryable_source_without_invented_boxes(tmp_path,monkeypatch):
     path=tmp_path/'scan.png';Image.new('L',(100,100),255).save(path)
@@ -111,5 +111,5 @@ def test_source_ocr_is_grayscale_bounded_and_has_short_timeout(monkeypatch):
     with Image.new('RGB',(2400,3600),'white') as image:
         rows=source_locator.ocr_words(image)
         assert image.size==(2400,3600)
-    assert seen=={'mode':'L','size':(1333,2000),'timeout':12}
-    assert rows[0]['y']==.01
+    assert seen=={'mode':'L','size':(1067,1600),'timeout':8}
+    assert rows[0]['y']==.0125

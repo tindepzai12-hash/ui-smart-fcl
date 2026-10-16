@@ -6,7 +6,7 @@ from PIL import Image, ImageOps
 from . import reader, db
 
 _lock = threading.RLock()
-LAYOUT_VERSION = 'bounded-gray-2000-v1'
+LAYOUT_VERSION = 'bounded-gray-1600-sparse-v2'
 
 def diagnostic_token(entry):
     return hashlib.sha256(json.dumps({k:v for k,v in entry.items() if k!='review'},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
@@ -45,11 +45,13 @@ def ocr_words(image, psm=3):
     with ImageOps.exif_transpose(image) as oriented:
         gray = oriented.convert('L')
     try:
-        gray.thumbnail((2000,2000), Image.Resampling.LANCZOS)
+        gray.thumbnail((1600,1600), Image.Resampling.LANCZOS)
         with ImageOps.autocontrast(gray) as prepared:
             data = reader.pytesseract.image_to_data(prepared,
-                lang='eng+vie' if 'vie' in status['languages'] else 'eng', config=f'--psm {psm}',
-                output_type=reader.pytesseract.Output.DICT, timeout=12)
+                # Start with the lighter Latin/numeric locator. Vietnamese
+                # segmentation remains available on literal-match failure.
+                lang='eng+vie' if psm==3 and 'vie' in status['languages'] else 'eng', config=f'--psm {psm}',
+                output_type=reader.pytesseract.Output.DICT, timeout=18 if psm==11 else 8)
         width,height=gray.size
     finally:
         gray.close()
@@ -86,7 +88,7 @@ def _layout(path, stamp, size, number, method):
             if reader.fitz is not None:
                 with reader.fitz.open(path) as pdf:
                     page=pdf[number-1]
-                    scale=min(200/72,2000/max(page.rect.width,page.rect.height))
+                    scale=min(200/72,1600/max(page.rect.width,page.rect.height))
                     pix=page.get_pixmap(matrix=reader.fitz.Matrix(scale,scale),colorspace=reader.fitz.csGRAY,alpha=False)
                     image=Image.frombytes('L',(pix.width,pix.height),pix.samples)
                     del pix
@@ -100,8 +102,8 @@ def _layout(path, stamp, size, number, method):
         return []
     if image is not None:
         try:
-            sparse=method.endswith('|sparse-only')
-            words += [{**w,'layer':'OCR sparse' if sparse else 'OCR'} for w in ocr_words(image,11 if sparse else 3)]
+            fallback=method.endswith('|full-fallback')
+            words += [{**w,'layer':'OCR' if fallback else 'OCR sparse'} for w in ocr_words(image,3 if fallback else 11)]
         finally:
             image.close()
             reader.release_reader_memory()
@@ -204,7 +206,7 @@ def inspect(doc, record, page):
         if not boxes and 'OCR' in method:
             # Only pay for a second segmentation when the requested source was
             # not found. Keep this distinct layer and cache it across records.
-            sparse=layout(doc['path'],page['number'],method+'|sparse-only')
+            sparse=layout(doc['path'],page['number'],method+'|full-fallback')
             boxes=locate(sparse,record['raw'],record['evidence'])
             if not boxes and 0<len(tokens(record['evidence']))<=100:
                 boxes=quote_boxes(sparse,record['evidence'])
