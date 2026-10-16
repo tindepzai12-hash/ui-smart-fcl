@@ -217,6 +217,15 @@ def bundle(id):
     }
 
 def revalidate(c, id):
+    # Remove an obsolete parser warning from saved pending dates, including a
+    # staff-entered date. Keep raw source, method, note and approval state.
+    for row in c.execute("SELECT * FROM records WHERE case_id=? AND kind='field' AND status='pending'",(id,)).fetchall():
+        record=validation.unpack(row)
+        if FIELDS.get(record['key'],{}).get('type')!='date' or not str(record['value'].get('warning','')).startswith('Định dạng ngày chưa rõ'):continue
+        value=normalize(record['value'].get('text',''),'date')
+        if value['warning']:continue
+        c.execute('UPDATE records SET value_json=?,version=version+1 WHERE id=?',(db.encode({**record['value'],**value}),record['id']))
+        db.audit(c,id,'Cập nhật định dạng ngày đã đọc rõ',record['id'],record['value'],value,actor='Hệ thống')
     case = dict(c.execute('SELECT * FROM cases WHERE id=?', (id,)).fetchone())
     docs = [dict(r) for r in c.execute("SELECT * FROM documents WHERE case_id=? AND collection='document'", (id,))]
     records = [validation.unpack(r) for r in c.execute("SELECT * FROM records WHERE case_id=? AND (document_id IS NULL OR document_id IN (SELECT id FROM documents WHERE collection='document'))", (id,))]
@@ -258,7 +267,7 @@ def health():
 
 @app.get('/api/dictionary')
 def dictionary():
-    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES}
+    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES, 'extraction_rules_version':2}
 
 @app.get('/api/cases')
 def list_cases():

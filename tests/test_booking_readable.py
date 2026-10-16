@@ -1,7 +1,7 @@
 import io
 import pytest
 from openpyxl import load_workbook
-from backend import ai,acceptance,consistency
+from backend import ai,acceptance,consistency,db
 from backend.normalize import normalize
 from test_core import client,H,new,upload,process
 
@@ -95,3 +95,22 @@ def test_additional_terminal_detail_is_stored_without_claiming_a_source_mismatch
     assert not port_detail_compatible(rows('New York / Terminal A','New York / Terminal B','New York'))
     assert not port_detail_compatible(rows('London / Terminal A','London,UK','London,CANADA'))
     assert not port_detail_compatible(rows('New York / Terminal A','Newark,US'))
+
+def test_saved_manual_date_loses_stale_parser_warning_without_becoming_human_verified():
+    from backend.app import revalidate
+    cid=new()
+    value={'text':'27 Oct 2026 17:00(EST)','number':None,'unit':None,'warning':'Định dạng ngày chưa rõ, cần xác minh'}
+    rid=db.uid()
+    db.execute('INSERT INTO records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(rid,cid,None,'field','eta',db.encode(value['text']),db.encode(value),1,'ETA: '+value['text'],'Manual edit','pending','Giữ ghi chú nhân viên',db.now(),2))
+    with db.connect() as c:revalidate(c,cid)
+    row=db.one('SELECT * FROM records WHERE id=?',(rid,))
+    assert not json_value(row['value_json'])['warning']
+    assert row['method']=='Manual edit' and row['status']=='pending' and row['note']=='Giữ ghi chú nhân viên'
+    assert json_value(row['raw_json'])==value['text']
+    version=row['version']
+    with db.connect() as c:revalidate(c,cid)
+    assert db.one('SELECT version FROM records WHERE id=?',(rid,))['version']==version
+
+def json_value(value):
+    import json
+    return json.loads(value)
