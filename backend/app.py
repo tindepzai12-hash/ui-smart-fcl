@@ -267,7 +267,7 @@ def health():
 
 @app.get('/api/dictionary')
 def dictionary():
-    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES, 'extraction_rules_version':5}
+    return {'fields': FIELDS, 'document_types': PROFILE_TYPES, 'document_labels':DOCUMENT_LABELS, 'review_groups':REVIEW_GROUPS, 'review_fields':REVIEW_FIELDS, 'legacy_document_types':TYPES, 'extraction_rules_version':6}
 
 @app.get('/api/cases')
 def list_cases():
@@ -769,7 +769,8 @@ def worker(job_id):
         if mode=='openai' and not job['cancel'] and commercial_profile(json.loads(require_case(id)['requirements']),require_case(id)['mode']):
             job['stage']='OpenAI đối chiếu toàn bộ hồ sơ'
             case_docs=db.rows("SELECT * FROM documents WHERE case_id=? AND collection='document'",(id,))
-            review_error=consistency.run_ai_review(id,case_docs,working_records(id))
+            clause_pages=db.rows("SELECT p.document_id,p.number,p.text FROM pages p JOIN documents d ON d.id=p.document_id WHERE d.case_id=? AND d.collection='document' AND d.type IN ('Contract','Purchase Order') ORDER BY d.id,p.number",(id,))
+            review_error=consistency.run_ai_review(id,case_docs,working_records(id),source_pages=clause_pages)
             if review_error:job['warnings'].append({'document':'Đối chiếu toàn hồ sơ','message':review_error})
         final_status = 'completed'
         if job['errors']:

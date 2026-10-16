@@ -4,9 +4,16 @@ from decimal import Decimal
 from . import db
 from .dictionary import FIELDS
 
+CONTEXT_FIELDS={'incoterms','payment_terms','shipment_terms','origin','port_loading','port_discharge',
+    'seller','buyer','shipper','consignee','notify_party','exporter','importer',
+    'seller_address','buyer_address','shipper_address','consignee_address','exporter_address','importer_address'}
+REFERENCE_FIELDS={'booking_number','invoice_number','packing_list_number','contract_number','po_number','bl_number','awb_number'}
+
 def signature(documents,records):
-    body={'documents':sorted((d['id'],d['type']) for d in documents),
-          'records':sorted((r['id'],r['key'],db.encode(r['value']),r['status']=='rejected') for r in records)}
+    body={'policy':hashlib.sha256((db.ROOT/'docs'/'AI_SHIPMENT_CONSISTENCY.md').read_bytes()).hexdigest(),
+          'documents':sorted((d['id'],d['type'],d.get('hash','')) for d in documents),
+          'records':sorted((r['id'],r['key'],db.encode(r['value']),r['status']=='rejected',
+                            r.get('page'),r.get('evidence','')) for r in records)}
     return hashlib.sha256(db.encode(body).encode()).hexdigest()
 
 def sources(group,documents):
@@ -52,7 +59,7 @@ def additional_checks(documents,records):
 def ai_checks(case_id,documents,records):
     if not case_id:return []
     saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
-    if not saved or saved['signature']!=signature(documents,records):return []
+    if not saved or saved['error'] or saved['signature']!=signature(documents,records):return []
     return [c for c in json.loads(saved['payload']) if c['result']=='Needs Verification' and semantic_difference(c,records)]
 
 
@@ -69,6 +76,54 @@ def description_assessment(case_id,documents,records,group):
         if check['key']!='ai-description:cargo_description':continue
         if {s['id'] for s in check['detail']['sources']}==ids:return check
     return None
+
+def contextual_candidates(documents,records):
+    """Semantic review is bounded: it can never waive numbers, dates or identifiers."""
+    from .validation import comparison_values,port_detail_compatible
+    groups={}
+    for r in records:
+        if r['status']!='rejected' and r['kind']=='field' and r['key'] in CONTEXT_FIELDS:
+            groups.setdefault(r['key'],[]).append(r)
+    candidates={}
+    for key,group in groups.items():
+        if len({r['document_id'] for r in group})<2:continue
+        values=comparison_values(key,group,records)
+        if any(v is None for v in values) or len(set(values))<=1:continue
+        if key in ['port_loading','port_discharge'] and port_detail_compatible(group):continue
+        candidates[key]=group
+    return candidates
+
+def packet_context(documents,records,source_pages=None):
+    """Observed links and source clauses, never a guessed 'same shipment' assertion."""
+    refs={}
+    for r in records:
+        if r['kind']=='field' and r['key'] in REFERENCE_FIELDS:
+            value=re.sub(r'\s+','',r['value'].get('text','')).upper()
+            if value:refs.setdefault((r['key'],value),[]).append(r)
+    links=[{'field_id':key,'record_ids':[r['id'] for r in group],
+            'document_ids':sorted({r['document_id'] for r in group})}
+           for (key,_),group in refs.items() if len({r['document_id'] for r in group})>=2]
+    # Full contract pages supplement extracted clauses without manufacturing fields.
+    # Bound context size, and tell the model when a page/context is incomplete.
+    pages=[];budget=80000
+    docs={d['id']:d for d in documents}
+    eligible=[p for p in (source_pages or []) if docs.get(p['document_id'],{}).get('type') in ['Contract','Purchase Order']]
+    for p in eligible:
+        if budget<=0:break
+        original=p['text'];text=original[:min(16000,budget)];budget-=len(text)
+        pages.append({'document_id':p['document_id'],'page':p['number'],'text':text,'truncated':len(text)<len(original)})
+    return {'documents':[{'id':d['id'],'type':d['type'],'name':d['name']} for d in documents],
+            'shared_explicit_references':links,'contract_pages':pages,
+            'contract_context_incomplete':len(pages)<len(eligible) or any(p['truncated'] for p in pages),
+            'extracted_clause_record_ids':[r['id'] for r in records if r['key'] in ['shipment_terms','payment_terms','incoterms']]}
+
+def contextual_assessment(case_id,documents,records,key,group):
+    if not case_id or key not in contextual_candidates(documents,records):return None
+    saved=db.one('SELECT * FROM packet_reviews WHERE case_id=?',(case_id,))
+    if not saved or saved['error'] or saved['signature']!=signature(documents,records):return None
+    ids={r['id'] for r in group}
+    return next((c for c in json.loads(saved['payload']) if c['key']=='ai-context:'+key
+                 and {s['id'] for s in c['detail']['sources']}==ids),None)
 
 def semantic_difference(check,records):
     """AI prose cannot override equal, typed source values (including cached reviews)."""
@@ -101,7 +156,7 @@ def report(case,documents,records,checks):
             'ai_state':state,'ai_error':saved['error'] if saved and state=='error' else '',
             'scope':'Một hồ sơ = một lô hàng. Nguồn kế hoạch, hợp đồng giao nhiều đợt và dữ liệu chưa rõ đơn vị được cảnh báo riêng, không tự kết luận sai.'}
 
-def run_ai_review(case_id,documents,records):
+def run_ai_review(case_id,documents,records,source_pages=None):
     """AI only suggests semantic issues over existing IDs; never creates or corrects data."""
     from . import ai
     from pydantic import Field
@@ -109,6 +164,7 @@ def run_ai_review(case_id,documents,records):
     active=[r for r in records if r['status']!='rejected']
     descriptions=[r for r in active if r['kind']=='field' and r['key']=='cargo_description']
     needs_description=len({r['document_id'] for r in descriptions})>=2
+    candidates=contextual_candidates(documents,active)
     class Issue(ai.Strict):
         field_id:str
         record_ids:List[str]=Field(min_length=2,max_length=12)
@@ -117,9 +173,17 @@ def run_ai_review(case_id,documents,records):
         record_ids:List[str]=Field(min_length=2,max_length=30)
         relation:Literal['compatible','contradiction','uncertain']
         reason:str=Field(min_length=5,max_length=1000)
+    class ContextAssessment(ai.Strict):
+        field_id:str
+        record_ids:List[str]=Field(min_length=2,max_length=40)
+        relation:Literal['compatible','contradiction','insufficient_context']
+        contradicting_record_ids:List[str]=Field(max_length=2)
+        context_record_ids:List[str]=Field(max_length=20)
+        reason:str=Field(min_length=5,max_length=1000)
     class Review(ai.Strict):
         issues:List[Issue]=Field(max_length=40)
         description_assessments:List[DescriptionAssessment]=Field(default_factory=list,min_length=1 if needs_description else 0,max_length=1)
+        contextual_assessments:List[ContextAssessment]=Field(default_factory=list,min_length=len(candidates),max_length=len(candidates))
     sig=signature(documents,records);output=[];error=''
     try:
         if len(active)>350:raise ValueError('Hồ sơ hơn 350 bản ghi; chưa chạy đối chiếu ngữ nghĩa AI. Đối chiếu số liệu vẫn hoạt động.')
@@ -128,11 +192,30 @@ def run_ai_review(case_id,documents,records):
         response=ai.OpenAI(api_key=ai.key(),timeout=60,max_retries=1).responses.parse(model=ai._model,store=False,text_format=Review,
             input=[{'role':'system','content':ai.NO_INFERENCE_POLICY+'\n'+policy},
                    {'role':'user','content':db.encode({'records':payload,
-                       'description_comparison_record_ids':[r['id'] for r in descriptions] if needs_description else []})}],
+                       'description_comparison_record_ids':[r['id'] for r in descriptions] if needs_description else [],
+                       'contextual_comparisons':[{'field_id':k,'record_ids':[r['id'] for r in g]} for k,g in candidates.items()],
+                       'packet_context':packet_context(documents,active,source_pages)})}],
             **({'temperature':0} if ai._model.startswith(('gpt-4.1','gpt-4o')) else {}))
         db.execute('INSERT INTO ai_usage VALUES (?,?,?,?,?,?,?)',(db.uid(),case_id,db.now(),ai._model,getattr(response.usage,'input_tokens',None),getattr(response.usage,'output_tokens',None),'packet-consistency'))
         if response.output_parsed is None:raise ValueError('AI chưa trả kết quả đối chiếu có cấu trúc.')
         index={r['id']:r for r in active};seen=set()
+        assessed=set()
+        for assessment in response.output_parsed.contextual_assessments:
+            key=assessment.field_id;group=candidates.get(key)
+            ids=set(assessment.record_ids);context_ids=list(dict.fromkeys(assessment.context_record_ids))
+            if not group or key in assessed or ids!={r['id'] for r in group} or any(i not in index for i in context_ids):continue
+            opposing=set(assessment.contradicting_record_ids)
+            if assessment.relation=='contradiction' and (len(opposing)!=2 or not opposing<=ids
+                    or len({index[i]['document_id'] for i in opposing})!=2):continue
+            if assessment.relation!='contradiction' and opposing:continue
+            output.append({'key':'ai-context:'+key,
+                'result':'Needs Verification' if assessment.relation=='contradiction' else 'Not Yet Checked','severity':'warning',
+                'detail':{'reason':assessment.reason,'sources':sources(group,documents),
+                          'method':'OpenAI related-document contextual comparison','relation':assessment.relation,
+                          'context_sources':sources([index[i] for i in context_ids],documents),
+                          **({'category':'difference','contradicting_record_ids':sorted(opposing)} if opposing else {})}})
+            assessed.add(key);seen.add(key)
+        if assessed!=set(candidates):raise ValueError('AI chưa đối chiếu đủ các trường theo ngữ cảnh hoặc dẫn nguồn không hợp lệ; giữ đối chiếu gốc, không tự duyệt.')
         for assessment in response.output_parsed.description_assessments:
             ids=list(dict.fromkeys(assessment.record_ids))
             if (set(ids)!={r['id'] for r in descriptions} or len(ids)<2

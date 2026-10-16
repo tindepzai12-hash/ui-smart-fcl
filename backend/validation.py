@@ -248,6 +248,13 @@ def build_checks(case, documents, records):
                 add('field:'+key,assessment['result'],assessment['detail']['reason'],sources)
                 checks[-1]['detail'].update({k:v for k,v in assessment['detail'].items() if k!='sources'})
                 continue
+        if len(group)>1:
+            from .consistency import CONTEXT_FIELDS,contextual_assessment
+            assessment=contextual_assessment(case.get('id'),documents,records,key,group) if key in CONTEXT_FIELDS else None
+            if assessment:
+                add('field:'+key,assessment['result'],assessment['detail']['reason'],sources)
+                checks[-1]['detail'].update({k:v for k,v in assessment['detail'].items() if k!='sources'})
+                continue
         if key in ['cargo_weight','declared_weight','volume'] and any(not r['value'].get('unit') for r in group):
             from .acceptance import readable
             if all(readable(r) for r in group):
