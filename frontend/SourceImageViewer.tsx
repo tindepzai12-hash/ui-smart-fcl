@@ -14,7 +14,7 @@ export function SourceImageViewer({src,alt,boxes=[]}:any){
       top:v.scrollTop+br.top-vr.top-v.clientHeight/2+br.height/2});
   };
   useEffect(()=>{setZoom(100);setPoint(null);setLoaded(false);setFailed(false);},[src]);
-  useEffect(()=>{if(loaded)jump();},[loaded]);
+  useEffect(()=>{if(loaded)jump();},[loaded,boxes]);
   useEffect(()=>{if(pending.current){pending.current=false;jump();}setPoint(null);},[zoom]);
   function change(next:number){pending.current=true;setZoom(Math.max(75,Math.min(400,next)));}
   function move(e:React.PointerEvent){

@@ -3,9 +3,10 @@ import io, re, threading, hashlib, json
 from functools import lru_cache
 from pathlib import Path
 from PIL import Image, ImageOps
-from . import reader
+from . import reader, db
 
 _lock = threading.RLock()
+LAYOUT_VERSION = 'bounded-gray-2000-v1'
 
 def diagnostic_token(entry):
     return hashlib.sha256(json.dumps({k:v for k,v in entry.items() if k!='review'},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
@@ -37,20 +38,27 @@ def ocr_words(image, psm=3):
     if not status['ready']:
         raise ValueError('Chưa có OCR để định vị trên ảnh. Vẫn có thể xem bản gốc và câu trích dẫn.')
     reader.pytesseract.pytesseract.tesseract_cmd = status['cmd']
-    image = ImageOps.exif_transpose(image).convert('RGB')
     if image.width*image.height>35_000_000:
         raise ValueError('Ảnh quá lớn để định vị OCR an toàn. Dùng bản scan nhỏ hơn.')
-    # Normalized coordinates remain valid after scaling; use the same preparation as reading.
-    image = reader.prepare_ocr_image(image)
-    data = reader.pytesseract.image_to_data(ImageOps.autocontrast(ImageOps.grayscale(image)),
-        lang='eng+vie' if 'vie' in status['languages'] else 'eng', config=f'--psm {psm}',
-        output_type=reader.pytesseract.Output.DICT, timeout=60)
+    # The source viewer needs coordinates, not another extraction pipeline.
+    # Keep one bounded grayscale image; full-page RGB copies exhausted Free RAM.
+    with ImageOps.exif_transpose(image) as oriented:
+        gray = oriented.convert('L')
+    try:
+        gray.thumbnail((2000,2000), Image.Resampling.LANCZOS)
+        with ImageOps.autocontrast(gray) as prepared:
+            data = reader.pytesseract.image_to_data(prepared,
+                lang='eng+vie' if 'vie' in status['languages'] else 'eng', config=f'--psm {psm}',
+                output_type=reader.pytesseract.Output.DICT, timeout=12)
+        width,height=gray.size
+    finally:
+        gray.close()
     words=[]
     for i,text in enumerate(data['text']):
         if not text.strip(): continue
         conf=float(data['conf'][i])
-        words.append({'text':text, 'x':data['left'][i]/image.width, 'y':data['top'][i]/image.height,
-            'w':data['width'][i]/image.width, 'h':data['height'][i]/image.height,
+        words.append({'text':text, 'x':data['left'][i]/width, 'y':data['top'][i]/height,
+            'w':data['width'][i]/width, 'h':data['height'][i]/height,
             'confidence':conf if conf >= 0 else None, 'layer':'OCR'})
     return words
 
@@ -75,7 +83,15 @@ def _layout(path, stamp, size, number, method):
                     'w':(w['x1']-w['x0'])/page.width,'h':(w['bottom']-w['top'])/page.height,
                     'confidence':None,'layer':'PDF text'} for w in page.extract_words()]
         if not words or 'OCR' in method:
-            image=Image.open(io.BytesIO(reader.render_pdf_page_png(path,number,200/72)))
+            if reader.fitz is not None:
+                with reader.fitz.open(path) as pdf:
+                    page=pdf[number-1]
+                    scale=min(200/72,2000/max(page.rect.width,page.rect.height))
+                    pix=page.get_pixmap(matrix=reader.fitz.Matrix(scale,scale),colorspace=reader.fitz.csGRAY,alpha=False)
+                    image=Image.frombytes('L',(pix.width,pix.height),pix.samples)
+                    del pix
+            else:
+                image=Image.open(io.BytesIO(reader.render_pdf_page_png(path,number,150/72)))
     elif ext in {'.jpg','.jpeg','.png','.tif','.tiff'}:
         with Image.open(path) as original:
             original.seek(number-1)
@@ -83,17 +99,50 @@ def _layout(path, stamp, size, number, method):
     else:
         return []
     if image is not None:
-        words += ocr_words(image)
-        # Sparse OCR is already a distinct layer in stored source text. Do not blend readings.
-        if 'OCR' in method:
-            words += [{**w,'layer':'OCR sparse'} for w in ocr_words(image,11)]
-            words += [{**w,'layer':'OCR line'} for w in ocr_words(image,6)]
+        try:
+            sparse=method.endswith('|sparse-only')
+            words += [{**w,'layer':'OCR sparse' if sparse else 'OCR'} for w in ocr_words(image,11 if sparse else 3)]
+        finally:
+            image.close()
+            reader.release_reader_memory()
     return words
+
+@lru_cache(maxsize=64)
+def _file_hash(path,stamp,size):
+    with open(path,'rb') as stream:
+        return hashlib.file_digest(stream,'sha256').hexdigest()
 
 def layout(path, number, method):
     stat=Path(path).stat()
-    with _lock:
-        return _layout(str(path),stat.st_mtime_ns,stat.st_size,number,method)
+    fingerprint=_file_hash(str(path),stat.st_mtime_ns,stat.st_size)
+    key=hashlib.sha256(json.dumps([LAYOUT_VERSION,fingerprint,number,method]).encode()).hexdigest()
+    folder=db.DATA/'source-layouts'
+    cache=folder/(key+'.json')
+    def cached():
+        try:
+            value=json.loads(cache.read_text(encoding='utf-8'))
+            if isinstance(value,list) and all(isinstance(w,dict) and {'text','x','y','w','h','layer','confidence'}<=w.keys() for w in value):return value
+        except (OSError,ValueError):pass
+        return None
+    value=cached()
+    if value is not None:return value
+    # Never queue several full-page OCR requests behind a global indefinite lock.
+    if not _lock.acquire(timeout=1):
+        raise ValueError('Máy chủ đang định vị trang khác. Bản gốc vẫn xem được; bấm Thử định vị lại sau vài giây.')
+    try:
+        value=cached()
+        if value is not None:return value
+        value=_layout(str(path),stat.st_mtime_ns,stat.st_size,number,method)
+        try:
+            folder.mkdir(exist_ok=True)
+            temp=folder/(key+'.'+db.uid()+'.tmp')
+            temp.write_text(json.dumps(value,ensure_ascii=False),encoding='utf-8')
+            temp.replace(cache)
+        except OSError:
+            pass  # The in-memory layout remains usable if disk caching fails.
+        return value
+    finally:
+        _lock.release()
 
 def locate(words, raw, evidence):
     """Match exact word tokens; never fuzzy-repair digits (0/O, 1/I, etc.)."""
@@ -129,7 +178,7 @@ def locate(words, raw, evidence):
 
 def inspect(doc, record, page):
     method=page['method'] + (' sparse' if '[OCR sparse layer' in page['text'] else '')
-    boxes=[]; message=''
+    boxes=[]; message='';retryable=False
     try:
         words=layout(doc['path'],page['number'],method)
         parts=record.get('value',{}).get('source_parts',[])
@@ -152,8 +201,17 @@ def inspect(doc, record, page):
                 boxes=locate(words,{'source_evidence':record['evidence']},record['evidence'])
                 boxes=[{**b,'evidence_only':True} for b in boxes]
             if boxes:message='Đánh dấu đoạn trích dẫn để kiểm tra ngữ cảnh; chưa chứng minh giá trị AI đúng.'
+        if not boxes and 'OCR' in method:
+            # Only pay for a second segmentation when the requested source was
+            # not found. Keep this distinct layer and cache it across records.
+            sparse=layout(doc['path'],page['number'],method+'|sparse-only')
+            boxes=locate(sparse,record['raw'],record['evidence'])
+            if not boxes and 0<len(tokens(record['evidence']))<=100:
+                boxes=quote_boxes(sparse,record['evidence'])
+                if boxes:message='Đánh dấu đoạn trích dẫn để kiểm tra ngữ cảnh; chưa chứng minh giá trị AI đúng.'
     except (ValueError, RuntimeError, IndexError, OSError) as exc:
         message=str(exc)[:300]
+        retryable=True
     low=[b for b in boxes if b['confidence'] is not None and b['confidence']<70]
     if not boxes and not message:
         message='Chưa định vị chắc chắn giá trị trên ảnh. Xem câu trích dẫn và toàn trang; hệ thống không đoán vị trí.'
@@ -164,5 +222,5 @@ def inspect(doc, record, page):
     return {'document_id':doc['id'],'name':doc['name'],'ext':doc['ext'],'page':page['number'],
         'method':page['method'],'quality':page['quality'],'text':page['text'],
         'raw':record['raw'],'evidence':record['evidence'],'boxes':boxes,'low_confidence_words':low,
-        'ambiguous':any(b.get('ambiguous',False) for b in boxes),'message':message,
+        'ambiguous':any(b.get('ambiguous',False) for b in boxes),'message':message,'retryable':retryable,
         'confidence_note':'Độ tin cậy OCR chỉ phản ánh khả năng nhận chữ, không xác nhận giá trị đúng nghiệp vụ.'}

@@ -24,7 +24,11 @@ test('Extraction warnings show excluded attempts, matched rows are green, and un
   const workbench=moduleUrl(resolveImports(compileTsx(fs.readFileSync('frontend/DiscrepancyWorkbench.tsx','utf8')))
     .replace("from './api'",`from '${moduleUrl(apiJs)}'`).replace("from './SourceImageViewer'",`from '${viewer}'`)
     .replace("from './review'",`from '${moduleUrl(compileTsx(fs.readFileSync('frontend/review.ts','utf8'),'review.ts'))}'`));
-  const {DiscrepancyWorkbench}=await import(workbench);
+  const {DiscrepancyWorkbench,SourceCard}=await import(workbench);
+  const loading=renderToStaticMarkup(React.createElement(SourceCard,{source:{id:'r1',document_id:'d1',document:'scan.pdf',page:2,value:{text:'1200'}},record:{id:'r1',document_id:'d1',page:2,value:{text:'1200'},raw:'1200',version:1}}));
+  assert.ok(loading.includes('src="/api/documents/d1/preview/2"'));
+  assert.ok(loading.includes('Đang đánh dấu vùng nguồn'));
+  assert.ok(loading.includes('Kính lúp'));
   const render=issue=>renderToStaticMarkup(React.createElement(DiscrepancyWorkbench,{current:{records:[],consistency:{issues:[issue],gaps:[],matched:[],single_source:[],open_count:1,mismatch_count:0,ai_state:'completed'}},dict:{fields:{}},onDocuments:()=>{}}));
   const warning=render({key:'reading:doc',result:'Needs Verification',detail:{reason:'Thiếu bằng chứng',sources:[{id:'diagnostic:doc:1',document:'scan.pdf',page:2,diagnostic:true,field_label:'Tổng tiền',attempted_value:'<script>999</script>'}]}});
   assert.ok(warning.includes('Xem lỗi đọc &amp; bản gốc'));
@@ -195,6 +199,8 @@ test('Network and malformed validation failures use Vietnamese messages without 
   try {
     global.fetch=async()=>{throw new TypeError('Failed to fetch')};
     await assert.rejects(()=>helper.api('/health'), /Không kết nối được máy chủ/);
+    global.fetch=async(url,options)=>{assert.ok(options.signal);throw new DOMException('timed out','TimeoutError')};
+    await assert.rejects(()=>helper.api('/records/r1/source'),/Định vị nguồn quá thời gian chờ/);
     global.fetch=async()=>({ok:false,status:422,json:async()=>({detail:[{loc:['body','note'],msg:'internal-secret-validator'}]})});
     await assert.rejects(()=>helper.api('/cases'), e=>e.message.includes('Thông tin nhập chưa hợp lệ')&&!e.message.includes('internal-secret'));
   } finally {global.fetch=before;}

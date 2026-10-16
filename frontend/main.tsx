@@ -1309,7 +1309,7 @@ function App() {
                     </aside>
 
                     <section className="preview-pane">
-                      {sourceRecord ? <SourceInspector exceptionMode record={sourceRecord} title={dict.fields[sourceRecord.key]?.label || (sourceRecord.kind==='item'?'Dòng hàng cần kiểm tra':'Container cần kiểm tra')}
+                      {sourceRecord ? <SourceInspector exceptionMode record={sourceRecord} document={current.documents.find((d:Any)=>d.id===sourceRecord.document_id)} title={dict.fields[sourceRecord.key]?.label || (sourceRecord.kind==='item'?'Dòng hàng cần kiểm tra':'Container cần kiểm tra')}
                         reason={(!['verified','auto_accepted'].includes(sourceRecord.status)&&sourceRecord.value?.warning) || sourceConflict?.detail.reason} busy={loading || job?.status==='running' || saveStates[sourceRecord.id]?.status==='saving'}
                         onClose={()=>setSourceRecordId('')} onVerify={(r:Any)=>verifyAndNext(r,true)} onSave={editRecord} onNext={()=>jumpToNextPending()} onEdit={()=>focusRecordEditor(sourceRecord)}/> : <>
                       <div className="preview-toolbar">

@@ -4,11 +4,12 @@ import {api,patch,post,textValue,label} from './api';
 import {SourceImageViewer} from './SourceImageViewer';
 import {numberFormatSuggestion,reviewBlockReason,diagnosticBlockReason} from './review';
 
-function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false,caseId}:any){
+export function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false,caseId}:any){
   const [value,setValue]=useState(textValue(record?.value||source.value));
   const [itemValue,setItemValue]=useState<any>(record?.value||{});
   const [note,setNote]=useState('');const [error,setError]=useState('');const [saving,setSaving]=useState(false);
   const [data,setData]=useState<any>(null);const [show,setShow]=useState(true);
+  const [attempt,setAttempt]=useState(0);
   const [draft,setDraft]=useState<any>(()=>source.candidate_kind==='item'?Object.fromEntries(Object.entries(source.candidate_raw||{}).filter(([k])=>k!=='raw_value')):(source.attempted_value||''));
   const [checked,setChecked]=useState(false);
   const suggestion=typeof value==='string'&&record?.value?.warning?numberFormatSuggestion(value):null;
@@ -22,7 +23,7 @@ function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false,
       api(`/documents/${id}/review-source?number=${page}${source.diagnostic?'&diagnostic='+source.diagnostic_index:source.missing_field?'&field_id='+source.missing_field:''}`).then(v=>{if(active)setData(v);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};
     }
     api('/records/'+record.id+'/source').then(v=>{if(active)setData(v);}).catch(e=>{if(active)setError(e.message);});
-    return()=>{active=false;};},[show,record?.id,record?.version,source.id]);
+    return()=>{active=false;};},[show,record?.id,record?.version,source.id,attempt]);
   async function save(e:React.FormEvent){e.preventDefault();setSaving(true);setError('');try{
     const b=await patch('/records/'+record.id,{value:record.kind==='item'?itemValue:value,note:note.trim()||"Nhân viên sửa theo bản gốc.",version:record.version});await onSaved(b);setNote('');
   }catch(e:any){setError(e.message);}finally{setSaving(false);}}
@@ -42,8 +43,10 @@ function SourceCard({source,record,onSaved,disabled,documentLabel,reading=false,
     {record?.value?.warning&&!['verified','auto_accepted'].includes(record.status)&&<p className="warning-text">{record.value.warning}</p>}
     {record?.value?.source_parts?.length>0&&<p className="muted">{record.value.normalization_note}</p>}
     <button className="btn small" onClick={()=>setShow(!show)} aria-expanded={show}><Eye size={15}/>{show?'Ẩn bản gốc':record?'Hiện bản gốc có đánh dấu':'Xem trang gốc'}</button>
-    {show&&!data&&!error&&<p role="status"><Loader2 className="spin" size={16}/> Đang định vị nguồn…</p>}
-    {show&&data&&<><p className="muted">{data.message||(imageType?'Khung xanh đánh dấu chữ khớp; kiểm cả nhãn và đơn vị.':'Nội dung máy đọc trên trang nguồn; đối chiếu với tệp gốc nếu bố cục chưa rõ.')}</p>{imageType?<SourceImageViewer key={data.document_id+':'+data.page} src={`/api/documents/${data.document_id}/preview/${data.page}`} alt={`Nguồn ${source.document}, trang ${data.page}`} boxes={data.boxes||[]}/>:<div className="source-text"><pre>{data.text||'Trang chưa có văn bản đọc được.'}</pre></div>}</>}
+    {show&&!data&&!error&&<p role="status"><Loader2 className="spin" size={16}/> Đang đánh dấu vùng nguồn; bạn có thể xem và phóng to bản gốc ngay.</p>}
+    {show&&imageType&&<SourceImageViewer key={(data?.document_id||source.document_id||record?.document_id||source.id)+':'+(data?.page||source.page||record?.page||1)} src={`/api/documents/${data?.document_id||source.document_id||record?.document_id||source.id}/preview/${data?.page||source.page||record?.page||1}`} alt={`Nguồn ${source.document}, trang ${data?.page||source.page||record?.page||1}`} boxes={data?.boxes||[]}/>}
+    {show&&data&&<><p className="muted">{data.message||(imageType?'Khung xanh đánh dấu chữ khớp; kiểm cả nhãn và đơn vị.':'Nội dung máy đọc trên trang nguồn; đối chiếu với tệp gốc nếu bố cục chưa rõ.')}</p>{!imageType&&<div className="source-text"><pre>{data.text||'Trang chưa có văn bản đọc được.'}</pre></div>}</>}
+    {show&&(error||data?.retryable)&&<button className="btn small" disabled={disabled} onClick={()=>setAttempt(attempt+1)}>Thử định vị lại</button>}
     {source.missing_field&&<form className="conflict-edit" onSubmit={fillMissing}><h3>Nhập trường bắt buộc còn thiếu</h3><label className="form-label">{source.field_label}<input required value={value} onChange={e=>setValue(e.target.value)} placeholder="Nhập đúng giá trị trên bản gốc"/></label><label className="row"><input type="checkbox" required checked={checked} onChange={e=>setChecked(e.target.checked)}/> Tôi đã kiểm tra bản gốc.</label><p className="muted">Phải nhập giá trị trước khi duyệt. Nếu giấy gốc không có thông tin này, yêu cầu khách bổ sung chứng từ.</p><button className="btn primary small" disabled={disabled||saving||!checked||!value.trim()||!data}>{saving?'Đang lưu…':'Xác nhận & lưu'}</button></form>}
     {record&&<details className="conflict-edit"><summary>Nhập lại giá trị làm việc</summary>
       <p className="muted">Chỉ sửa ô đã đọc sai hoặc giá trị đã được xác nhận có căn cứ. Nếu giấy tờ gốc sai, yêu cầu bản sửa từ khách; PDF gốc luôn được giữ lại.</p>

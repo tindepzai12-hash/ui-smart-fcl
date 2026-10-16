@@ -2,12 +2,16 @@ export async function api(path: string, options: RequestInit = {}) {
   let res: Response;
   try { res = await fetch('/api' + path, {
     ...options,
+    signal: options.signal ?? (/^\/(?:records\/[^/]+\/source|documents\/[^/]+\/review-source)(?:\?|$)/.test(path) ? AbortSignal.timeout(30000) : undefined),
     headers: {
       'X-UI-Smart': 'local',
       ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers,
     },
-  }); } catch { throw new Error('Không kết nối được máy chủ. Chờ máy chủ khởi động rồi thử lại.'); }
+  }); } catch(e:any) {
+    if(e?.name==='TimeoutError')throw new Error('Định vị nguồn quá thời gian chờ. Bản gốc vẫn xem được; bấm Thử định vị lại.');
+    throw new Error('Không kết nối được máy chủ. Chờ máy chủ khởi động rồi thử lại.');
+  }
   const data = await res.json().catch(() => ({ detail: 'Máy chủ trả dữ liệu không đọc được. Hãy thử lại.' }));
   if (!res.ok) {
     if (res.status === 401 && data.code === 'auth_required' && typeof window !== 'undefined') window.location.assign('/__cloud/login');

@@ -58,3 +58,58 @@ def test_small_image_enlargement_is_bounded():
     im=Image.new('RGB',(500,700),'white')
     out=reader.prepare_ocr_image(im)
     assert out.size==(1600,2240) and im.size==(500,700)
+
+def test_layout_reuses_coordinates_across_record_and_process_cache_misses(tmp_path,monkeypatch):
+    path=tmp_path/'scan.png';Image.new('L',(500,700),255).save(path)
+    monkeypatch.setattr(db,'DATA',tmp_path)
+    calls=[]
+    def read(image,psm=3):
+        calls.append((image.mode,image.size,psm))
+        return [word('1200',.3,90,'OCR')]
+    monkeypatch.setattr(source_locator,'ocr_words',read)
+    first=source_locator.layout(path,1,'OCR')
+    source_locator._layout.cache_clear()
+    for _ in range(5):assert source_locator.layout(path,1,'OCR')==first
+    assert len(calls)==1
+    # A different file or locator version must not reuse old positions.
+    Image.new('L',(501,700),255).save(path)
+    source_locator.layout(path,1,'OCR')
+    assert len(calls)==2
+    monkeypatch.setattr(source_locator,'LAYOUT_VERSION','next')
+    source_locator._layout.cache_clear()
+    source_locator.layout(path,1,'OCR')
+    assert len(calls)==3
+
+def test_scan_uses_one_segmentation_when_value_matches(tmp_path,monkeypatch):
+    path=tmp_path/'scan.png';Image.new('L',(100,100),255).save(path)
+    monkeypatch.setattr(db,'DATA',tmp_path)
+    calls=[]
+    monkeypatch.setattr(source_locator,'ocr_words',lambda im,psm=3:(calls.append(psm) or [word('1200',.2,90,'OCR')]))
+    value=source_locator.inspect({'id':'d','path':str(path),'name':'scan.png','ext':'.png'},
+        {'raw':'1200','evidence':'Total 1200','method':'OpenAI'},
+        {'number':1,'method':'OCR','quality':'','text':'Total 1200'})
+    assert value['boxes'] and calls==[3] and not value['retryable']
+
+def test_timeout_returns_retryable_source_without_invented_boxes(tmp_path,monkeypatch):
+    path=tmp_path/'scan.png';Image.new('L',(100,100),255).save(path)
+    monkeypatch.setattr(db,'DATA',tmp_path)
+    def timeout(*args):raise RuntimeError('Tesseract process timeout')
+    monkeypatch.setattr(source_locator,'ocr_words',timeout)
+    value=source_locator.inspect({'id':'d','path':str(path),'name':'scan.png','ext':'.png'},
+        {'raw':'1200','evidence':'Total 1200','method':'OpenAI'},
+        {'number':1,'method':'OCR','quality':'','text':'Total 1200'})
+    assert value['retryable'] and not value['boxes']
+    assert not list((tmp_path/'source-layouts').glob('*.json'))
+
+def test_source_ocr_is_grayscale_bounded_and_has_short_timeout(monkeypatch):
+    monkeypatch.setattr(reader,'ocr_status',lambda:{'ready':True,'cmd':'tesseract','languages':['eng']})
+    seen={}
+    def read(image,**kwargs):
+        seen.update(mode=image.mode,size=image.size,timeout=kwargs['timeout'])
+        return {'text':['1200'],'conf':['90'],'left':[10],'top':[20],'width':[30],'height':[10]}
+    monkeypatch.setattr(reader.pytesseract,'image_to_data',read)
+    with Image.new('RGB',(2400,3600),'white') as image:
+        rows=source_locator.ocr_words(image)
+        assert image.size==(2400,3600)
+    assert seen=={'mode':'L','size':(1333,2000),'timeout':12}
+    assert rows[0]['y']==.01

@@ -22,7 +22,7 @@ function SourceText({text,raw,evidence}:any) {
   return <pre>{start<0?text:<>{text.slice(0,start)}<mark ref={anchor}>{text.slice(start,end)}</mark>{text.slice(end)}</>}</pre>;
 }
 
-export function SourceInspector({record,title,reason,busy,onClose,onVerify,onNext,onEdit,onSave,exceptionMode=false}:any) {
+export function SourceInspector({record,document:sourceDocument,title,reason,busy,onClose,onVerify,onNext,onEdit,onSave,exceptionMode=false}:any) {
   const [data,setData]=useState<any>(null);
   const [error,setError]=useState('');
   const [attempt,setAttempt]=useState(0);
@@ -58,11 +58,13 @@ export function SourceInspector({record,title,reason,busy,onClose,onVerify,onNex
       {raw && raw!==textValue(record.value) && <small>Máy đọc gốc: {raw}</small>}
       <p>{reason || 'Giá trị máy đọc có nguồn; xem nhãn và đơn vị trước khi sửa.'}</p></div>
     {error && <div className="source-notice" role="alert"><p>{error}</p><button className="btn small" onClick={()=>setAttempt(attempt+1)}>Thử định vị lại</button></div>}
-    {!data && !error && <div className="source-loading" role="status"><Loader2 className="spin" size={20}/> Đang định vị chữ trên bản gốc…</div>}
+    {!data && !error && <div className="source-loading" role="status"><Loader2 className="spin" size={20}/> Đang đánh dấu vùng nguồn; bản gốc có thể xem ngay.</div>}
+    {!data&&['.pdf','.jpg','.jpeg','.png','.tif','.tiff'].includes(sourceDocument?.ext)&&<SourceImageViewer src={`/api/documents/${record.document_id}/preview/${record.page||1}`} alt={`Bản gốc ${sourceDocument.name}, trang ${record.page||1}`} boxes={[]}/>}
     {data && <>
       <div className="source-controls"><button className="text-btn" onClick={()=>setShowText(!showText)}>{showText?'Bản gốc':'Chữ OCR / PDF'}</button></div>
       {(data.message || data.ambiguous || data.low_confidence_words.length>0) && <div className="source-notice" role="status"><AlertTriangle size={16}/><div>
         {data.message && <p>{data.message}</p>}
+        {data.retryable&&<button className="btn small" onClick={()=>setAttempt(attempt+1)}>Thử định vị lại</button>}
         {data.ambiguous && <p>Có nhiều vị trí chữ khớp. Kiểm tra nhãn và dòng hàng trước khi chọn giá trị.</p>}
         {data.low_confidence_words.length>0 && <p>OCR đọc chưa chắc: {[...new Set(data.low_confidence_words.map((w:any)=>`${w.text} (${Math.round(w.confidence)}/100)`))].join(', ')}. Điểm OCR không phải xác suất dữ liệu đúng.</p>}
       </div></div>}
