@@ -590,6 +590,7 @@ def diagnostic_source(id: str, diagnostic: Optional[int]=None, number: int=1,fie
         candidate=entry.get('candidate_raw',{})
         raw=candidate.get('raw_value','') if entry.get('candidate_kind')=='field' else candidate
         evidence=entry.get('evidence','')
+        field_id=entry.get('field_id')
     elif field_id:
         if field_id not in REVIEW_FIELDS:raise HTTPException(422,'Trường dữ liệu không thuộc phạm vi.')
         import re
@@ -600,7 +601,7 @@ def diagnostic_source(id: str, diagnostic: Optional[int]=None, number: int=1,fie
     page=db.one('SELECT number,text,method,quality FROM pages WHERE document_id=? AND number=?',(id,number))
     if not page:raise HTTPException(404,'Trang nguồn chưa đọc được; cần đọc lại tài liệu.')
     busy(doc['case_id'])
-    result=source_locator.inspect(doc,{'raw':raw,'evidence':evidence,'method':'OpenAI diagnostic'},page)
+    result=source_locator.inspect(doc,{'key':field_id,'raw':raw,'evidence':evidence,'method':'OpenAI diagnostic'},page)
     result['message']=('Vùng đánh dấu là chữ/đoạn trích dẫn có thật để nhân viên kiểm tra; giá trị bị loại chưa được xác nhận. '+result['message']).strip()
     return result
 

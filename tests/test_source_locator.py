@@ -23,6 +23,20 @@ def test_literal_number_does_not_match_ocr_substitutions():
     assert len(boxes)==1 and boxes[0]['x']==.3
     assert source_locator.locate(words,'999','')==[]
 
+
+def test_wrong_vessel_reading_highlights_name_cell_not_phones(monkeypatch):
+    ocean={**word('Ocean',.07,90,'OCR'),'y':.6,'h':.01}
+    vessel={**word('vessel',.12,90,'OCR'),'y':.6,'h':.01}
+    name={**word('TESTJADE',.07,90,'OCR'),'y':.62,'w':.08}
+    phones=[{**word(t,.5+i*.07,90,'OCR'),'y':.6} for i,t in enumerate(['TEL','39203000','FAX','39203070'])]
+    monkeypatch.setattr(source_locator,'layout',lambda *a:[ocean,vessel,name,*phones])
+    result=source_locator.inspect({'id':'d','path':'unused','name':'bill.pdf','ext':'.pdf'},
+        {'key':'vessel','raw':'TESTIADE','evidence':'Ocean vessel TEL 39203000 FAX 39203070 TESTIADE','method':'OpenAI'},
+        {'number':1,'method':'OCR','quality':'','text':'Ocean vessel TESTJADE'})
+    assert [b['text'] for b in result['boxes']]==['TESTJADE']
+    assert all(b['evidence_only'] for b in result['boxes'])
+    assert 'chưa khớp' in result['message']
+
 def test_repeated_values_are_explicitly_ambiguous():
     words=[word('TOTAL',.1),word('100',.2),word('OTHER',.4),word('100',.5)]
     boxes=source_locator.locate(words,'100','')

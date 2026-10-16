@@ -143,6 +143,59 @@ def ocr_measurement_cell(image,data,lang):
     return '',[]
 
 
+def ocr_vessel_cell(image,data):
+    """Read the name immediately below an Ocean vessel label, excluding phones.
+
+    This is a second reading of source pixels, never an I/J substitution or a
+    vote between documents. Reject clipped names and multiple lines/values.
+    """
+    for i,label in enumerate(data['text']):
+        if label.strip().casefold()!='vessel':continue
+        x,y,w,h=(data[k][i] for k in ['left','top','width','height'])
+        ocean=any(t.strip().casefold() in {'ocean','occan'} and 0<x-data['left'][j]<image.width*.12
+                  and abs(y-data['top'][j])<max(h,8) for j,t in enumerate(data['text']))
+        if not ocean:continue
+        left=max(0,x-int(image.width*.08));top=y+h
+        right=min(image.width,x+int(image.width*.08));bottom=min(image.height,top+int(image.height*.025))
+        with image.crop((left,top,right,bottom)) as crop:
+            try:cells=pytesseract.image_to_data(crop,lang='eng',config='--psm 6',output_type=pytesseract.Output.DICT,timeout=5)
+            except RuntimeError:return '',[],[]
+        indices=[j for j,t in enumerate(cells['text']) if t.strip()]
+        if not indices:continue
+        if len({cells['top'][j]//max(10,h) for j in indices})>2:continue
+        value=' '.join(cells['text'][j].strip() for j in indices)
+        if not re.fullmatch(r'[A-Za-z][A-Za-z .-]{2,60}',value):continue
+        if any(cells['left'][j]<=1 or cells['left'][j]+cells['width'][j]>=right-left-1 for j in indices):continue
+        if any(float(cells['conf'][j])<65 for j in indices):
+            # Short all-capital names can score poorly despite a clear reading.
+            # Require a second literal read of this same cell, not a guessed
+            # character substitution or agreement with another document.
+            with image.crop((left,top,right,bottom)) as crop:
+                try:second=pytesseract.image_to_string(crop,lang='eng',config='--psm 7',timeout=5).strip()
+                except RuntimeError:continue
+            if second!=value:continue
+        words=[{'text':cells['text'][j].strip(),'x':left+cells['left'][j],'y':top+cells['top'][j],
+                'w':cells['width'][j],'h':cells['height'][j],'confidence':float(cells['conf'][j])} for j in indices]
+        return 'Ocean vessel: '+value,[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Ocean vessel',value,'']]],words
+    return '',[],[]
+
+
+def ocr_package_cell(image,data,lang):
+    """Read a bundle count inside its narrow column, excluding adjacent seals."""
+    for i,word in enumerate(data['text']):
+        if not re.fullmatch(r'(?i)BUNDLE\(S\)\W*|BUNDLES?\W*',word.strip()):continue
+        x,y,w,h=(data[k][i] for k in ['left','top','width','height'])
+        if not image.width*.25<x<image.width*.65:continue
+        with image.crop((max(0,x-10),max(0,y-int(image.height*.08)),min(image.width,x+w+10),min(image.height,y+h+10))) as crop:
+            try:text=pytesseract.image_to_string(crop,lang=lang,config='--psm 6',timeout=8).strip()
+            except RuntimeError:return '',[]
+        matches=list(re.finditer(r'(?im)^[ \t]*[({][ \t]*(\d[\d,.]*)\s*\n?\s*(BUNDLE\(S\)|BUNDLES?)[ \t]*[)}]',text))
+        if len(matches)!=1:return text,[]
+        match=matches[0]
+        return text,[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Packages',match[1],match[2]]]]
+    return '',[]
+
+
 def ocr_packing_summary(data):
     """Bind printed PL total cells by OCR coordinates, never calculate totals."""
     words=[{'text':t.strip(),'x':data['left'][i],'y':data['top'][i]+data['height'][i]/2,
@@ -197,7 +250,10 @@ def ocr_grid_totals(image, diagnostics=None):
     status=ocr_status()
     if not status['ready']:return []
     pytesseract.pytesseract.tesseract_cmd=status['cmd']
-    lang='eng+vie' if 'vie' in status['languages'] else 'eng'
+    # This detector accepts English column labels only. Vietnamese remains in
+    # the full-page pass; loading it for every English/numeric cell wasted the
+    # cell budget before the Total row was reached on the small server.
+    lang='eng'
     started=time.monotonic();calls=0;rows=[]
     def note(reason):
         if diagnostics is not None:
@@ -213,7 +269,7 @@ def ocr_grid_totals(image, diagnostics=None):
     try:
         def cell(row,index):
             nonlocal calls
-            if calls>=40 or time.monotonic()-started>25:raise ValueError('Hết ngân sách OCR ô tổng')
+            if calls>=40 or time.monotonic()-started>90:raise ValueError('Hết ngân sách OCR ô tổng')
             calls+=1
             top,bottom,xs=row
             with gray.crop((xs[index]+5,top+5,xs[index+1]-5,bottom-5)) as crop:
@@ -224,6 +280,11 @@ def ocr_grid_totals(image, diagnostics=None):
                     with crop.crop((0,crop.height//2,crop.width,crop.height)) as word:
                         with word.resize((crop.width*3,crop.height*2),Image.Resampling.LANCZOS) as enlarged:
                             unit=pytesseract.image_to_string(enlarged,lang=lang,config='--psm 7',timeout=5).strip()
+                        if not re.fullmatch(r'(?i)pcs',unit) and calls<40 and time.monotonic()-started<90:
+                            calls+=1
+                            with word.resize((word.width*4,word.height*4),Image.Resampling.LANCZOS) as enlarged:
+                                with enlarged.point(lambda p:255 if p>160 else 0) as contrasted:
+                                    unit=pytesseract.image_to_string(contrasted,lang=lang,config='--psm 7',timeout=5).strip()
                     if re.fullmatch(r'(?i)pcs',unit):raw=raw.split()[0]+'\n'+unit
                 return raw
         # Thin gray rules need a second detection threshold. Keep one shared
@@ -334,6 +395,12 @@ def _ocr(image, include_tables=False, psm=3):
     if include_tables and psm in [3,11]:
         cell_text,cell_tables=ocr_measurement_cell(gray,data,lang)
         if cell_text:text+='\n\n[OCR labelled measurement cell — đọc trực tiếp vùng nhãn Gross weight / Measurement]\n'+cell_text
+        package_text,package_tables=ocr_package_cell(gray,data,lang)
+        if package_text:text+='\n\n[OCR package cell — đọc trực tiếp cột số kiện, tách cột seal]\n'+package_text
+        cell_tables+=package_tables
+        vessel_text,vessel_tables,_=ocr_vessel_cell(gray,data)
+        if vessel_text:text+='\n\n[OCR labelled vessel cell — đọc trực tiếp ô dưới nhãn Ocean vessel]\n'+vessel_text
+        cell_tables+=vessel_tables
     quality = []
     if not text.strip():
         raise ValueError('OCR không đọc được chữ. Hãy dùng bản scan rõ hơn.')
@@ -368,14 +435,15 @@ def read_pdf_image(image):
     text, quality, tables = ocr(image, include_tables=True)
     # Forms with disconnected cells can lose values under automatic block segmentation.
     # Add a sparse pass only for form/table pages without recovered tables; keep both verbatim.
-    if not tables and re.search(r'(?i)\b(?:quantity|qty|container|bill\s+of\s+lading|packing\s+list|số\s+tờ\s+khai|người\s+xuất\s+khẩu)\b',text):
+    has_grid=any(t and t[0]!=['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'] for t in tables)
+    if not has_grid and re.search(r'(?i)\b(?:quantity|qty|container|bill\s+of\s+lading|packing\s+list|số\s+tờ\s+khai|người\s+xuất\s+khẩu)\b',text):
         try:
             sparse, sparse_quality, sparse_tables = ocr(image, include_tables=True, psm=11)
             if sparse.strip() != text.strip():
                 text += '\n\n[OCR sparse layer — giữ nguyên hai lượt đọc, đối chiếu ảnh nếu khác nhau]\n'+sparse
                 quality += ' Có lượt OCR bổ sung cho các ô rời; đối chiếu ảnh gốc nếu hai lượt khác nhau.'
                 quality += ' Lượt ô rời: '+sparse_quality
-                tables = tables or sparse_tables
+                tables += [t for t in sparse_tables if t not in tables]
         except ValueError as exc:
             quality += ' OCR bổ sung chưa hoàn tất: '+str(exc)
     if re.search(r'(?i)vessel|voyage|chuyến|tên\s+tàu',text):

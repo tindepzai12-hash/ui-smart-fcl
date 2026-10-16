@@ -33,6 +33,23 @@ def tokens(text):
         out.extend(joined.groups() if joined else [token])
     return out
 
+
+def vessel_context_boxes(words):
+    """Only the name cell under Ocean vessel, never a neighbouring TEL/FAX."""
+    boxes=[]
+    for label in words:
+        if tokens(label['text'])!=['vessel']:continue
+        if not any(tokens(w['text']) in [['ocean'],['occan']] and w['layer']==label['layer']
+                   and 0<label['x']-w['x']<.12 and abs(w['y']-label['y'])<.015 for w in words):continue
+        region=[w for w in words if w['layer']==label['layer'] and label['y']+label['h']<=w['y']<label['y']+label['h']+.035
+                and label['x']-.08<=w['x'] and w['x']+w['w']<=label['x']+.08]
+        # Preserve the actual OCR spelling; this fallback locates context only.
+        names=[w for w in region if re.fullmatch(r'[A-Za-z][A-Za-z.-]*',w['text'])]
+        if names:
+            first=min(w['y'] for w in names)
+            boxes.extend({**w,'attribute':'vessel_cell','evidence_only':True} for w in names if abs(w['y']-first)<.012)
+    return boxes
+
 def ocr_words(image, psm=3):
     status = reader.ocr_status()
     if not status['ready']:
@@ -191,7 +208,10 @@ def inspect(doc, record, page):
             if boxes:message=record.get('value',{}).get('normalization_note') or 'Từng phần của giá trị đã được đánh dấu trên ô nguồn.'
         else:
             boxes=locate(words,record['raw'],record['evidence'])
-        if not boxes and record['evidence']:
+        if not boxes and record.get('key')=='vessel':
+            boxes=vessel_context_boxes(words)
+            if boxes:message='Đánh dấu ô tên tàu dưới nhãn Ocean vessel. Chữ trên ảnh chưa khớp giá trị máy đọc; kiểm tra ô này, không dùng dòng điện thoại.'
+        if not boxes and record['evidence'] and record.get('key')!='vessel':
             raw=record['raw']
             candidate=' '.join(str(v) for k,v in raw.items() if v is not None and k not in {'line_number','scope'}) if isinstance(raw,dict) else str(raw)
             # A rejected value can combine distant cells. Highlight only its
@@ -208,7 +228,10 @@ def inspect(doc, record, page):
             # not found. Keep this distinct layer and cache it across records.
             sparse=layout(doc['path'],page['number'],method+'|full-fallback')
             boxes=locate(sparse,record['raw'],record['evidence'])
-            if not boxes and 0<len(tokens(record['evidence']))<=100:
+            if not boxes and record.get('key')=='vessel':
+                boxes=vessel_context_boxes(sparse)
+                if boxes:message='Đánh dấu ô tên tàu; chữ trên ảnh chưa khớp giá trị máy đọc.'
+            if not boxes and record.get('key')!='vessel' and 0<len(tokens(record['evidence']))<=100:
                 boxes=quote_boxes(sparse,record['evidence'])
                 if boxes:message='Đánh dấu đoạn trích dẫn để kiểm tra ngữ cảnh; chưa chứng minh giá trị AI đúng.'
     except (ValueError, RuntimeError, IndexError, OSError) as exc:

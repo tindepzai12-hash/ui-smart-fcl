@@ -414,7 +414,7 @@ def validate_result(result, pages):
                     any(re.search(r'(?i)quantity\s*\(\s*m[³3]\s*\)',h or '') for h in table[0])
                     for table in source_page.get('tables',[]) if table):
                 raise ValueError('Giá trị thuộc cột thể tích M3, không phải cột Total pcs của bảng này')
-        if f.field_id in ['gross_weight','volume','packages'] and result.document_type in ['B/L','Sea Waybill']:
+        if f.field_id in ['gross_weight','volume','packages','vessel'] and result.document_type in ['B/L','Sea Waybill']:
             bound=[v for v in transport_summary_fields(pages).get(f.field_id,[]) if v.source_page==f.source_page]
             if bound and f.raw_value not in {v.raw_value for v in bound}:
                 raise ValueError('Giá trị không thuộc đúng ô trọng lượng/thể tích/bao bì của vận đơn')
@@ -515,6 +515,19 @@ def validate_result(result, pages):
             else:
                 normalized = normalize(f.raw_value+' '+f.unit, spec['type'])
             evidence += '\n[Đơn vị] '+unit_evidence
+        if f.field_id=='vessel' and source_page.get('method')=='OCR' and '[OCR sparse layer' in source_page.get('text','') and not any(
+                v.raw_value==f.raw_value and v.source_page==f.source_page for v in transport_summary_fields(pages).get('vessel',[])):
+            alternatives=[]
+            for layer in re.split(r'\[OCR (?:sparse|line|image) layer[^\n]*\n',source_page['text']):
+                labels=list(re.finditer(r'(?im)^.*\b(?:ocean|occan)\s+vessel[^\n]*\n([^\n]+)',layer))
+                if len(labels)!=1:continue
+                match=re.fullmatch(r'\s*([A-Z][A-Z .-]{2,40}?)(?:\s+[A-Z0-9/-]*\d[A-Z0-9/-]*)?\s*',labels[0][1])
+                if match:alternatives.append((match[1].strip(),labels[0][0].strip()))
+            if len({v for v,q in alternatives})>1 and f.raw_value in {v for v,q in alternatives}:
+                normalized['warning']='Các lượt OCR đọc tên tàu trên cùng ô khác nhau; kiểm tra ký tự trên bản gốc, chưa kết luận chứng từ sai.'
+                normalized['normalization_evidence']=[{'page':f.source_page,'text':q} for v,q in alternatives]
+        if f.field_id=='goods_quantity' and source_page.get('method')=='OCR' and normalized.get('unit')=='PES':
+            normalized['warning']='OCR đọc đơn vị thành PES; cần kiểm tra chữ trên cột số lượng, không tự đổi thành PCS.'
         from .normalize import source_number_convention
         normalized=source_number_convention(normalized,f.field_id,result.document_type,pages)
         records.append({
@@ -577,11 +590,15 @@ def transport_summary_fields(pages):
                 if len(row)!=3:continue
                 label,raw,unit=row
                 key=('gross_weight' if re.fullmatch(r'(?i)gross\s+weight',label) else
-                     'volume' if re.fullmatch(r'(?i)measurement',label) else None)
-                if key and evidence_ok(raw,raw,page['number'],pages) and evidence_ok(unit,unit,page['number'],pages):
+                     'volume' if re.fullmatch(r'(?i)measurement',label) else
+                     'packages' if re.fullmatch(r'(?i)packages',label) else
+                     'vessel' if re.fullmatch(r'(?i)ocean\s+vessel',label) else None)
+                if key and evidence_ok(raw,raw,page['number'],pages) and (
+                        evidence_ok(label+': '+raw,label+': '+raw,page['number'],pages) if key=='vessel' else evidence_ok(unit,unit,page['number'],pages)):
                     recovered.setdefault(key,[]).append(FieldResult(field_id=key,raw_value=raw,unit=unit,
-                        unit_evidence=unit,source_page=page['number'],evidence_text=raw))
-        for match in re.finditer(r'(?i)(?:[({]\s*)?(\d[\d,.]*)\s*(BUNDLE\(S\)|BUNDLES?|BDL)(?!\w)',page['text']):
+                        unit_evidence=unit or None,source_page=page['number'],evidence_text=(label+': '+raw if key=='vessel' else raw)))
+        if any(table and table[0]==['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'] and any(r[0]=='Packages' for r in table[1:]) for table in page.get('tables',[])):continue
+        for match in re.finditer(r'(?i)(?<![A-Za-z0-9])(?:[({]\s*)?(\d[\d,.]*)[ \t]*(BUNDLE\(S\)|BUNDLES?|BDL)(?!\w)',page['text']):
             recovered.setdefault('packages',[]).append(FieldResult(field_id='packages',raw_value=match[1],unit=match[2],
                 unit_evidence=match[2],source_page=page['number'],evidence_text=match[0]))
     return recovered
@@ -1122,6 +1139,12 @@ def repair_targets(result, records, rejected, pages):
     if result.document_type in SUPPORTING_TYPES:
         from .extraction import extract
         fields.update(r['key'] for r in extract(pages,result.document_type) if r['kind']=='field' and r['key'] not in found)
+    if result.document_type=='Customs Declaration':
+        # Geometric PDF extraction can put the label and value on separate
+        # lines without a colon. Ask the bounded repair pass to read the label;
+        # do not send an expected number or calculate a missing field.
+        if re.search(r'(?i)tổng\s+trọng\s+lượng\s+hàng\s*\(\s*gross\s*\)|trọng\s*lượng\s*cả\s*bì',text):fields.update({'gross_weight'}-found)
+        if re.search(r'(?i)số\s+lượng\s+kiện',text):fields.update({'packages'}-found)
     if supports(result.document_type, 'Invoice') and re.search(r'(?i)\b(?:total|amount)\b', text):
         fields.update({'invoice_total', 'currency'} - found)
     if result.document_type in ['B/L', 'Invoice & Packing List', 'Packing List'] and re.search(r'(?i)\b(?:gross\s+weight|GW|KGM|KGS)\b', text):

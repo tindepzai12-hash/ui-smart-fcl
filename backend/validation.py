@@ -1,6 +1,7 @@
 """Deterministic checks. Compare like roles/units/scopes; never infer customs legality."""
 import json
 import re
+import unicodedata
 from decimal import Decimal
 from .dictionary import FIELDS, supports, commercial_profile, REVIEW_GROUPS, REVIEW_FIELDS, DOCUMENT_LABELS
 from .normalize import comparable, decimal_text, normalize
@@ -19,6 +20,27 @@ def required(rule):
     # A legacy/incomplete waiver without a reason must not silently relax review.
     return rule.get('required', True) or len(str(rule.get('note', '')).strip()) < 3
 
+def company_name_key(text):
+    """Compare literal proper names plus translated legal/activity phrases.
+
+    This is spelling/terminology equivalence, not identity verification. Do not
+    drop activity words, legal form, branch numbers or registration identifiers.
+    """
+    text=unicodedata.normalize('NFKD',text.casefold().replace('đ','d'))
+    text=' '.join(re.findall(r'[a-z0-9]+',''.join(c for c in text if not unicodedata.combining(c))))
+    phrases=[(r'\bcong ty\b','company'),(r'\b(?:trach nhiem huu han|tnhh)\b','limited'),
+             (r'\b(?:co phan|joint stock|jsc)\b','jointstock'),
+             (r'\bthuong mai\b','trading'),(r'\bdich vu\b','service'),
+             (r'\bxuat nhap khau\b','import export'),(r'\b(?:ltd|limited liability)\b','limited'),
+             (r'\bservices\b','service')]
+    for pattern,replacement in phrases:text=re.sub(pattern,replacement,text)
+    # The one-member descriptor is optional in translated LIMITED names.
+    if 'limited' in text.split():text=re.sub(r'\bmot thanh vien\b|\bsingle member\b|\bone member\b','',text)
+    words=[w for w in text.split() if w not in {'company','co','and'}]
+    terms={'limited','jointstock','trading','service','import','export'}
+    return (tuple(w for w in words if w not in terms),tuple(sorted(w for w in words if w in terms)))
+
+
 def field_comparable(key, value):
     comparison = comparable(value)
     if comparison is None:
@@ -32,6 +54,8 @@ def field_comparable(key, value):
         text=value.get('text','')
         if key.endswith('_address'):
             text=re.sub(r'(?i)^\s*add(?:ress)?\s*[:：]\s*','',text)
+        elif re.search(r'(?i)\b(?:company|co\.?|ltd|limited|tnhh|jsc)\b|công\s+ty',text):
+            return company_name_key(text)
         return tuple(re.findall(r'[^\W_]+',text.casefold(),flags=re.UNICODE))
     return comparison
 
@@ -350,7 +374,7 @@ def build_checks(case, documents, records):
             result = 'Matched'
             reason = ('Các nguồn cùng chỉ tiêu khớp sau quy đổi đơn vị khối lượng về KG (1 MT = 1000 KG); giữ nguyên giá trị và đơn vị gốc.'
                       if key=='goods_quantity' and len({r['value'].get('unit') for r in group})>1 else
-                      'Các nguồn cùng trường/role khớp sau chuẩn hóa dấu câu/khoảng trắng; giữ nguyên bản gốc.'
+                      'Tên cùng vai trò khớp sau chuẩn hóa cách viết và thuật ngữ doanh nghiệp Việt–Anh; giữ nguyên tên gốc, không thay xác minh pháp nhân.'
                       if any(key==x or key==x+'_address' for x in ['seller','buyer','shipper','consignee','notify_party','exporter','importer']) else
                       'Các nguồn cùng trường/role khớp sau chuẩn hóa.')
         if result=='Mismatch' and key in ['gross_weight','net_weight'] and all(isinstance(v,tuple) and v[1]=='KG' for v in values):

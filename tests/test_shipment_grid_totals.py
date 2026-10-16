@@ -113,6 +113,43 @@ def test_labelled_container_count_cannot_become_packages():
     assert [(f.raw_value,f.unit) for f in grounded.fields]==[('120','BE')]
 
 
+def test_missing_customs_gross_and_packages_are_requested_without_supplied_answers():
+    pages=[{'number':1,'text':'Tờ khai hàng hóa nhập khẩu\nTổng trọng lượng hàng (Gross)\n123.456 KGM\nSố lượng kiện\n140 BE','tables':[]}]
+    result=ai.DocumentResult(document_type='Customs Declaration',classification_evidence='Tờ khai hàng hóa nhập khẩu',fields=[],items=[],containers=[])
+    targets=ai.repair_targets(result,[],[],pages)
+    assert {'gross_weight','packages'}<=set(targets['fields'])
+    assert '123.456' not in str(targets)
+
+
+def test_conflicting_ocr_of_same_ocean_vessel_is_unclear_not_document_mismatch():
+    page={'number':1,'method':'OCR','text':'BILL OF LADING\nOcean vessel / Voy No.\nNAlADE W067\n[OCR sparse layer — same image]\nOcean vessel / Voy No.\nNAJADE\nW067','tables':[]}
+    page['text']=page['text'].replace('NAlADE','NAIADE')
+    result=ai.DocumentResult(document_type='B/L',classification_evidence='BILL OF LADING',fields=[
+        ai.FieldResult(field_id='vessel',raw_value='NAIADE',source_page=1,evidence_text='NAIADE W067')],items=[],containers=[])
+    row=ai.validate_result(result,[page])[0]
+    assert row['value']['text']=='NAIADE' and row['value']['warning']
+    assert len(row['value']['normalization_evidence'])==2
+
+
+def test_bound_vessel_cell_resolves_wrong_page_read_without_cross_document_vote():
+    page={'number':1,'method':'OCR','text':'BILL OF LADING\nOcean vessel / Voy No.\nTESTIADE W067\n[OCR sparse layer — same image]\nOcean vessel / Voy No.\nTESTJADE\nW067\nOcean vessel: TESTJADE',
+          'tables':[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Ocean vessel','TESTJADE','']]]}
+    result=ai.DocumentResult(document_type='B/L',classification_evidence='BILL OF LADING',fields=[
+        ai.FieldResult(field_id='vessel',raw_value='TESTIADE',source_page=1,evidence_text='TESTIADE W067')],items=[],containers=[])
+    grounded=ai.ground_source_format(result,[page])
+    vessel=next(r for r in ai.validate_result(grounded,[page]) if r['key']=='vessel')
+    assert vessel['raw']=='TESTJADE' and not vessel['value'].get('warning')
+    assert vessel['evidence']=='Ocean vessel: TESTJADE'
+
+
+def test_ocr_pes_unit_is_preserved_as_unclear_without_guessing_pcs():
+    page={'number':1,'method':'OCR','text':'COMMERCIAL INVOICE\nTotal 8720 pes','tables':[]}
+    result=ai.DocumentResult(document_type='Invoice',classification_evidence='COMMERCIAL INVOICE',fields=[
+        ai.FieldResult(field_id='goods_quantity',raw_value='8720',unit='pes',unit_evidence='pes',source_page=1,evidence_text='Total 8720 pes')],items=[],containers=[])
+    row=ai.validate_result(result,[page])[0]
+    assert row['value']['text']=='8720 pes' and row['value']['unit']=='PES' and row['value']['warning']
+
+
 def test_transport_weight_and_measurement_are_bound_to_their_own_units():
     page={'number':1,'text':'BILL OF LADING\nGross weight / Measurement\n123 ,456.000\nKGS\n376.2200\nCBM\n(140 BUNDLE(S))',
           'tables':[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Gross weight','123 ,456.000','KGS'],['Measurement','376.2200','CBM']]]}
@@ -125,6 +162,58 @@ def test_transport_weight_and_measurement_are_bound_to_their_own_units():
     assert values['gross_weight']['text']=='123 ,456.000 KGS'
     assert values['volume']['number']=='376.2200' and values['volume']['unit']=='CBM'
     assert values['packages']['number']=='140' and values['packages']['unit']=='BDL'
+
+
+def test_seal_suffix_and_cross_column_newline_cannot_become_bundle_count():
+    page={'number':1,'text':'BILL OF LADING\nABCD123456 BUNDLE(S)\nABCD123456\nBUNDLE(S)','tables':[]}
+    assert not ai.transport_summary_fields([page]).get('packages')
+    page['tables']=[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Packages','140','BUNDLE(S)']]]
+    page['text']+='\n(140\nBUNDLE(S))'
+    assert [f.raw_value for f in ai.transport_summary_fields([page])['packages']]==['140']
+
+
+def test_package_crop_requires_adjacent_printed_parenthesized_count(monkeypatch):
+    from backend import reader
+    from PIL import Image
+    data={'text':['BUNDLE(S))'],'left':[400],'top':[700],'width':[140],'height':[20]}
+    monkeypatch.setattr(reader.pytesseract,'image_to_string',lambda *a,**kw:'No.of packages\n10 CTRS\n(140\nBUNDLE(S))')
+    with Image.new('L',(1000,1500),255) as image:
+        _,tables=reader.ocr_package_cell(image,data,'eng')
+        assert tables[0][1]==['Packages','140','BUNDLE(S)']
+        monkeypatch.setattr(reader.pytesseract,'image_to_string',lambda *a,**kw:'ABCD123456 BUNDLE(S)')
+        assert reader.ocr_package_cell(image,data,'eng')[1]==[]
+
+
+def test_single_bound_cell_does_not_skip_sparse_read_of_other_form_cells(monkeypatch):
+    from backend import reader
+    from PIL import Image
+    tables=[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Ocean vessel','TESTJADE','']]]
+    extra=[[['SOURCE_LABEL','SOURCE_VALUE','SOURCE_UNIT'],['Measurement','376.22','CBM']]]
+    calls=[]
+    def read(image,include_tables=False,psm=3):
+        calls.append(psm)
+        return ('BILL OF LADING\nOcean vessel TESTJADE'+ ('\n376.22 CBM' if psm==11 else ''),'quality',extra if psm==11 else tables.copy())
+    monkeypatch.setattr(reader,'ocr',read)
+    with Image.new('L',(1000,1500),255) as im:
+        # Include ink so this is a content page, not the intentional blank case.
+        im.paste(0,(10,10,80,80))
+        _,_,_,result=reader.read_pdf_image(im)
+    assert 11 in calls and tables[0] in result and extra[0] in result
+
+
+def test_vessel_cell_requires_label_and_literal_second_read_when_confidence_low(monkeypatch):
+    from backend import reader
+    from PIL import Image
+    data={'text':['Occan','vessel'],'left':[70,120],'top':[600,600],'width':[40,40],'height':[10,10]}
+    cells={'text':['TESTJADE'],'conf':[35],'top':[5],'left':[20],'width':[80],'height':[15]}
+    monkeypatch.setattr(reader.pytesseract,'image_to_data',lambda *a,**kw:cells)
+    monkeypatch.setattr(reader.pytesseract,'image_to_string',lambda *a,**kw:'TESTJADE')
+    with Image.new('L',(1000,1500),255) as im:
+        assert reader.ocr_vessel_cell(im,data)[1][0][1]==['Ocean vessel','TESTJADE','']
+        monkeypatch.setattr(reader.pytesseract,'image_to_string',lambda *a,**kw:'TESTIADE')
+        assert reader.ocr_vessel_cell(im,data)==('',[],[])
+        data['text'][0]='Phone'
+        assert reader.ocr_vessel_cell(im,data)==('',[],[])
 
 
 def test_measurement_crop_requires_both_printed_labels_and_distinct_units(monkeypatch):
